@@ -80,6 +80,17 @@ export function createSessionService(deps: SessionDeps): SessionService {
     bus.emit('orb:bubble', { text, ttlMs: sessionConfig.bubbleTtlMs })
   const warn = (what: string) => (e: unknown) => console.warn(`session: ${what} failed`, e)
 
+  const disableSensing = (): void => {
+    if (!session?.sensingEnabled) return
+    resumeAfterReturnCheck = false
+    update({
+      sensingEnabled: false,
+      status: session.status === 'calibrating' ? 'running' : session.status
+    })
+    sensing.stop().catch(warn('stop'))
+    state.dispose()
+  }
+
   const mood = (t: number, situation: MoodPoint['situation']): void => {
     if (timeline[timeline.length - 1]?.situation !== situation) timeline.push({ t, situation })
   }
@@ -137,14 +148,12 @@ export function createSessionService(deps: SessionDeps): SessionService {
         if (!t.isAd && t.id) songs.add(t.id)
       }),
       bus.on('privacy:changed', (p) => {
-        if (!session || p.camera === 'yes') return
-        resumeAfterReturnCheck = false
-        update({
-          sensingEnabled: false,
-          status: session.status === 'calibrating' ? 'running' : session.status
-        })
-        sensing.stop().catch(warn('stop'))
-        state.dispose()
+        if (p.camera !== 'yes') disableSensing()
+      }),
+      bus.on('sdk:error', (error) => {
+        if (!session?.sensingEnabled || (error.retryable && error.code !== 'start-failed')) return
+        disableSensing()
+        bubble(sessionConfig.cameraFailedBubble)
       })
     ]
   }
@@ -196,7 +205,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
       } catch (e) {
         warn('startCalibration')(e)
         recordCameraMode = 'off'
-        update({ status: 'running', sensingEnabled: false })
+        disableSensing()
         bubble(sessionConfig.cameraFailedBubble)
       }
     }

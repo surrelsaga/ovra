@@ -320,7 +320,7 @@ export async function runHarness(): Promise<void> {
     app.quit()
   } catch (err) {
     console.error(
-      `[e2e] FAIL mode=${mode} video=${basename(video)} phases=${phases.join(',')} saved=${saved} raw-scan=${clean} camera-stopped=${stopped}: ${err instanceof Error ? err.message : String(err)}`
+      `[e2e] FAIL mode=${mode} video=${basename(video)} phases=${phases.join(',')} saved=${saved} raw-scan=${clean} camera-stopped=${stopped}: ${err instanceof Error ? err.message : String(err)} userData=${app.getPath('userData')}`
     )
     clearTimeout(deadline)
     await application.shutdown()

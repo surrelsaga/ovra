@@ -12,3 +12,9 @@ Format:
 - Why: <one line>
 - Status: requested | applied in <commit>
 ```
+
+## 2026-11-12 — F — data:deleted-all bus event
+- File: src/shared/types.ts
+- Change: `'data:deleted-all': Record<string, never>` in `BusEvents`, emitted by privacy at the end of `deleteEverything()`.
+- Why: music must drop its in-memory songs/playlists instead of rewriting songs.json after a delete-all.
+- Status: applied on main

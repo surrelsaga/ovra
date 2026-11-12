@@ -19,3 +19,17 @@
   factory signatures, dev harness hooks, Vitest + `npm run ci`.
 - All dependencies installed up front. `docs/ownership.md` says who owns what.
 - **Stubbed:** every module (Phase 2).
+
+## Phase 2: parallel build — started (2026-11-12)
+
+Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own worktree under
+`~/orca/workspaces/ovra/` and branch off main `b814591`:
+
+| Agent | Branch | Dispatch |
+| --- | --- | --- |
+| A. Sensing | feat/sensing | ctx_2c2520d64481 |
+| B. State + session | feat/state | ctx_2bd3ef5b8428 |
+| C. Music | feat/music | ctx_bf1239978b8f |
+| D. Moves | feat/moves | ctx_046fd6134722 |
+| E. Orb + shell | feat/shell | ctx_add8dec41d2f |
+| F. Privacy + storage | feat/privacy | ctx_0118162b82a0 |

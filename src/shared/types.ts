@@ -516,6 +516,8 @@ export interface BusEvents {
   'privacy:camera-paused': Record<string, never>
   'privacy:camera-resumed': Record<string, never>
   'privacy:changed': PrivacySettings
+  /** Emitted by privacy at the end of deleteEverything(). Modules drop in-memory caches (e.g. music library). */
+  'data:deleted-all': Record<string, never>
 
   'orb:bubble': { text: string; ttlMs?: number }
 }

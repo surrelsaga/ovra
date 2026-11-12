@@ -211,6 +211,27 @@ describe('phases and check-in scheduler', () => {
   })
 })
 
+describe('while paused', () => {
+  it('starts no capture of any kind, and resume() continues the schedule', async () => {
+    const { sensing, names } = setup()
+    sensing.startCheckins(3)
+    await sensing.pause()
+    await vi.advanceTimersByTimeAsync(10 * 60_000) // three scheduled check-ins while paused
+    await sensing.startCalibration()
+    await sensing.startReturnCheck()
+    expect(h.pushes.filter((p) => p.channel === 'push:capture-start')).toHaveLength(0)
+    expect(h.windows).toHaveLength(0)
+    expect(names().filter((n) => n.startsWith('sdk:checkin-started'))).toEqual([])
+    expect(sensing.phase()).toBe('idle')
+
+    await sensing.resume()
+    await vi.advanceTimersByTimeAsync(3 * 60_000) // next tick after resume
+    expect(names().filter((n) => n.startsWith('sdk:checkin-started'))).toEqual([
+      'sdk:checkin-started:checkin'
+    ])
+  })
+})
+
 describe('capture messages', () => {
   it('forwards metrics and only emits validation codes that persist', async () => {
     const { sensing, events } = setup()

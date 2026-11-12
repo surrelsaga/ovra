@@ -112,8 +112,9 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (!session || privacy.get().music !== 'spotify' || leaveAlone || !target) return
     const activeSession = session
     const g = generation
-    available = await controller.isAvailable()
+    const running = await controller.isAvailable()
     if (g !== generation || session !== activeSession || privacy.get().music !== 'spotify') return
+    available = running
     if (!available) return hint()
     const songs = library.songs()
     const cur = nowPlaying ? library.get(nowPlaying.id) : undefined

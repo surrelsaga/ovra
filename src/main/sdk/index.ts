@@ -124,12 +124,14 @@ export function createSensing(deps: SensingDeps): SensingService {
     ses.setPermissionRequestHandler((wc, permission, cb, details) =>
       cb(
         permission === 'media' &&
+          privacy.canUseCamera() &&
           wc.id === w.webContents.id &&
           !('mediaTypes' in details && details.mediaTypes?.includes('audio'))
       )
     )
     ses.setPermissionCheckHandler(
-      (wc, permission) => permission === 'media' && wc?.id === w.webContents.id
+      (wc, permission) =>
+        permission === 'media' && privacy.canUseCamera() && wc?.id === w.webContents.id
     )
     w.webContents.on('render-process-gone', (_e, d) => {
       bus.emit('sdk:error', {

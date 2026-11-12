@@ -353,6 +353,7 @@ it('does not play after deletion while checking Spotify availability', async () 
   t.bus.emit('data:deleted-all', {})
   resolve(true)
   await started
+  expect(t.music.status().available).toBe(false)
   expect(t.controller.calls).toEqual([])
   expect(await t.music.library()).toEqual({ songs: [], playlists: [] })
 })

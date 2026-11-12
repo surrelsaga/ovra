@@ -13,15 +13,35 @@ const h = vi.hoisted(() => {
   const wc = { id: 1, on: vi.fn() }
   const windows: unknown[] = []
   const pushes: { channel: string; payload: unknown }[] = []
-  return { handlers, wc, windows, pushes, autoStop: true, loadPage: vi.fn() }
+  return {
+    handlers,
+    wc,
+    windows,
+    pushes,
+    autoStop: true,
+    loadPage: vi.fn(),
+    permissionRequest: null as
+      | null
+      | ((
+          wc: { id: number },
+          permission: string,
+          cb: (allowed: boolean) => void,
+          details: { mediaTypes?: string[] }
+        ) => void),
+    permissionCheck: null as null | ((wc: { id: number }, permission: string) => boolean)
+  }
 })
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },
   session: {
     fromPartition: () => ({
-      setPermissionRequestHandler: vi.fn(),
-      setPermissionCheckHandler: vi.fn()
+      setPermissionRequestHandler: (fn: typeof h.permissionRequest) => {
+        h.permissionRequest = fn
+      },
+      setPermissionCheckHandler: (fn: typeof h.permissionCheck) => {
+        h.permissionCheck = fn
+      }
     })
   },
   BrowserWindow: vi.fn(function (this: Record<string, unknown>) {
@@ -404,4 +424,15 @@ it('applies telemetry opt-out to the currently running native session', async ()
   expect(h.pushes.filter((p) => p.channel === 'push:capture-start').at(-1)?.payload).toMatchObject({
     telemetry: false
   })
+})
+
+it('denies a late media permission request after camera consent is revoked', async () => {
+  const t = setup()
+  await t.sensing.startCalibration()
+  expect(h.permissionCheck!(h.wc, 'media')).toBe(true)
+  vi.spyOn(t.privacy, 'canUseCamera').mockReturnValue(false)
+  const answer = vi.fn()
+  h.permissionRequest!(h.wc, 'media', answer, { mediaTypes: ['video'] })
+  expect(answer).toHaveBeenCalledWith(false)
+  expect(h.permissionCheck!(h.wc, 'media')).toBe(false)
 })

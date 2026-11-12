@@ -56,3 +56,10 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
 - **E. Orb + shell** → main `226c5ac` after fixes (16 module tests, 187 total; build OK). Click-through on the orb's
   transparent area, shared paused state with a "Camera paused" chip, stable 1–7 onboarding count. Calibration live
   preview skipped (the camera lives in the hidden capture window) — integration item.
+- **A. Sensing** → main `90502ed` (finished and reviewed by a Codex worker after the original worker's terminal
+  closed). Pulse on all five test videos; stream stopped after every phase; 214 tests total. Open: the native SDK
+  (koffi) crashes during app quit after a run — Phase 3 must add proper quit handling. stretch.mp4 gives pulse only
+  during calibration (too much movement).
+
+**Phase 2 done (2026-11-12).** All six modules merged. Needs Daniel: live camera acceptance run, threshold tuning
+(state + moves configs), fallback playlist links.

@@ -4,8 +4,10 @@ export const captureConfig = {
   width: 1280,
   height: 720,
   fps: 30,
+  maxFramingPad: 0.6,
   /** Max MetricsSnapshot sends to main per second (the SDK emits ~28/s). */
   maxSendsPerSec: 4,
   /** How long to wait for the SDK to report idle after stop(). */
-  idleWaitMs: 2000
+  idleWaitMs: 2000,
+  idlePollMs: 50
 } as const

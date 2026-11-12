@@ -51,7 +51,7 @@ async function fileStream(
   canvas.height = cfg.height
   const g = canvas.getContext('2d')
   if (!g) throw new Error('No 2D canvas context')
-  const pad = Math.min(0.6, Math.max(0, framingPad))
+  const pad = Math.min(cfg.maxFramingPad, Math.max(0, framingPad))
   const h = Math.round(cfg.height * (1 - pad))
   const w = Math.round((video.videoWidth * h) / video.videoHeight)
   // Fixed-rate frames (repeating the last decoded frame if decoding lags) keep the SDK's
@@ -84,12 +84,12 @@ const busy = (sdk: SmartSpectraSDK): boolean =>
 /** True once the SDK is no longer processing (idle, or halted by a terminal error). */
 async function waitStopped(sdk: SmartSpectraSDK): Promise<boolean> {
   const until = Date.now() + cfg.idleWaitMs
-  while (busy(sdk) && Date.now() < until) await new Promise((r) => setTimeout(r, 50))
+  while (busy(sdk) && Date.now() < until) await new Promise((r) => setTimeout(r, cfg.idlePollMs))
   return !busy(sdk)
 }
 
 async function start(req: CaptureStartRequest): Promise<void> {
-  await stop()
+  if (active) await stop()
   ovra.send('capture:status', 'starting')
 
   const sdk = new SmartSpectraSDK({

@@ -13,7 +13,7 @@ const h = vi.hoisted(() => {
   const wc = { id: 1, on: vi.fn() }
   const windows: unknown[] = []
   const pushes: { channel: string; payload: unknown }[] = []
-  return { handlers, wc, windows, pushes }
+  return { handlers, wc, windows, pushes, autoStop: true, loadPage: vi.fn() }
 })
 
 vi.mock('electron', () => ({
@@ -25,15 +25,25 @@ vi.mock('electron', () => ({
     })
   },
   BrowserWindow: vi.fn(function (this: Record<string, unknown>) {
+    let destroyed = false
+    const listeners: Record<string, (() => void)[]> = {}
+    const close = (): void => {
+      if (destroyed) return
+      destroyed = true
+      for (const fn of listeners.closed ?? []) fn()
+    }
     this.webContents = h.wc
-    this.isDestroyed = () => false
-    this.on = vi.fn()
-    this.close = vi.fn()
+    this.isDestroyed = () => destroyed
+    this.on = this.once = vi.fn((event: string, fn: () => void) => {
+      ;(listeners[event] ??= []).push(fn)
+    })
+    this.close = vi.fn(close)
+    this.destroy = vi.fn(close)
     h.windows.push(this)
   })
 }))
 vi.mock('@smartspectra/node-sdk/main', () => ({ bindSmartSpectraIpc: vi.fn() }))
-vi.mock('../paths', () => ({ preloadPath: () => 'preload.js', loadPage: () => Promise.resolve() }))
+vi.mock('../paths', () => ({ preloadPath: () => 'preload.js', loadPage: h.loadPage }))
 vi.mock('../ipc', () => ({
   onCapture: (channel: string, fn: (payload: unknown, e: { sender: unknown }) => void) => {
     h.handlers[channel] = fn
@@ -41,7 +51,8 @@ vi.mock('../ipc', () => ({
   },
   push: (_win: unknown, channel: string, payload: unknown) => {
     h.pushes.push({ channel, payload })
-    if (channel === 'push:capture-stop') h.handlers['capture:status']?.('idle', { sender: h.wc })
+    if (channel === 'push:capture-stop' && h.autoStop)
+      h.handlers['capture:status']?.('idle', { sender: h.wc })
   }
 }))
 
@@ -96,6 +107,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   h.windows.length = 0
   h.pushes.length = 0
+  h.autoStop = true
+  h.loadPage.mockReset().mockResolvedValue(undefined)
 })
 afterEach(() => vi.useRealTimers())
 
@@ -136,10 +149,85 @@ describe('missing API key', () => {
       code: 'no-api-key'
     })
     expect(h.windows).toHaveLength(0)
+    expect(events.filter((e) => e.name === 'sdk:checkin-ended')).toEqual([
+      { name: 'sdk:checkin-ended', payload: { phase: 'calibration' } }
+    ])
   })
 })
 
 describe('phases and check-in scheduler', () => {
+  it('ends a failed window load and allows the next attempt to create a fresh window', async () => {
+    const { sensing, names } = setup()
+    h.loadPage.mockRejectedValueOnce(new Error('capture page unavailable'))
+    await expect(sensing.startReturnCheck()).rejects.toThrow('capture page unavailable')
+    expect(names()).toEqual(['sdk:checkin-ended:return-check'])
+    await sensing.startCalibration()
+    expect(h.windows).toHaveLength(2)
+    expect(sensing.phase()).toBe('calibration')
+  })
+
+  it('waits for the old capture to stop before starting the latest requested phase', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    h.autoStop = false
+    const returning = sensing.startReturnCheck()
+    const calibrating = sensing.startCalibration()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sensing.phase()).toBe('continuous')
+    expect(names()).toEqual(['sdk:checkin-started:continuous'])
+    h.handlers['capture:status']('idle', { sender: h.wc })
+    await Promise.all([returning, calibrating])
+    expect(names()).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:checkin-ended:continuous',
+      'sdk:checkin-ended:return-check',
+      'sdk:checkin-started:calibration'
+    ])
+    expect(sensing.phase()).toBe('calibration')
+  })
+
+  it('destroys an unresponsive capture before emitting ended', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    h.autoStop = false
+    const stopping = sensing.pause()
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(names()).toEqual(['sdk:checkin-started:continuous'])
+    await vi.advanceTimersByTimeAsync(1)
+    await stopping
+    expect((h.windows[0] as { destroy: () => void }).destroy).toHaveBeenCalled()
+    expect(names()).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:error',
+      'sdk:checkin-ended:continuous',
+      'privacy:camera-paused'
+    ])
+  })
+
+  it('ends continuous capture if the capture window closes unexpectedly', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    ;(h.windows[0] as { destroy: () => void }).destroy()
+    expect(sensing.phase()).toBe('idle')
+    expect(names()).toEqual(['sdk:checkin-started:continuous', 'sdk:checkin-ended:continuous'])
+  })
+
+  it('ends a phase promptly if renderer startup fails', async () => {
+    const { sensing, names } = setup()
+    await sensing.startReturnCheck()
+    h.handlers['capture:error'](
+      { code: 'start-failed', message: 'Video unavailable', retryable: true },
+      { sender: h.wc }
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sensing.phase()).toBe('idle')
+    expect(names()).toEqual([
+      'sdk:checkin-started:return-check',
+      'sdk:error',
+      'sdk:checkin-ended:return-check'
+    ])
+  })
+
   it('calibration emits progress and ends on time', async () => {
     const { sensing, events, names } = setup()
     await sensing.startCalibration()
@@ -212,6 +300,19 @@ describe('phases and check-in scheduler', () => {
 })
 
 describe('while paused', () => {
+  it('keeps the pause across stop until resume is explicitly called', async () => {
+    const { sensing } = setup()
+    await sensing.pause()
+    await sensing.stop()
+    await sensing.startCalibration()
+    await sensing.startReturnCheck()
+    await sensing.startContinuous()
+    expect(h.windows).toHaveLength(0)
+    expect(h.pushes).toHaveLength(0)
+    await sensing.resume()
+    expect(sensing.phase()).toBe('continuous')
+  })
+
   it('starts no capture of any kind, and resume() continues the schedule', async () => {
     const { sensing, names } = setup()
     sensing.startCheckins(3)

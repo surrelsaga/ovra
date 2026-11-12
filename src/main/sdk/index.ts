@@ -44,7 +44,8 @@ export function createSensing(deps: SensingDeps): SensingService {
   let schedule: ReturnType<typeof setInterval> | null = null
   let phaseTimer: ReturnType<typeof setTimeout> | null = null
   let progressTimer: ReturnType<typeof setInterval> | null = null
-  const stopWaiters: (() => void)[] = []
+  let stopping: Promise<void> | null = null
+  let stopWaiter: ((stopped: boolean) => void) | null = null
   let listening = false
 
   const report = (err: unknown): void =>
@@ -57,8 +58,9 @@ export function createSensing(deps: SensingDeps): SensingService {
   const fromCapture = (e: IpcMainEvent): boolean =>
     !!win && !win.isDestroyed() && e.sender === win.webContents
 
-  const resolveStop = (): void => {
-    for (const r of stopWaiters.splice(0)) r()
+  const resolveStop = (stopped: boolean): void => {
+    stopWaiter?.(stopped)
+    stopWaiter = null
   }
 
   function flushValidation(): void {
@@ -79,10 +81,12 @@ export function createSensing(deps: SensingDeps): SensingService {
       setTimeout(flushValidation, cfg.hintPersistMs)
     })
     onCapture('capture:error', (err, e) => {
-      if (fromCapture(e)) bus.emit('sdk:error', err)
+      if (!fromCapture(e)) return
+      bus.emit('sdk:error', err)
+      if (!err.retryable || err.code === 'start-failed') stopCapture().catch(report)
     })
     onCapture('capture:status', (s, e) => {
-      if (fromCapture(e) && (s === 'idle' || s === 'error')) resolveStop()
+      if (fromCapture(e) && (s === 'idle' || s === 'error')) resolveStop(s === 'idle')
     })
   }
 
@@ -117,24 +121,32 @@ export function createSensing(deps: SensingDeps): SensingService {
     ses.setPermissionCheckHandler(
       (wc, permission) => permission === 'media' && wc?.id === w.webContents.id
     )
-    w.webContents.on('render-process-gone', (_e, d) =>
+    w.webContents.on('render-process-gone', (_e, d) => {
       bus.emit('sdk:error', {
         code: 'capture-gone',
         message: `Capture renderer exited (${d.reason})`,
         retryable: true
       })
-    )
+      w.destroy()
+    })
     w.on('closed', () => {
       if (win === w) {
         win = null
         winReady = null
       }
-      resolveStop()
+      resolveStop(true)
+      if (current) stopCapture().catch(report)
     })
     win = w
     bindSmartSpectraIpc(w)
     listen()
-    return loadPage(w, 'capture').then(() => w)
+    return loadPage(w, 'capture').then(
+      () => w,
+      (err) => {
+        w.destroy()
+        throw err
+      }
+    )
   }
 
   function ensureWindow(): Promise<BrowserWindow> {
@@ -153,21 +165,44 @@ export function createSensing(deps: SensingDeps): SensingService {
     schedule = null
   }
 
-  /** Stops capture and waits until the renderer confirms the stream is stopped (or times out). */
+  /** Keep the camera indicator on until tracks have ended or the capture context is destroyed. */
   async function stopCapture(): Promise<void> {
     clearPhaseTimers()
+    if (stopping) return stopping
     const phase = current
     if (!phase) return
-    current = null
-    if (win && !win.isDestroyed()) {
-      const stopped = new Promise<void>((r) => {
-        stopWaiters.push(r)
-        setTimeout(r, cfg.stopTimeoutMs)
-      })
-      push(win, 'push:capture-stop', {})
-      await stopped
+    stopping = (async () => {
+      const w = win
+      if (w && !w.isDestroyed()) {
+        let timeout: ReturnType<typeof setTimeout>
+        const stopped = new Promise<boolean>((resolve) => {
+          stopWaiter = resolve
+          timeout = setTimeout(() => resolveStop(false), cfg.stopTimeoutMs)
+        })
+        try {
+          push(w, 'push:capture-stop', {})
+        } catch {
+          resolveStop(false)
+        }
+        const confirmed = await stopped
+        clearTimeout(timeout!)
+        if (!confirmed && !w.isDestroyed()) {
+          report(new Error('Capture did not confirm stopping; closing the capture window.'))
+          // A missing/failed stop ack must close the capture context before hiding the camera ring.
+          await new Promise<void>((resolve) => {
+            w.once('closed', resolve)
+            w.destroy()
+          })
+        }
+      }
+      current = null
+      bus.emit('sdk:checkin-ended', { phase })
+    })()
+    try {
+      await stopping
+    } finally {
+      stopping = null
     }
-    bus.emit('sdk:checkin-ended', { phase })
   }
 
   function emitProgress(startedAt: number, durationMs: number): void {
@@ -175,56 +210,65 @@ export function createSensing(deps: SensingDeps): SensingService {
     bus.emit('sdk:calibration-progress', { progress, hint: smoother.hint() })
   }
 
-  async function endTimed(): Promise<void> {
+  async function endTimed(g: number): Promise<void> {
     await stopCapture()
-    if (mode === 'continuous' && !paused) await runCapture('continuous')
+    if (g === gen && mode === 'continuous' && !paused) await runCapture('continuous')
   }
 
   async function runCapture(phase: ActivePhase, durationMs?: number): Promise<void> {
-    privacy.assertCameraConsent() // no camera code before consent
     // A phase that can't run still reports ended, so callers waiting on it (session) never hang.
     const skip = (): void => bus.emit('sdk:checkin-ended', { phase })
-    if (paused) return skip()
-    const apiKey = deps.getApiKey()
-    if (!apiKey) {
-      bus.emit('sdk:error', {
-        code: 'no-api-key',
-        message: 'The Presage API key is missing. Set PRESAGE_API_KEY in .env.',
-        retryable: false
-      })
-      return skip()
-    }
-    const g = ++gen
-    await stopCapture()
-    const w = await ensureWindow()
-    if (g !== gen || paused) return skip()
+    let started = false
+    try {
+      privacy.assertCameraConsent() // no camera code before consent
+      if (paused) return skip()
+      const apiKey = deps.getApiKey()
+      if (!apiKey) {
+        bus.emit('sdk:error', {
+          code: 'no-api-key',
+          message: 'The Presage API key is missing. Set PRESAGE_API_KEY in .env.',
+          retryable: false
+        })
+        return skip()
+      }
+      const g = ++gen
+      await stopCapture()
+      if (g !== gen || paused) return skip()
+      const w = await ensureWindow()
+      if (g !== gen || paused) return skip()
 
-    const settings = privacy.getSettings()
-    const file = devVideo()
-    const req: CaptureStartRequest = {
-      phase,
-      apiKey,
-      source: file
-        ? { kind: 'file', path: file, framingPad: settings.devFramingPad }
-        : { kind: 'camera' },
-      face: privacy.canUseFace(),
-      telemetry: privacy.get().telemetry === true,
-      durationMs
-    }
-    current = phase
-    smoother.reset()
-    bus.emit('sdk:checkin-started', { phase })
-    push(w, 'push:capture-start', req)
+      const settings = privacy.getSettings()
+      const file = devVideo()
+      const req: CaptureStartRequest = {
+        phase,
+        apiKey,
+        source: file
+          ? { kind: 'file', path: file, framingPad: settings.devFramingPad }
+          : { kind: 'camera' },
+        face: privacy.canUseFace(),
+        telemetry: privacy.get().telemetry === true,
+        durationMs
+      }
+      current = phase
+      started = true
+      smoother.reset()
+      bus.emit('sdk:checkin-started', { phase })
+      push(w, 'push:capture-start', req)
 
-    if (durationMs === undefined) return
-    const startedAt = Date.now()
-    phaseTimer = setTimeout(() => {
-      if (phase === 'calibration') emitProgress(startedAt, durationMs)
-      endTimed().catch(report)
-    }, durationMs)
-    if (phase === 'calibration') {
-      emitProgress(startedAt, durationMs)
-      progressTimer = setInterval(() => emitProgress(startedAt, durationMs), cfg.progressEveryMs)
+      if (durationMs === undefined) return
+      const startedAt = Date.now()
+      phaseTimer = setTimeout(() => {
+        if (phase === 'calibration') emitProgress(startedAt, durationMs)
+        endTimed(g).catch(report)
+      }, durationMs)
+      if (phase === 'calibration') {
+        emitProgress(startedAt, durationMs)
+        progressTimer = setInterval(() => emitProgress(startedAt, durationMs), cfg.progressEveryMs)
+      }
+    } catch (err) {
+      if (started) await stopCapture()
+      else skip()
+      throw err
     }
   }
 
@@ -257,7 +301,6 @@ export function createSensing(deps: SensingDeps): SensingService {
       gen++
       clearSchedule()
       mode = null
-      paused = false
       await stopCapture()
       // Forget the window first: close() is async and a new phase must not reuse it.
       const w = win
@@ -276,6 +319,7 @@ export function createSensing(deps: SensingDeps): SensingService {
 
     async resume() {
       if (!paused) return
+      await stopCapture()
       paused = false
       bus.emit('privacy:camera-resumed', {})
       if (mode === 'continuous') await runCapture('continuous')

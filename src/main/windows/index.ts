@@ -12,6 +12,8 @@ import { bindForwarding, type Forwarder } from './forward'
 export interface WindowsDeps {
   bus: Bus
   privacy: PrivacyService
+  /** E2e runs keep the real renderers loaded without taking desktop focus. */
+  background?: boolean
 }
 
 /** WindowsService plus the bits the IPC handlers and the harness need. */
@@ -27,8 +29,12 @@ export interface ShellWindows extends WindowsService {
 let quitting = false
 app.on('before-quit', () => (quitting = true))
 
-function webPreferences(): Electron.WebPreferences {
-  return { preload: preloadPath('index'), additionalArguments: is.dev ? ['--ovra-dev'] : [] }
+function webPreferences(background = false): Electron.WebPreferences {
+  return {
+    preload: preloadPath('index'),
+    additionalArguments: is.dev ? ['--ovra-dev'] : [],
+    backgroundThrottling: !background
+  }
 }
 
 function clampTo(
@@ -74,7 +80,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       title: 'Ovra',
       titleBarStyle: 'hiddenInset',
       backgroundColor: cfg.background,
-      webPreferences: webPreferences()
+      webPreferences: webPreferences(deps.background)
     })
     // Keep the main window alive so pushes (like the session summary) always land.
     main.on('close', (e) => {
@@ -96,7 +102,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       fullscreenable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
-      webPreferences: webPreferences()
+      webPreferences: webPreferences(deps.background)
     })
     orb.setAlwaysOnTop(true, 'floating')
     // Click-through until the renderer reports the pointer over the moon, bubble, chip or controls.
@@ -113,7 +119,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       skipTaskbar: true,
       alwaysOnTop: true,
       backgroundColor: cfg.background,
-      webPreferences: webPreferences()
+      webPreferences: webPreferences(deps.background)
     })
     card.setAlwaysOnTop(true, 'floating')
 
@@ -147,13 +153,15 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   const service: ShellWindows = {
     showMain() {
       const { main } = ensure()
-      main.show()
-      main.focus()
+      if (!deps.background) {
+        main.show()
+        main.focus()
+      }
     },
     showOrb() {
       const { main, orb } = ensure()
       if (forwarder) push(orb, 'push:orb', forwarder.orb())
-      orb.showInactive()
+      if (!deps.background) orb.showInactive()
       main.hide()
     },
     hideOrb() {
@@ -178,7 +186,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
           const { card } = ensure()
           if (view.kind === 'hidden') return card.hide()
           placeCard()
-          card.showInactive()
+          if (!deps.background) card.showInactive()
         }
       })
     },

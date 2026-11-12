@@ -18,6 +18,7 @@ import { createSessionService, registerSessionIpc } from './session'
 import { createWindows, registerWindowsIpc } from './windows'
 
 export interface AppOptions {
+  background?: boolean
   sensingConfig?: Partial<SensingConfig>
   movesConfig?: MovesConfig
   setup?: (privacy: PrivacyService) => Promise<void>
@@ -50,7 +51,7 @@ export async function startApp(options: AppOptions = {}) {
   registerMusicIpc(music)
   registerMovesIpc(moves)
 
-  const windows = createWindows({ bus, privacy })
+  const windows = createWindows({ bus, privacy, background: options.background })
   registerWindowsIpc(windows)
   windows.bindBus()
   windows.showMain()

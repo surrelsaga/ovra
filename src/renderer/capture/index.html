@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ovra capture</title>
+    <!-- worker-src blob: is required by the SmartSpectra renderer SDK; media-src file: for the dev video source. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; media-src 'self' file: blob: mediastream:"
+    />
+  </head>
+  <body>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,128 @@
+/*
+ * Ovra dark theme tokens. Defined once; every window imports this file.
+ * Near-black background, slightly lighter panels, soft borders, one accent.
+ * The orb is the main spot of colour and glow.
+ */
+@import '@fontsource-variable/inter';
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #0b0c0f;
+  --bg-sidebar: #0f1014;
+  --panel: #15161b;
+  --panel-raised: #1b1d23;
+  --panel-hover: #22242b;
+  --border: #26282f;
+  --border-strong: #33363f;
+
+  /* Text (contrast on --bg: primary 16:1, secondary 8:1, muted 4.9:1) */
+  --text: #ecedf0;
+  --text-secondary: #b3b6c0;
+  --text-muted: #8a8e99;
+  --text-on-accent: #0b0c0f;
+
+  /* One accent */
+  --accent: #9aa8ff;
+  --accent-hover: #b1bcff;
+  --accent-soft: rgba(154, 168, 255, 0.14);
+
+  /* Status (used sparingly) */
+  --ok: #7fd1ae;
+  --warn: #f0b86e;
+  --danger: #f08080;
+  --danger-soft: rgba(240, 128, 128, 0.12);
+
+  /* Situation / music word colours */
+  --calm: #a9c8ff;
+  --focus: #9aa8ff;
+  --boost: #ffd27a;
+
+  /* Orb moods: core colour, glow colour, pulse period */
+  --orb-calm: #dfe9ff;
+  --orb-calm-glow: rgba(150, 185, 255, 0.55);
+  --orb-calm-period: 5s;
+  --orb-uneasy: #ffd9a0;
+  --orb-uneasy-glow: rgba(255, 180, 90, 0.55);
+  --orb-uneasy-period: 3.2s;
+  --orb-stormy: #ffb08a;
+  --orb-stormy-edge: #ff6a3d;
+  --orb-stormy-glow: rgba(255, 100, 60, 0.6);
+  --orb-stormy-period: 1.6s;
+  --orb-dim: #9aa6bd;
+  --orb-dim-glow: rgba(120, 140, 175, 0.3);
+  --orb-dim-period: 6.5s;
+  --orb-bright: #fff6e6;
+  --orb-bright-glow: rgba(255, 235, 200, 0.75);
+  --orb-bright-period: 4s;
+  --orb-listening-ring: rgba(220, 230, 255, 0.85);
+  /* Breathe along: 6 breaths per minute */
+  --orb-breath-period: 10s;
+
+  /* Type */
+  --font: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Space, radius, shadow, motion */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-float: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration: 220ms;
+
+  /* Accessibility */
+  --touch-target: 44px;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

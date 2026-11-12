@@ -27,3 +27,15 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
     rate-limited upstream.
 13. **Spotify `isAvailable()` never launches Spotify** (checks `is running` first), since any AppleScript `tell`
     launches the app.
+14. **Session lifecycle goes to Agent B** (with the state engine). PLAN.md's agent table didn't assign
+    `src/main/session/`; it's small and closely tied to seated time and away detection.
+15. **Agent E also owns `src/renderer/ui/`** (shared React components) and the windows module, which forwards
+    bus events to renderers. Agent D builds its own move card UI and emits `move:card` with the full view.
+16. **Module dev harnesses** (`OVRA_HARNESS=sensing|shell|moves`) so A, D and E can run their parts in real
+    Electron before integration. `src/main/app.ts` holds the final wiring for Phase 3.
+17. **Capture renderer receives the Presage key in `CaptureStartRequest`** (the renderer SDK needs it). Never
+    logged.
+18. **Dependencies added in Phase 1:** zod (LLM JSON validation), lucide-react (icons), @fontsource-variable/inter
+    (bundled font, no network), vitest, @vitest/coverage-v8, jsdom, @testing-library/react + jest-dom, tsx, dotenv.
+19. **Phase 2 agents are Claude Code workers via Orca**, each in its own child worktree. Claude fits better than
+    Codex here because every brief leans on long PLAN.md/AGENTS.md rules and the SDK/UI details.

@@ -132,8 +132,17 @@ export function createSessionService(deps: SessionDeps): SessionService {
       ),
       bus.on('music:track-changed', (t) => {
         if (!t.isAd && t.id) songs.add(t.id)
-      })
+      }),
+      // "Delete everything" mid-session: drop what this session has collected so far.
+      bus.on('data:deleted-all', clearRecord)
     ]
+  }
+
+  function clearRecord(): void {
+    timeline = []
+    moveRecords = []
+    longestSeated = 0
+    songs = new Set()
   }
 
   function onTick(): void {
@@ -155,10 +164,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
       status: sensingEnabled ? 'calibrating' : 'running',
       sensingEnabled
     }
-    timeline = []
-    moveRecords = []
-    longestSeated = 0
-    songs = new Set()
+    clearRecord()
     resumeAfterReturnCheck = false
     offs = listen()
 

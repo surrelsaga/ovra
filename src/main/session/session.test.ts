@@ -255,6 +255,16 @@ describe('session', () => {
     expect(rec.moves).toHaveLength(3)
   })
 
+  it('delete everything mid-session drops what was collected so far', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('move:skipped', { moveId: 'walk' })
+    t.bus.emit('music:track-changed', track('spotify:track:a'))
+    t.bus.emit('data:deleted-all', {})
+    const rec = (await t.svc.end())!
+    expect(rec).toMatchObject({ moves: [], learnedSongIds: [], moodTimeline: [], snoozes: 0 })
+  })
+
   it('end() without a session returns null', async () => {
     expect(await setup().svc.end()).toBeNull()
   })

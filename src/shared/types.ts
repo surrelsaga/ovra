@@ -411,6 +411,8 @@ export interface OrbView {
   mood: OrbMood
   /** Camera is on. Shows the orbiting ring. Can't be hidden while true. */
   listening: boolean
+  /** The user paused the camera for this session (mini control). */
+  paused: boolean
   away: boolean
   awaySince?: number
   /** Breathe along: orb scale follows this, 0 (exhaled) – 1 (inhaled). */
@@ -561,6 +563,8 @@ export interface IpcInvoke {
 
   'window:open-main': { req: void; res: void }
   'window:orb-moved': { req: { x: number; y: number }; res: void }
+  /** Orb window click-through: true while the pointer is over the transparent area. */
+  'window:orb-ignore-mouse': { req: { ignore: boolean }; res: void }
 
   /** Dev builds only: lists files in test-media/. */
   'dev:list-videos': { req: void; res: string[] }
@@ -632,6 +636,7 @@ export const IPC_INVOKE_CHANNELS = [
   'data:delete-all',
   'window:open-main',
   'window:orb-moved',
+  'window:orb-ignore-mouse',
   'dev:list-videos'
 ] as const satisfies readonly IpcInvokeChannel[]
 

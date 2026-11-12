@@ -63,3 +63,17 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
 
 **Phase 2 done (2026-11-12).** All six modules merged. Needs Daniel: live camera acceptance run, threshold tuning
 (state + moves configs), fallback playlist links.
+
+## Phase 3: integration — merged (2026-11-13)
+
+Main `8f1f76b`. Full app wired; `npm run harness:e2e` drives the real app end to end (see `docs/integration.md`).
+233 tests, typecheck, lint and build pass. 6 of 7 runs passed (stretch, tense, low-energy, leave-and-return in
+check-in and continuous mode, camera declined); every userData scan clean of raw vitals. Fixed: quit crash guard,
+consent revocation mid-session, terminal SDK errors (falls back to timer + timed nudges), continuous-mode breaks,
+face/telemetry consent changes restart capture, nudges during calibration, music cache after delete-all.
+
+- **Blocked:** Presage credits exhausted (HTTP 402). Pending: calm-working rerun and quit-during-capture proof.
+- **Stubbed / omitted:** calibration live preview; Settle fade; OpenRouter web search.
+- **Needs Daniel:** renew Presage credits; live camera test; threshold tuning (`src/main/state/config.ts`,
+  `src/main/moves/config.ts`); real links in `FALLBACK_PLAYLISTS` (`src/main/music/config.ts`); macOS camera and
+  Spotify Automation prompts on first run; review `docs/privacy.md` (DEV consent section); demo video and DEV post.

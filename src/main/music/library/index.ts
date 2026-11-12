@@ -67,9 +67,12 @@ export function createLibrary(storage: Storage): Library {
 
   return {
     async load() {
+      const g = gen
       const list = await storage.read<Song[]>('songs', [])
+      const links = await storage.read<PlaylistLink[]>('playlists', [])
+      if (g !== gen) return
       songs = new Map(list.map((s) => [s.id, s]))
-      playlists = await storage.read<PlaylistLink[]>('playlists', [])
+      playlists = links
     },
     songs: () => [...songs.values()],
     get: (id) => songs.get(id),

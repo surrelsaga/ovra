@@ -356,3 +356,13 @@ it('does not play after deletion while checking Spotify availability', async () 
   expect(t.controller.calls).toEqual([])
   expect(await t.music.library()).toEqual({ songs: [], playlists: [] })
 })
+
+it('deletion cancels a music start which is still waiting for its library', async () => {
+  const t = await setup()
+  const started = t.music.startSession(session())
+  t.bus.emit('data:deleted-all', {})
+  await started
+  expect(t.controller.cb).toBeUndefined()
+  expect(t.music.status().target).toBeNull()
+  expect(t.controller.calls).toEqual([])
+})

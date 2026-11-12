@@ -67,6 +67,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     .then(() => library.songs().forEach((s) => scorer.enqueue(s)))
     .catch(() => {})
 
+  let generation = 0
   let session: Session | null = null
   let situation: Situation | null = null
   let remainingSec: number | undefined
@@ -110,8 +111,9 @@ export function createMusic(deps: MusicDeps): MusicService {
     const target = tracker.current()
     if (!session || privacy.get().music !== 'spotify' || leaveAlone || !target) return
     const activeSession = session
+    const g = generation
     available = await controller.isAvailable()
-    if (session !== activeSession || privacy.get().music !== 'spotify') return
+    if (g !== generation || session !== activeSession || privacy.get().music !== 'spotify') return
     if (!available) return hint()
     const songs = library.songs()
     const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
@@ -188,6 +190,8 @@ export function createMusic(deps: MusicDeps): MusicService {
   }
 
   function onTrack(t: NowPlaying): void {
+    if (!session) return
+    const g = generation
     available = true
     const prev = nowPlaying
     nowPlaying = t
@@ -200,6 +204,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     }
     safe(
       library.learn(t, now()).then((song) => {
+        if (g !== generation) return
         if (song) scorer.enqueue(song)
         emitStatus()
       })
@@ -207,6 +212,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   }
 
   function stopInternal(): void {
+    generation++
     finishPlay()
     stopPolling?.()
     stopPolling = null
@@ -294,7 +300,9 @@ export function createMusic(deps: MusicDeps): MusicService {
       await scorer.rescore(songId)
     },
     async startSession(s) {
+      const g = generation
       await ready
+      if (g !== generation) return
       stopInternal()
       if (!s.config.music || privacy.get().music !== 'spotify') return emitStatus()
       session = s

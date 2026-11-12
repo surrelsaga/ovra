@@ -1,4 +1,4 @@
-import type { NowPlaying } from '@shared/types'
+import type { NowPlaying, Storage } from '@shared/types'
 import { memoryStorage } from '../dev/memory-storage'
 import { createLibrary, parsePlaylistUrl } from '.'
 import { applyOutcome, judgePlay } from './learning'
@@ -144,4 +144,27 @@ describe('learning from the body', () => {
     expect(l.energyDelta).toBe(-2)
     expect(l.confidenceDelta).toBeCloseTo(-0.5)
   })
+})
+
+it('a pending library load cannot restore data after delete everything', async () => {
+  const storage = memoryStorage()
+  const old = createLibrary(storage)
+  await old.addPlaylist(`spotify:playlist:${ID}`, 0)
+  await old.learn(track('spotify:track:old'), 0)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const read: Storage['read'] = async (name, fallback) => {
+    const data = await storage.read(name, fallback)
+    await pending
+    return data
+  }
+  const library = createLibrary({ ...storage, read })
+  const loading = library.load()
+  library.forget()
+  release()
+  await loading
+  expect(library.songs()).toEqual([])
+  expect(library.playlists()).toEqual([])
 })

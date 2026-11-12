@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import {
   DEFAULT_PRIVACY,
   DEFAULT_SETTINGS,
+  type Bus,
   type PrivacyService,
   type PrivacySettings,
   type SessionRecord,
@@ -46,12 +47,13 @@ async function setup(): Promise<{
   privacy: PrivacyService
   storage: Storage
   changes: PrivacySettings[]
+  bus: Bus
 }> {
   const bus = createBus()
   const changes: PrivacySettings[] = []
   bus.on('privacy:changed', (p) => changes.push(p))
   const storage = createStorage(dir)
-  return { privacy: await createPrivacy({ storage, bus }), storage, changes }
+  return { privacy: await createPrivacy({ storage, bus }), storage, changes, bus }
 }
 
 beforeEach(async () => {
@@ -194,7 +196,9 @@ describe('auto-delete', () => {
 
 describe('delete everything', () => {
   it('removes every Ovra file and brings the defaults back', async () => {
-    const { privacy, storage, changes } = await setup()
+    const { privacy, storage, changes, bus } = await setup()
+    let deletedAt = -1
+    bus.on('data:deleted-all', () => (deletedAt = changes.length))
     await privacy.set({ camera: 'yes', face: 'vitals-and-face', answeredAt: NOW })
     await privacy.setSettings({ leaveMusicAlone: true })
     await privacy.saveSession(record('a'))
@@ -210,6 +214,7 @@ describe('delete everything', () => {
     expect(privacy.getSettings()).toEqual(DEFAULT_SETTINGS)
     expect(privacy.canUseCamera()).toBe(false)
     expect(changes.at(-1)).toEqual(DEFAULT_PRIVACY)
+    expect(deletedAt).toBe(changes.length) // fired after the reset
     expect(await privacy.listSessions()).toEqual([])
     expect((await setup()).privacy.get()).toEqual(DEFAULT_PRIVACY)
   })

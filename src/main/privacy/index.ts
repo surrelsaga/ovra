@@ -110,6 +110,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       privacy = { ...DEFAULT_PRIVACY }
       settings = structuredClone(DEFAULT_SETTINGS)
       bus.emit('privacy:changed', { ...privacy })
+      bus.emit('data:deleted-all', {})
     },
 
     runAutoDelete(now = Date.now()) {

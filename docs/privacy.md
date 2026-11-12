@@ -19,7 +19,8 @@ Owner: Agent F (`src/main/privacy/`, `src/main/storage/`).
   `assertCameraConsent()` before any camera code and it throws otherwise. `canUseFace()` also needs
   "Vitals and face".
 - **Delete everything** removes every stored file (including `.corrupt` copies) and resets privacy and
-  settings to defaults, so onboarding shows again.
+  settings to defaults, so onboarding shows again. It then emits `privacy:changed` and
+  `data:deleted-all` so modules holding stored data in memory (music) drop it.
 - **Auto-delete** removes sessions that ended more than 30 or 90 days ago (or none with "Never"). It runs on
   app start and daily (`src/main/app.ts`). Song scores and settings are kept until the user clears them.
 

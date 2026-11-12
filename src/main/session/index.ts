@@ -1,30 +1,14 @@
 // Owner: Agent B (state engine + session). Session lifecycle, timer, activity defaults.
-import type {
-  Bus,
-  MovesService,
-  MusicService,
-  PrivacyService,
-  SensingService,
-  SessionService,
-  StateEngine
-} from '@shared/types'
+import type { SensingService, SessionService } from '@shared/types'
+import { handle } from '../ipc'
 
-export interface SessionDeps {
-  bus: Bus
-  privacy: PrivacyService
-  sensing: SensingService
-  state: StateEngine
-  music: MusicService
-  moves: MovesService
-}
-
-export function createSessionService(deps: SessionDeps): SessionService {
-  void deps
-  throw new Error('session: not implemented')
-}
+export { createSessionService, type SessionDeps } from './service'
 
 /** Registers session:* and camera:* IPC handlers. */
 export function registerSessionIpc(session: SessionService, sensing: SensingService): void {
-  void session
-  void sensing
+  handle('session:start', (config) => session.start(config))
+  handle('session:end', () => session.end())
+  handle('session:current', () => session.current())
+  handle('camera:pause', () => sensing.pause())
+  handle('camera:resume', () => sensing.resume())
 }

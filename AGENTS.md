@@ -1,5 +1,9 @@
 # Ovra: rules for every agent
 
+## Agent split
+- Claude plans and designs (architecture, contracts, task briefs, decisions).
+- Codex implements, reviews and fixes. Never use Claude agents for implementation.
+
 Read PLAN.md fully before starting any task. It is the source of truth for what to build.
 
 ## Stack and structure

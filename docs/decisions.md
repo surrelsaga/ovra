@@ -39,3 +39,6 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
     (bundled font, no network), vitest, @vitest/coverage-v8, jsdom, @testing-library/react + jest-dom, tsx, dotenv.
 19. **Phase 2 agents are Claude Code workers via Orca**, each in its own child worktree. Claude fits better than
     Codex here because every brief leans on long PLAN.md/AGENTS.md rules and the SDK/UI details.
+20. **From now on Codex does all implementation, review, fixes and merge prep; the orchestrator (Claude) only
+    plans, writes briefs and decides.** Agent A (sensing, a Claude worker) was already mid-task, so it finishes;
+    its branch gets a Codex review before merge. Phase 3 integration goes to Codex.

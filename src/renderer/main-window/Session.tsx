@@ -1,5 +1,5 @@
 // Owner: Agent E. Session tab: new session, calibration, running.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Play, Square } from 'lucide-react'
 import type {
   Activity,
@@ -157,18 +157,81 @@ export function NewSession(props: {
   )
 }
 
-export function Calibration({ session }: { session: Session }): React.JSX.Element {
+export function Calibration({
+  session,
+  settings
+}: {
+  session: Session
+  settings: AppSettings
+}): React.JSX.Element {
   const cal = usePush('push:calibration', { progress: 0, hint: null })
   const music = usePush('push:music', NO_MUSIC)
+  const [preview, setPreview] = useState<MediaStream | null>(null)
+  const [cameraError, setCameraError] = useState(false)
+  const devVideo = ovra().isDev ? settings.devVideoSource : null
+  const previewEnabled = session.status === 'calibrating' && session.sensingEnabled
+  useEffect(() => {
+    if (!previewEnabled || devVideo || !navigator.mediaDevices?.getUserMedia) return
+    let stream: MediaStream | null = null
+    let cancelled = false
+    void navigator.mediaDevices
+      .getUserMedia({ audio: false, video: true })
+      .then((result) => {
+        if (cancelled) result.getTracks().forEach((track) => track.stop())
+        else {
+          stream = result
+          setPreview(result)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCameraError(true)
+      })
+    return () => {
+      cancelled = true
+      stream?.getTracks().forEach((track) => track.stop())
+      setPreview(null)
+    }
+  }, [previewEnabled, devVideo])
   const secLeft = Math.ceil((1 - cal.progress) * mainConfig.calibrationSec)
   return (
     <section className="page page--center" aria-labelledby="calibration-title">
       <MoonOrb mood="calm" listening away={false} size={128} />
       <h1 id="calibration-title">Getting to know today’s you</h1>
       <p className="muted">
-        Sit back so your shoulders and chest are in view, and breathe normally. The camera is on;
-        nothing is recorded.
+        Sit back so your shoulders and chest are in view, and breathe normally.
       </p>
+      {previewEnabled && (
+        <div className="calibration-preview" aria-label="Live camera preview">
+          {devVideo ? (
+            <video
+              src="ovra-preview://calibration"
+              autoPlay
+              muted
+              loop
+              playsInline
+              onError={() => setCameraError(true)}
+            />
+          ) : (
+            preview && (
+              <video
+                ref={(video) => {
+                  if (video && video.srcObject !== preview) video.srcObject = preview
+                }}
+                autoPlay
+                muted
+                playsInline
+                onError={() => setCameraError(true)}
+              />
+            )
+          )}
+          <span>Not recorded</span>
+        </div>
+      )}
+      {cameraError && (
+        <p className="muted" role="status">
+          Camera preview isn’t available. Calibration can continue.
+        </p>
+      )}
       <div className="calibration">
         <Progress value={cal.progress} label="Calibration progress" />
         <div className="calibration__meta">
@@ -188,7 +251,13 @@ export function Calibration({ session }: { session: Session }): React.JSX.Elemen
   )
 }
 
-export function Running({ session }: { session: Session }): React.JSX.Element {
+export function Running({
+  session,
+  sdkFailed = false
+}: {
+  session: Session
+  sdkFailed?: boolean
+}): React.JSX.Element {
   const tick = usePush('push:session-tick', {
     sessionId: session.id,
     elapsedSec: 0,
@@ -205,6 +274,11 @@ export function Running({ session }: { session: Session }): React.JSX.Element {
         {ACTIVITY_LABEL[session.config.activity]} · {fmtMinutes(session.config.lengthMin)} · the
         moon is on your screen
       </p>
+      {sdkFailed && (
+        <p className="muted" role="status">
+          Couldn’t start the camera check. Your session will keep running with timed breaks.
+        </p>
+      )}
       <Button variant="danger" icon={<Square />} onClick={() => void ovra().invoke('session:end')}>
         End session
       </Button>

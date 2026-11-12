@@ -1,13 +1,28 @@
 // Owner: Agent E (orb + shell). Main window, orb window, move card window; forwards bus state to renderers.
-import { app, BrowserWindow, screen, type Rectangle } from 'electron'
+import { app, BrowserWindow, net, protocol, screen, session, type Rectangle } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { readdir } from 'node:fs/promises'
 import { extname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { Bus, MoveCardView, PrivacyService, WindowsService } from '@shared/types'
 import { handle, push } from '../ipc'
 import { loadPage, preloadPath, testMediaDir } from '../paths'
 import { windowsConfig as cfg } from './config'
 import { bindForwarding, type Forwarder } from './forward'
+import { canGrantPreviewPermission } from './preview-permission'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'ovra-preview',
+    privileges: {
+      standard: true,
+      secure: true,
+      corsEnabled: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  }
+])
 
 export interface WindowsDeps {
   bus: Bus
@@ -57,6 +72,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   let forwarder: Forwarder | null = null
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let cardView: MoveCardView = { kind: 'hidden' }
+  let calibration = false
 
   const orbStart = (): { x: number; y: number } => {
     const saved = privacy.getSettings().orbPosition
@@ -206,6 +222,68 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
     ready: () => loaded,
     windows: () => wins
   }
+
+  // The main window gets video permission only while calibration is actively sensing.
+  const mainSession = session.defaultSession
+  mainSession.protocol.handle('ovra-preview', (request) => {
+    const file = privacy.getSettings().devVideoSource
+    if (
+      new URL(request.url).host !== 'calibration' ||
+      new URL(request.url).pathname !== '/' ||
+      app.isPackaged ||
+      !file ||
+      !calibration ||
+      !privacy.canUseCamera()
+    )
+      return new Response(null, { status: 403 })
+    return net
+      .fetch(pathToFileURL(file).toString())
+      .then(
+        (response) =>
+          new Response(response.body, {
+            status: response.status,
+            headers: { ...Object.fromEntries(response.headers), 'Cache-Control': 'no-store' }
+          })
+      )
+      .catch(() => new Response(null, { status: 404 }))
+  })
+  mainSession.setPermissionRequestHandler((wc, permission, callback, details) =>
+    callback(
+      canGrantPreviewPermission(
+        wc.id,
+        wins?.main.webContents.id,
+        permission,
+        calibration,
+        privacy.canUseCamera(),
+        'mediaTypes' in details ? details.mediaTypes : undefined
+      )
+    )
+  )
+  mainSession.setPermissionCheckHandler(
+    (wc, permission, _origin, details) =>
+      !!wc &&
+      canGrantPreviewPermission(
+        wc.id,
+        wins?.main.webContents.id,
+        permission,
+        calibration,
+        privacy.canUseCamera(),
+        undefined,
+        details.mediaType
+      )
+  )
+  bus.on('sdk:checkin-started', ({ phase }) => {
+    calibration = phase === 'calibration'
+  })
+  bus.on('sdk:checkin-ended', ({ phase }) => {
+    if (phase === 'calibration') calibration = false
+  })
+  bus.on('session:status', (s) => {
+    calibration = s.status === 'calibrating' && s.sensingEnabled
+  })
+  bus.on('sdk:error', (error) => {
+    if (wins) push(wins.main, 'push:sdk-error', error)
+  })
   return service
 }
 

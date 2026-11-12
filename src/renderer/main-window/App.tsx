@@ -1,5 +1,5 @@
 // Owner: Agent E. Main window: onboarding until answered, then sidebar + screens.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Clock, Music as MusicIcon, Settings as SettingsIcon, Shield, Timer } from 'lucide-react'
 import type {
   AppSettings,
@@ -38,7 +38,9 @@ export default function App(): React.JSX.Element {
   const [data, setData] = useState<Loaded | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [sdkFailed, setSdkFailed] = useState(false)
   const [page, setPage] = useState<Page>('session')
+  const activeSessionId = useRef<string | null>(null)
 
   const load = (): void => {
     void Promise.all([
@@ -62,7 +64,12 @@ export default function App(): React.JSX.Element {
         }
       }),
       ovra().on('push:settings', (settings) => setData((d) => d && { ...d, settings })),
-      ovra().on('push:session', (s) => setSession(s)),
+      ovra().on('push:session', (s) => {
+        setSession(s)
+        if (s?.id !== activeSessionId.current) setSdkFailed(false)
+        activeSessionId.current = s?.id ?? null
+      }),
+      ovra().on('push:sdk-error', () => setSdkFailed(true)),
       ovra().on('push:session-summary', (s) => {
         setSummary(s)
         setPage('session')
@@ -78,8 +85,9 @@ export default function App(): React.JSX.Element {
   const active = session && session.status !== 'ended' ? session : null
 
   const sessionPage = (): React.JSX.Element => {
-    if (active?.status === 'calibrating') return <Calibration session={active} />
-    if (active) return <Running session={active} />
+    if (active?.status === 'calibrating')
+      return <Calibration session={active} settings={data.settings} />
+    if (active) return <Running session={active} sdkFailed={sdkFailed} />
     if (summary)
       return (
         <SessionSummaryView

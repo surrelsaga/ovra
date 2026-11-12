@@ -157,7 +157,8 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
       config,
       startedAt: Date.now(),
       status: 'calibrating',
-      sensingEnabled: privacy.canUseCamera()
+      // Shell harness never opens the live camera; preview uses an explicitly supplied dev file.
+      sensingEnabled: privacy.canUseCamera() && !!process.env.OVRA_PREVIEW_VIDEO
     }
     bus.emit('session:started', session)
     bus.emit('session:status', session)
@@ -436,6 +437,7 @@ export async function runHarness(): Promise<void> {
   const bus = createBus()
   const dataDir = await mkdtemp(join(tmpdir(), 'ovra-shell-harness-'))
   const privacy = await createPrivacy({ storage: createStorage(dataDir), bus })
+  await privacy.setSettings({ devVideoSource: process.env.OVRA_PREVIEW_VIDEO ?? null })
   registerPrivacyIpc(privacy)
   const now = Date.now()
   await privacy.saveSession(fakeRecord('past-1', now - 26 * 60 * MIN, 120))

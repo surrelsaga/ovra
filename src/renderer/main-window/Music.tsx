@@ -51,6 +51,9 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
           Ovra plays your playlists in the Spotify app and learns each song as it plays.
           {status.scoringQueue > 0 && ` Getting to know ${status.scoringQueue} more songs.`}
         </p>
+        {!status.available && (
+          <p className="muted">Spotify isn’t running. Open the Spotify app to play your music.</p>
+        )}
       </header>
 
       <div className="panel stack">

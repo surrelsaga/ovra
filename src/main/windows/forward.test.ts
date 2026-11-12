@@ -150,9 +150,16 @@ describe('bus → push forwarding', () => {
       state: 'playing',
       isAd: false
     })
-    bus.emit('music:target-changed', { target: 'ease-down', word: 'Calm', reason: 'tense' })
+    bus.emit('music:target-changed', { target: 'ease-down', word: 'Calm', reason: '' })
     expect(fw.orb().nowPlaying).toEqual({ name: 'Song', artist: 'Band', word: 'Calm' })
     expect(fw.orb().bubble).toBe('Easing into calmer songs.')
+    bus.emit('music:target-changed', {
+      target: 'lift',
+      word: 'Boost',
+      reason: 'Brighter songs now.'
+    })
+    expect(fw.orb()).toMatchObject({ bubble: 'Brighter songs now.', nowPlaying: { word: 'Boost' } })
+    bus.emit('music:target-changed', { target: 'ease-down', word: 'Calm', reason: '' })
 
     vi.advanceTimersByTime(windowsConfig.bubbleTtlMs + 1)
     expect(fw.orb().bubble).toBeUndefined()

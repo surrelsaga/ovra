@@ -119,7 +119,7 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     }),
     bus.on('music:target-changed', (t) => {
       if (view.nowPlaying) update({ nowPlaying: { ...view.nowPlaying, word: t.word } })
-      say(targetLines[t.word])
+      say(t.reason || targetLines[t.word])
     }),
     bus.on('move:card', (card) => {
       shell.push('push:move-card', card)

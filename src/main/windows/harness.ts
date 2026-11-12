@@ -267,7 +267,11 @@ function orbSteps(bus: Bus): { name: string; run: () => void }[] {
       run: () => {
         bus.emit('state:updated', state('focused'))
         play('Nuvole Bianche', 'Ludovico Einaudi')
-        bus.emit('music:target-changed', { target: 'steady', word: 'Focus', reason: 'focused' })
+        bus.emit('music:target-changed', {
+          target: 'steady',
+          word: 'Focus',
+          reason: 'Keeping the music steady while you focus.'
+        })
       }
     },
     {
@@ -275,7 +279,11 @@ function orbSteps(bus: Bus): { name: string; run: () => void }[] {
       run: () => {
         bus.emit('state:updated', state('tense'))
         play('Avril 14th', 'Aphex Twin')
-        bus.emit('music:target-changed', { target: 'ease-down', word: 'Calm', reason: 'tense' })
+        bus.emit('music:target-changed', {
+          target: 'ease-down',
+          word: 'Calm',
+          reason: 'You seem a bit tense. Easing into calmer songs.'
+        })
         bus.emit('orb:bubble', { text: 'You seem tense, easing into calmer songs.' })
       }
     },
@@ -286,7 +294,11 @@ function orbSteps(bus: Bus): { name: string; run: () => void }[] {
       run: () => {
         bus.emit('state:updated', state('good'))
         play('Midnight City', 'M83')
-        bus.emit('music:target-changed', { target: 'lift', word: 'Boost', reason: 'good' })
+        bus.emit('music:target-changed', {
+          target: 'lift',
+          word: 'Boost',
+          reason: 'You seem in a good mood. Bringing in brighter songs.'
+        })
       }
     },
     {

@@ -4,7 +4,7 @@ import type { Situation, TargetWord } from '@shared/types'
 export const windowsConfig = {
   main: { width: 1100, height: 720, minWidth: 900, minHeight: 600 },
   /** Orb window holds the orb (112 px + glow), bubble, now-playing chip and hover controls. */
-  orb: { width: 300, height: 330, margin: 24 },
+  orb: { width: 300, height: 350, margin: 24 },
   moveCard: { width: 360, height: 480, gap: 8 },
   /** Background colour for windows before the renderer paints (matches --bg). */
   background: '#0b0c0f',

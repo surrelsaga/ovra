@@ -26,6 +26,9 @@ Read PLAN.md fully before starting any task. It is the source of truth for what 
   If you're not in the main repo folder, use the absolute paths the orchestrator gives you.
 - **Presage credits are limited.** Never run anything that uses the SmartSpectra SDK (sensing or e2e harness,
   dev video source, spike scripts, live camera) without asking Daniel first. Test with unit tests and mocks.
+- **Leave Daniel's Spotify as you found it.** Prefer mocks. Any test that touches the real Spotify app must save its
+  state first (volume, track, playing/paused, shuffle, repeat) and restore it when done, also on errors and Ctrl+C.
+  Never launch Spotify if it isn't running.
 
 ## Working alongside other agents
 - Other agents may be working on this repo at the same time.

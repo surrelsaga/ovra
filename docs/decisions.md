@@ -43,3 +43,4 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
     plans, writes briefs and decides.** Agent A (sensing, a Claude worker) was already mid-task, so it finishes;
     its branch gets a Codex review before merge. Phase 3 integration goes to Codex.
 21. **No SDK runs without Daniel's OK** (2026-11-13): Presage credits are limited. Unit tests and mocks only; ask before any harness, dev video or live camera run. Added to AGENTS.md.
+22. **Tests restore Spotify's original state** (volume, track, play state, shuffle, repeat) after touching the real app. Added to AGENTS.md.

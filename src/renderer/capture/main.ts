@@ -54,20 +54,21 @@ async function fileStream(
   const pad = Math.min(0.6, Math.max(0, framingPad))
   const h = Math.round(cfg.height * (1 - pad))
   const w = Math.round((video.videoWidth * h) / video.videoHeight)
-  let running = true
-  const draw = (): void => {
-    if (!running) return
+  // Fixed-rate frames (repeating the last decoded frame if decoding lags) keep the SDK's
+  // frame-rate check happy when the machine is busy.
+  const stream = canvas.captureStream(0)
+  const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack
+  const timer = setInterval(() => {
     g.fillStyle = '#000'
     g.fillRect(0, 0, cfg.width, cfg.height)
     g.drawImage(video, (cfg.width - w) / 2, 0, w, h)
-    video.requestVideoFrameCallback(draw)
-  }
-  video.requestVideoFrameCallback(draw)
+    track.requestFrame()
+  }, 1000 / cfg.fps)
 
   return {
-    stream: canvas.captureStream(cfg.fps),
+    stream,
     cleanup: () => {
-      running = false
+      clearInterval(timer)
       video.pause()
       video.removeAttribute('src')
       video.load()
@@ -75,12 +76,16 @@ async function fileStream(
   }
 }
 
-async function waitIdle(sdk: SmartSpectraSDK): Promise<boolean> {
+const busy = (sdk: SmartSpectraSDK): boolean =>
+  [ProcessingStatus.kStarting, ProcessingStatus.kRunning, ProcessingStatus.kStopping].some(
+    (st) => st === sdk.processingStatus
+  )
+
+/** True once the SDK is no longer processing (idle, or halted by a terminal error). */
+async function waitStopped(sdk: SmartSpectraSDK): Promise<boolean> {
   const until = Date.now() + cfg.idleWaitMs
-  while (sdk.processingStatus > ProcessingStatus.kIdle && Date.now() < until) {
-    await new Promise((r) => setTimeout(r, 50))
-  }
-  return sdk.processingStatus <= ProcessingStatus.kIdle
+  while (busy(sdk) && Date.now() < until) await new Promise((r) => setTimeout(r, 50))
+  return !busy(sdk)
 }
 
 async function start(req: CaptureStartRequest): Promise<void> {
@@ -157,7 +162,7 @@ async function stop(): Promise<void> {
   } catch (err) {
     ovra.send('capture:error', { code: 'stop-failed', message: errMsg(err), retryable: true })
   }
-  const idle = await waitIdle(a.sdk)
+  const idle = await waitStopped(a.sdk)
   a.cleanup()
   for (const s of a.streams) for (const t of s.getTracks()) t.stop()
   const ended = a.streams.every((s) => s.getTracks().every((t) => t.readyState === 'ended'))

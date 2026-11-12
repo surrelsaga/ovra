@@ -257,7 +257,11 @@ export function createSensing(deps: SensingDeps): SensingService {
       mode = null
       paused = false
       await stopCapture()
-      win?.close()
+      // Forget the window first: close() is async and a new phase must not reuse it.
+      const w = win
+      win = null
+      winReady = null
+      w?.close()
     },
 
     async pause() {

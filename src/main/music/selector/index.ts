@@ -122,6 +122,10 @@ const votes = (s: Song, target: MusicTarget): number =>
       ? 0
       : (s.learned?.settleVotes ?? 0)
 
+/** Ease down / wind down step gently: prefer the highest energy that still fits. */
+const stepRank = (s: Song, target: MusicTarget): number =>
+  target === 'ease-down' || target === 'wind-down' ? effective(s)!.energy : 0
+
 /**
  * Picks the next song for a target, or null (then a playlist plays instead).
  * Unsure songs never go to Settle/Ease down; about 1 in 5 picks in Steady/Let it ride may be one.
@@ -141,7 +145,9 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
     .filter((s) => !isUnsure(s) && fits(s, target, ctx))
     .sort(
       (a, b) =>
-        votes(b, target) - votes(a, target) || effective(b)!.confidence - effective(a)!.confidence
+        votes(b, target) - votes(a, target) ||
+        stepRank(b, target) - stepRank(a, target) ||
+        effective(b)!.confidence - effective(a)!.confidence
     )
   if (!sure.length) return null
   // ponytail: random among the top 5 keeps variety; weight by votes if picks feel repetitive.

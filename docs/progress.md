@@ -46,3 +46,6 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
   position, next, pause); 1 real OpenRouter batch returned valid scores. Stubbed: Settle switches early without a
   fade (no volume read in the interface); LLM daily cap is in memory. **Needs Daniel:** real public playlist links in
   `FALLBACK_PLAYLISTS` (`src/main/music/config.ts`). Report: `docs/music.md`.
+- **D. Moves** → main `142fbb5` (35 module tests, 171 total). Harness re-run by the orchestrator: every move end to end,
+  `HARNESS OK`, 26 screenshots reviewed (dark card, line figures, live feedback, break timer, return results).
+  **Needs Daniel:** tune tilt (20°), breathing-drop (10 %) and stand-up thresholds in `src/main/moves/config.ts` live.

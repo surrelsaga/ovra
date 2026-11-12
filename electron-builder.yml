@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: ovra
+appId: com.ovra.app
+productName: Ovra
 directories:
   buildResources: build
 files:
@@ -11,6 +11,7 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - node_modules/@smartspectra/node-sdk-darwin-arm64/**
 win:
   executableName: ovra
 nsis:
@@ -19,12 +20,18 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  icon: build/icon.icns
+  hardenedRuntime: true
+  identity: '-'
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSCameraUsageDescription: Ovra uses the camera during sessions you start to offer wellness check-ins. Video is not saved.
+    NSAppleEventsUsageDescription: Ovra uses Apple Events only to control Spotify music during sessions you start.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

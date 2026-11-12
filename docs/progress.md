@@ -42,3 +42,7 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
   focused; tense and low-energy probably also focused (vitals barely differ in the acted clips) until Daniel tunes
   thresholds live. Crashing via "pulse +20 % + negative face" needs tense already held (smoothing). Baevsky is in the
   baseline but not used by rules yet.
+- **C. Music** → main `bdc9875` (58 module tests, 136 total). Real Spotify check passed (play by URI, read
+  position, next, pause); 1 real OpenRouter batch returned valid scores. Stubbed: Settle switches early without a
+  fade (no volume read in the interface); LLM daily cap is in memory. **Needs Daniel:** real public playlist links in
+  `FALLBACK_PLAYLISTS` (`src/main/music/config.ts`). Report: `docs/music.md`.

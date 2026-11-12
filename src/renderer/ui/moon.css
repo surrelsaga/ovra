@@ -67,7 +67,7 @@
       color-mix(in srgb, var(--core) 62%, var(--bg)) 100%
     );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--bg) 35%, transparent),
     0 0 calc(var(--size) * 0.25) var(--glow);
   animation: moon-pulse var(--period) ease-in-out infinite;
   transition:
@@ -77,7 +77,7 @@
 
 .moon[data-mood='stormy'] .moon__body {
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--bg) 35%, transparent),
     inset 0 0 calc(var(--size) * 0.14) var(--orb-stormy-edge),
     0 0 calc(var(--size) * 0.3) var(--glow);
 }
@@ -117,7 +117,10 @@
   animation-delay: 1.6s;
 }
 
-/* Away: eclipsed crescent, very dim. */
+/* Away: eclipsed crescent, very dim. The outline (after the mask) keeps it visible on light desktops. */
+.moon[data-away] {
+  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--bg) 70%, transparent));
+}
 .moon[data-away] .moon__body {
   opacity: 0.4;
   filter: saturate(0.4);
@@ -144,10 +147,11 @@
   position: absolute;
   inset: -14%;
   border-radius: 50%;
-  border: 1.5px solid var(--orb-listening-ring);
+  border: 2px solid var(--orb-listening-ring);
+  /* Dark edges on both sides keep the ring visible on light desktops. */
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 30%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--bg) 30%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent);
   animation: moon-orbit 6s linear infinite;
 }
 .moon__ring::after {
@@ -160,7 +164,7 @@
   border-radius: 50%;
   background: var(--orb-listening-ring);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent),
     0 0 8px var(--orb-listening-ring);
 }
 

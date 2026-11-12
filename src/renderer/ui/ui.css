@@ -13,6 +13,7 @@
   color: var(--text);
   font: inherit;
   font-weight: var(--weight-medium);
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease),

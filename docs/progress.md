@@ -53,3 +53,6 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
   music, history, privacy, settings, calibration, summary; orb in every state). Sent back for 3 fixes before merge:
   orb click-through on transparent areas, shared camera-paused state (`OrbView.paused`, added on main `787a68b`),
   stable onboarding question count.
+- **E. Orb + shell** → main `226c5ac` after fixes (16 module tests, 187 total; build OK). Click-through on the orb's
+  transparent area, shared paused state with a "Camera paused" chip, stable 1–7 onboarding count. Calibration live
+  preview skipped (the camera lives in the hidden capture window) — integration item.

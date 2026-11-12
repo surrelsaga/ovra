@@ -68,6 +68,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
   let resumeAfterReturnCheck = false
   let ending: Promise<SessionRecord | null> | null = null
   let dataGeneration = 0
+  let recordCameraMode: SessionRecord['cameraMode'] = 'off'
 
   const update = (patch: Partial<Session>): void => {
     if (!session) return
@@ -167,6 +168,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     if (session || ending) throw new Error('A session is already running')
     const config = normalizeConfig(input, privacy)
     const sensingEnabled = privacy.canUseCamera()
+    recordCameraMode = sensingEnabled ? config.cameraMode : 'off'
     session = {
       id: randomUUID(),
       config,
@@ -193,6 +195,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
         await sensing.startCalibration()
       } catch (e) {
         warn('startCalibration')(e)
+        recordCameraMode = 'off'
         update({ status: 'running', sensingEnabled: false })
         bubble(sessionConfig.cameraFailedBubble)
       }
@@ -224,7 +227,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
       startedAt: s.startedAt,
       endedAt,
       lengthMin: s.config.lengthMin,
-      cameraMode: s.sensingEnabled ? s.config.cameraMode : 'off',
+      cameraMode: recordCameraMode,
       moodTimeline: timeline,
       moves: moveRecords,
       snoozes: moveRecords.filter((m) => m.outcome === 'snoozed').length,
@@ -248,6 +251,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
   bus.on('data:deleted-all', () => {
     dataGeneration++
+    clearRecord()
     void end(true)
   })
 

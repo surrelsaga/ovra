@@ -389,3 +389,19 @@ describe('live privacy changes', () => {
     expect(t.sensing.phase()).toBe('continuous')
   })
 })
+
+it('applies telemetry opt-out to the currently running native session', async () => {
+  const t = setup()
+  const consent = vi
+    .spyOn(t.privacy, 'get')
+    .mockReturnValue({ ...DEFAULT_PRIVACY, telemetry: true })
+  t.bus.emit('privacy:changed', t.privacy.get())
+  await t.sensing.startContinuous()
+  expect(h.pushes[0].payload).toMatchObject({ telemetry: true })
+  consent.mockReturnValue({ ...DEFAULT_PRIVACY, telemetry: false })
+  t.bus.emit('privacy:changed', t.privacy.get())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(h.pushes.filter((p) => p.channel === 'push:capture-start').at(-1)?.payload).toMatchObject({
+    telemetry: false
+  })
+})

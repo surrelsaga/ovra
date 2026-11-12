@@ -50,6 +50,7 @@ export function createSensing(deps: SensingDeps): SensingService {
   let listening = false
   let phaseDeadline: number | undefined
   let faceEnabled = privacy.canUseFace()
+  let telemetryEnabled = privacy.get().telemetry
 
   const report = (err: unknown): void =>
     bus.emit('sdk:error', {
@@ -286,8 +287,10 @@ export function createSensing(deps: SensingDeps): SensingService {
 
   bus.on('privacy:changed', () => {
     const face = privacy.canUseFace()
-    const changed = face !== faceEnabled
+    const telemetry = privacy.get().telemetry
+    const changed = face !== faceEnabled || telemetry !== telemetryEnabled
     faceEnabled = face
+    telemetryEnabled = telemetry
     if (!privacy.canUseCamera()) {
       void service.stop().catch(report)
       return

@@ -310,3 +310,11 @@ it('deletion during asynchronous end cannot resurrect a saved record', async () 
   expect(t.privacy.saveSession).not.toHaveBeenCalled()
   expect(t.seen['session:ended']).toBeUndefined()
 })
+
+it('history remembers camera use when consent is revoked before ending', async () => {
+  const t = setup()
+  await t.svc.start(cfg)
+  t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'not-now' })
+  expect(t.svc.current()?.sensingEnabled).toBe(false)
+  expect((await t.svc.end())?.cameraMode).toBe('checkins')
+})

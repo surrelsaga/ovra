@@ -24,7 +24,8 @@ Read PLAN.md fully before starting any task. It is the source of truth for what 
 - API keys come from `.env`. Never commit `.env`, keys, or `test-media/`. Never print keys in logs.
 - `.env` and `test-media/` are git-ignored, so they don't exist in worktrees or copies of the repo.
   If you're not in the main repo folder, use the absolute paths the orchestrator gives you.
-- Test sensing with the dev video source and the files in `test-media/`, never the live camera.
+- **Presage credits are limited.** Never run anything that uses the SmartSpectra SDK (sensing or e2e harness,
+  dev video source, spike scripts, live camera) without asking Daniel first. Test with unit tests and mocks.
 
 ## Working alongside other agents
 - Other agents may be working on this repo at the same time.

@@ -42,3 +42,4 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
 20. **From now on Codex does all implementation, review, fixes and merge prep; the orchestrator (Claude) only
     plans, writes briefs and decides.** Agent A (sensing, a Claude worker) was already mid-task, so it finishes;
     its branch gets a Codex review before merge. Phase 3 integration goes to Codex.
+21. **No SDK runs without Daniel's OK** (2026-11-13): Presage credits are limited. Unit tests and mocks only; ask before any harness, dev video or live camera run. Added to AGENTS.md.

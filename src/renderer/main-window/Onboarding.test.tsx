@@ -30,6 +30,7 @@ describe('onboarding', () => {
     const { bridge, onDone } = setup()
     const seen: string[] = []
     fireEvent.click(next())
+    expect(screen.getByText('Question 1 of 7')).toBeInTheDocument()
 
     // Camera: must answer.
     seen.push(screen.getByRole('group').querySelector('legend')!.textContent!)
@@ -52,6 +53,7 @@ describe('onboarding', () => {
       if (i === 5) break
     }
     expect(seen).toHaveLength(7)
+    expect(screen.getByText('Question 7 of 7')).toBeInTheDocument()
     expect(new Set(seen).size).toBe(7)
 
     const finish = screen.getByRole('button', { name: 'Finish' })
@@ -77,7 +79,10 @@ describe('onboarding', () => {
       legends.push(screen.getByRole('group').querySelector('legend')!.textContent!)
     }
     expect(legends.join(' ')).not.toMatch(/how often|face/i)
-    expect(screen.getByText('Question 5 of 5')).toBeInTheDocument()
+    expect(screen.getByText('Question 7 of 7')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByText('Question 6 of 7')).toBeInTheDocument()
+    fireEvent.click(next())
     fireEvent.click(screen.getByRole('button', { name: 'Finish' }))
     await waitFor(() => expect(bridge.invokes.some((c) => c.channel === 'privacy:set')).toBe(true))
   })

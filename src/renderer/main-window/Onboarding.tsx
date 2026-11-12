@@ -53,7 +53,8 @@ export function Onboarding(props: {
         ) : (
           <>
             <p className="onboarding__count">
-              Question {step} of {questions.length}
+              {/* Numbered against all seven, so the total never jumps when camera questions are skipped. */}
+              Question {CONSENT_QUESTIONS.indexOf(q) + 1} of {CONSENT_QUESTIONS.length}
             </p>
             <ConsentField
               key={q.key}

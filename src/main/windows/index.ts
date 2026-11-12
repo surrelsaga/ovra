@@ -17,6 +17,8 @@ export interface WindowsDeps {
 /** WindowsService plus the bits the IPC handlers and the harness need. */
 export interface ShellWindows extends WindowsService {
   orbMoved(pos: { x: number; y: number }): void
+  /** Click-through for the transparent parts of the orb window. Mouse moves are still forwarded. */
+  orbIgnoreMouse(ignore: boolean): void
   /** Resolves when all three pages have loaded. */
   ready(): Promise<void>
   windows(): { main: BrowserWindow; orb: BrowserWindow; card: BrowserWindow } | null
@@ -97,6 +99,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       webPreferences: webPreferences()
     })
     orb.setAlwaysOnTop(true, 'floating')
+    // Click-through until the renderer reports the pointer over the moon, bubble, chip or controls.
+    orb.setIgnoreMouseEvents(true, { forward: true })
     orb.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
     const card = new BrowserWindow({
@@ -181,6 +185,9 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
         void privacy.setSettings({ orbPosition: { x: px, y: py } })
       }, cfg.orbSaveDelayMs)
     },
+    orbIgnoreMouse(ignore) {
+      ensure().orb.setIgnoreMouseEvents(ignore, { forward: true })
+    },
     ready: () => loaded,
     windows: () => wins
   }
@@ -202,5 +209,6 @@ export async function listVideos(dir: string): Promise<string[]> {
 export function registerWindowsIpc(windows: ShellWindows): void {
   handle('window:open-main', () => windows.showMain())
   handle('window:orb-moved', (pos) => windows.orbMoved(pos))
+  handle('window:orb-ignore-mouse', ({ ignore }) => windows.orbIgnoreMouse(ignore))
   handle('dev:list-videos', () => (is.dev ? listVideos(testMediaDir()) : []))
 }

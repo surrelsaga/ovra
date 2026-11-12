@@ -35,7 +35,7 @@ export function breathAt(now: number, periodMs: number = cfg.breathPeriodMs): nu
 }
 
 export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
-  let view: OrbView = { mood: 'calm', listening: false, away: false }
+  let view: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
   let situation: Situation | null = null
   let status: SessionStatus | null = null
   let bubbleTimer: ReturnType<typeof setTimeout> | undefined
@@ -69,7 +69,7 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     stopBreath()
     clearTimeout(bubbleTimer)
     situation = null
-    view = { mood: 'calm', listening: view.listening, away: false }
+    view = { mood: 'calm', listening: view.listening, paused: false, away: false }
     shell.push('push:orb', view)
     // Blocked by the window layer while the camera is still on; retried on sdk:checkin-ended.
     shell.hideOrb()
@@ -135,6 +135,9 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     }),
     bus.on('break:away', (b) => update({ away: true, awaySince: b.since })),
     bus.on('break:returned', () => update({ away: false, awaySince: undefined })),
+    // Pausing stops the camera, so the ring goes too. A later check-in start still shows it.
+    bus.on('privacy:camera-paused', () => update({ paused: true, listening: false })),
+    bus.on('privacy:camera-resumed', () => update({ paused: false })),
     bus.on('privacy:changed', (p) => shell.push('push:privacy', p)),
     bus.on('orb:bubble', (b) => say(b.text, b.ttlMs))
   ]

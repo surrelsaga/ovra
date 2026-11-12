@@ -203,8 +203,11 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
   handle('session:start', (c) => start(c))
   handle('session:end', () => end())
   handle('session:current', () => session)
-  handle('camera:pause', () => bus.emit('sdk:checkin-ended', { phase: 'checkin' }))
-  handle('camera:resume', () => undefined)
+  handle('camera:pause', () => {
+    bus.emit('sdk:checkin-ended', { phase: 'checkin' })
+    bus.emit('privacy:camera-paused', {})
+  })
+  handle('camera:resume', () => bus.emit('privacy:camera-resumed', {}))
   handle('music:status', () => music)
   handle('music:library', () => library)
   handle('music:add-playlist', ({ url }) => {
@@ -337,7 +340,9 @@ function orbSteps(bus: Bus): { name: string; run: () => void }[] {
         bus.emit('orb:bubble', { text: 'Breathe with me.' })
       }
     },
-    { name: 'done', run: () => bus.emit('move:completed', { moveId: 'breathe', verified: true }) }
+    { name: 'done', run: () => bus.emit('move:completed', { moveId: 'breathe', verified: true }) },
+    { name: 'paused', run: () => bus.emit('privacy:camera-paused', {}) },
+    { name: 'resumed', run: () => bus.emit('privacy:camera-resumed', {}) }
   ]
 }
 
@@ -403,8 +408,20 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
     step.run()
     await shot(orb, dir, `${20 + i}-orb-${step.name}`)
   }
-  await orb.webContents.executeJavaScript(`document.querySelector('.controls').style.opacity = 1`)
-  await shot(orb, dir, '30-orb-controls')
+  // Click-through: real mouse moves over empty space, then over the moon (the window logs each switch).
+  const mouse = (x: number, y: number): void =>
+    orb.webContents.sendInputEvent({ type: 'mouseMove', x, y })
+  mouse(8, 8)
+  await wait(300)
+  mouse(150, 166)
+  await shot(orb, dir, '40-orb-hover-controls')
+  await orb.webContents.executeJavaScript(
+    `document.head.insertAdjacentHTML('beforeend', '<style id="hit">[data-hit]{outline:2px dashed #7fd1ae;outline-offset:2px} .orb-app{outline:2px dashed #f08080;outline-offset:-2px}</style>')`
+  )
+  await shot(orb, dir, '41-orb-hit-areas')
+  await orb.webContents.executeJavaScript(`document.getElementById('hit').remove()`)
+  mouse(8, 8)
+  await wait(1000)
 
   await shell
     .windows()!
@@ -433,6 +450,11 @@ export async function runHarness(): Promise<void> {
   fakeServices(bus, privacy)
 
   const shell = createWindows({ bus, privacy })
+  const ignore = shell.orbIgnoreMouse
+  shell.orbIgnoreMouse = (value) => {
+    console.log(`[harness:shell] orb click-through ${value ? 'on' : 'off'}`)
+    ignore(value)
+  }
   registerWindowsIpc(shell)
   shell.bindBus()
   shell.showMain()

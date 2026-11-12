@@ -1,5 +1,12 @@
 // Owner: Agent E. Orb window: moon, speech bubble, now-playing chip, hover mini controls. Drag to move.
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent
+} from 'react'
 import { AppWindow, Camera, CameraOff, Hand, Music, Square } from 'lucide-react'
 import type { MusicStatus, OrbView } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
@@ -7,7 +14,7 @@ import { MoonOrb } from '../ui/MoonOrb'
 import { awayText, orbConfig } from './config'
 import './orb.css'
 
-const START: OrbView = { mood: 'calm', listening: false, away: false }
+const START: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
 const NO_MUSIC: MusicStatus = {
   available: false,
   leaveAlone: false,
@@ -19,6 +26,7 @@ const NO_MUSIC: MusicStatus = {
 
 /** Move the window by dragging the moon. Clicks under the threshold aren't drags. */
 function useDrag(): {
+  dragging: () => boolean
   onPointerDown: (e: PointerEvent) => void
   onPointerMove: (e: PointerEvent) => void
   onPointerUp: () => void
@@ -27,8 +35,10 @@ function useDrag(): {
   const drag = useRef<{ dx: number; dy: number; x0: number; y0: number; moving: boolean } | null>(
     null
   )
+  const dragging = useCallback(() => drag.current !== null, [])
   const moveTo = (x: number, y: number): void => void ovra().invoke('window:orb-moved', { x, y })
   return {
+    dragging,
     onPointerDown: (e) => {
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
       drag.current = {
@@ -63,15 +73,52 @@ function useDrag(): {
   }
 }
 
+/**
+ * Click-through: the window ignores the mouse (events still forwarded) except over [data-hit] areas.
+ * Returns whether the pointer is over the orb (controls show while true, with a short grace period).
+ */
+function useClickThrough(dragging: () => boolean): boolean {
+  const [hover, setHover] = useState(false)
+  useEffect(() => {
+    let ignoring: boolean | null = null
+    let leave: ReturnType<typeof setTimeout> | undefined
+    const setIgnore = (ignore: boolean): void => {
+      if (ignoring === ignore) return
+      ignoring = ignore
+      void ovra().invoke('window:orb-ignore-mouse', { ignore })
+    }
+    const out = (): void => {
+      if (dragging()) return
+      setIgnore(true)
+      clearTimeout(leave)
+      leave = setTimeout(() => setHover(false), orbConfig.hoverGraceMs)
+    }
+    const onMove = (e: MouseEvent): void => {
+      if (!(e.target instanceof Element) || !e.target.closest('[data-hit]')) return out()
+      clearTimeout(leave)
+      setHover(true)
+      setIgnore(false)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.documentElement.addEventListener('mouseleave', out)
+    return () => {
+      clearTimeout(leave)
+      document.removeEventListener('mousemove', onMove)
+      document.documentElement.removeEventListener('mouseleave', out)
+    }
+  }, [dragging])
+  return hover
+}
+
 export default function App(): React.JSX.Element {
   const view = usePush('push:orb', START)
   const music = usePush('push:music', NO_MUSIC)
   // Optimistic toggle until the next music status push arrives.
   const [override, setOverride] = useState<{ value: boolean; from: MusicStatus } | null>(null)
   const leaveAlone = override?.from === music ? override.value : music.leaveAlone
-  const [cameraPaused, setCameraPaused] = useState(false)
   const [now, setNow] = useState(() => Date.now())
-  const drag = useDrag()
+  const { dragging, ...drag } = useDrag()
+  const hover = useClickThrough(dragging)
 
   useEffect(() => {
     if (!view.away) return
@@ -84,23 +131,26 @@ export default function App(): React.JSX.Element {
     }
   }, [view.away])
 
-  const toggleCamera = (): void => {
-    void ovra().invoke(cameraPaused ? 'camera:resume' : 'camera:pause')
-    setCameraPaused(!cameraPaused)
-  }
+  const toggleCamera = (): void =>
+    void ovra().invoke(view.paused ? 'camera:resume' : 'camera:pause')
   const toggleMusic = (): void => {
     void ovra().invoke('music:set-leave-alone', { value: !leaveAlone })
     setOverride({ value: !leaveAlone, from: music })
   }
 
   return (
-    <div className="orb-app">
+    <div className="orb-app" data-hover={hover || undefined}>
       <div className="orb-app__bubble-zone" aria-live="polite">
-        {view.bubble && <p className="bubble">{view.bubble}</p>}
+        {view.bubble && (
+          <p className="bubble" data-hit>
+            {view.bubble}
+          </p>
+        )}
       </div>
 
       <div
         className="orb-app__moon"
+        data-hit
         role="button"
         tabIndex={0}
         aria-label="Ovra moon. Drag or use arrow keys to move."
@@ -111,14 +161,21 @@ export default function App(): React.JSX.Element {
 
       <div className="orb-app__info">
         {view.away && view.awaySince ? (
-          <p className="pill">{awayText(now - view.awaySince)}</p>
+          <p className="pill" data-hit>
+            {awayText(now - view.awaySince)}
+          </p>
+        ) : view.paused ? (
+          <p className="pill pill--paused" data-hit>
+            <CameraOff aria-hidden /> Camera paused
+          </p>
         ) : view.listening ? (
-          <p className="pill pill--listening">
+          <p className="pill pill--listening" data-hit>
             <Camera aria-hidden /> Camera on
           </p>
         ) : view.nowPlaying ? (
           <p
             className="pill now-playing"
+            data-hit
             title={`${view.nowPlaying.name} · ${view.nowPlaying.artist}`}
           >
             {view.nowPlaying.word && (
@@ -133,16 +190,21 @@ export default function App(): React.JSX.Element {
         ) : null}
       </div>
 
-      <div className="controls" role="toolbar" aria-label="Session controls">
+      <div
+        className="controls"
+        role="toolbar"
+        aria-label="Session controls"
+        data-hit={hover || undefined}
+      >
         <button
           type="button"
           className="control"
-          aria-pressed={cameraPaused}
-          aria-label={cameraPaused ? 'Resume camera' : 'Pause camera'}
-          title={cameraPaused ? 'Resume camera' : 'Pause camera'}
+          aria-pressed={view.paused}
+          aria-label={view.paused ? 'Resume camera' : 'Pause camera'}
+          title={view.paused ? 'Resume camera' : 'Pause camera'}
           onClick={toggleCamera}
         >
-          {cameraPaused ? <Camera /> : <CameraOff />}
+          {view.paused ? <Camera /> : <CameraOff />}
         </button>
         <button
           type="button"

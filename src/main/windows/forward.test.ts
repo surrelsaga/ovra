@@ -210,6 +210,20 @@ describe('bus → push forwarding', () => {
     expect(shell.calls.filter((c) => c === 'hideOrb')).toHaveLength(2)
   })
 
+  it('tracks camera pause and resets it when the session ends', () => {
+    const bus = createBus()
+    const fw = bindForwarding(bus, fakeShell())
+    bus.emit('session:status', session('running'))
+    bus.emit('sdk:checkin-started', { phase: 'checkin' })
+    bus.emit('privacy:camera-paused', {})
+    expect(fw.orb()).toMatchObject({ paused: true, listening: false })
+    bus.emit('privacy:camera-resumed', {})
+    expect(fw.orb().paused).toBe(false)
+    bus.emit('privacy:camera-paused', {})
+    bus.emit('session:status', session('ended'))
+    expect(fw.orb().paused).toBe(false)
+  })
+
   it('breathAt follows a 10 s cycle', () => {
     expect(breathAt(0)).toBe(0)
     expect(breathAt(5000)).toBeCloseTo(1)

@@ -1,0 +1,230 @@
+import {
+  DEFAULT_PRIVACY,
+  DEFAULT_SETTINGS,
+  type BusEventName,
+  type PrivacyService
+} from '@shared/types'
+import { createBus } from '../bus'
+import { createSensing } from '.'
+
+// Fake Electron + IPC: the capture "renderer" answers every capture-stop with status idle.
+const h = vi.hoisted(() => {
+  const handlers: Record<string, (payload: unknown, e: { sender: unknown }) => void> = {}
+  const wc = { id: 1, on: vi.fn() }
+  const windows: unknown[] = []
+  const pushes: { channel: string; payload: unknown }[] = []
+  return { handlers, wc, windows, pushes }
+})
+
+vi.mock('electron', () => ({
+  app: { isPackaged: false },
+  session: {
+    fromPartition: () => ({
+      setPermissionRequestHandler: vi.fn(),
+      setPermissionCheckHandler: vi.fn()
+    })
+  },
+  BrowserWindow: vi.fn(function (this: Record<string, unknown>) {
+    this.webContents = h.wc
+    this.isDestroyed = () => false
+    this.on = vi.fn()
+    this.close = vi.fn()
+    h.windows.push(this)
+  })
+}))
+vi.mock('@smartspectra/node-sdk/main', () => ({ bindSmartSpectraIpc: vi.fn() }))
+vi.mock('../paths', () => ({ preloadPath: () => 'preload.js', loadPage: () => Promise.resolve() }))
+vi.mock('../ipc', () => ({
+  onCapture: (channel: string, fn: (payload: unknown, e: { sender: unknown }) => void) => {
+    h.handlers[channel] = fn
+    return () => {}
+  },
+  push: (_win: unknown, channel: string, payload: unknown) => {
+    h.pushes.push({ channel, payload })
+    if (channel === 'push:capture-stop') h.handlers['capture:status']?.('idle', { sender: h.wc })
+  }
+}))
+
+function fakePrivacy(consent = true): PrivacyService {
+  return {
+    assertCameraConsent: () => {
+      if (!consent) throw new Error('no camera consent')
+    },
+    canUseFace: () => false,
+    get: () => ({ ...DEFAULT_PRIVACY, camera: consent ? 'yes' : null }),
+    getSettings: () => ({ ...DEFAULT_SETTINGS, devVideoSource: '/videos/calm.mp4' })
+  } as unknown as PrivacyService
+}
+
+interface Setup {
+  sensing: ReturnType<typeof createSensing>
+  events: { name: BusEventName; payload: unknown }[]
+  names: () => string[]
+}
+
+function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
+  const bus = createBus()
+  const events: { name: BusEventName; payload: unknown }[] = []
+  for (const name of [
+    'sdk:checkin-started',
+    'sdk:checkin-ended',
+    'sdk:metrics',
+    'sdk:validation',
+    'sdk:error',
+    'sdk:calibration-progress',
+    'privacy:camera-paused',
+    'privacy:camera-resumed'
+  ] as const)
+    bus.on(name, (payload) => events.push({ name, payload }))
+  const sensing = createSensing({
+    bus,
+    privacy: fakePrivacy(opts.consent ?? true),
+    getApiKey: () => (opts.key === undefined ? 'test-key' : opts.key),
+    config: { calibrationMs: 10_000, checkinMs: 5_000, returnCheckMs: 3_000, hintPersistMs: 1_000 }
+  })
+  const names = (): string[] =>
+    events
+      .filter((e) => e.name !== 'sdk:calibration-progress')
+      .map(
+        (e) =>
+          `${e.name}${(e.payload as { phase?: string }).phase ? ':' + (e.payload as { phase: string }).phase : ''}`
+      )
+  return { sensing, events, names }
+}
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  h.windows.length = 0
+  h.pushes.length = 0
+})
+afterEach(() => vi.useRealTimers())
+
+describe('consent gate', () => {
+  it('runs no camera code before consent', async () => {
+    const { sensing } = setup({ consent: false })
+    await expect(sensing.startCalibration()).rejects.toThrow('no camera consent')
+    await expect(sensing.startReturnCheck()).rejects.toThrow()
+    await expect(sensing.startContinuous()).rejects.toThrow()
+    expect(() => sensing.startCheckins(5)).toThrow()
+    await vi.advanceTimersByTimeAsync(20 * 60_000)
+    expect(h.windows).toHaveLength(0)
+    expect(h.pushes).toHaveLength(0)
+    expect(sensing.phase()).toBe('idle')
+  })
+
+  it('creates the capture window and starts capture after consent', async () => {
+    const { sensing } = setup()
+    await sensing.startCalibration()
+    expect(h.windows).toHaveLength(1)
+    expect(h.pushes[0]).toMatchObject({
+      channel: 'push:capture-start',
+      payload: {
+        phase: 'calibration',
+        source: { kind: 'file', path: '/videos/calm.mp4', framingPad: 0.4 },
+        face: false,
+        telemetry: false
+      }
+    })
+  })
+})
+
+describe('missing API key', () => {
+  it('emits sdk:error and never starts capture', async () => {
+    const { sensing, events } = setup({ key: null })
+    await sensing.startCalibration()
+    expect(events.find((e) => e.name === 'sdk:error')?.payload).toMatchObject({
+      code: 'no-api-key'
+    })
+    expect(h.windows).toHaveLength(0)
+  })
+})
+
+describe('phases and check-in scheduler', () => {
+  it('calibration emits progress and ends on time', async () => {
+    const { sensing, events, names } = setup()
+    await sensing.startCalibration()
+    expect(sensing.phase()).toBe('calibration')
+    await vi.advanceTimersByTimeAsync(10_000)
+    const progress = events
+      .filter((e) => e.name === 'sdk:calibration-progress')
+      .map((e) => e.payload)
+    expect(progress.length).toBeGreaterThanOrEqual(10)
+    expect(progress.at(-1)).toEqual({ progress: 1, hint: null })
+    expect(names()).toEqual(['sdk:checkin-started:calibration', 'sdk:checkin-ended:calibration'])
+    expect(sensing.phase()).toBe('idle')
+  })
+
+  it('runs a check-in every interval and fully stops the stream in between', async () => {
+    const { sensing, names } = setup()
+    sensing.startCheckins(3)
+    await vi.advanceTimersByTimeAsync(3 * 60_000 - 1)
+    expect(sensing.phase()).toBe('idle')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(sensing.phase()).toBe('checkin')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(sensing.phase()).toBe('idle')
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start', 'push:capture-stop'])
+    await vi.advanceTimersByTimeAsync(3 * 60_000)
+    expect(names()).toEqual([
+      'sdk:checkin-started:checkin',
+      'sdk:checkin-ended:checkin',
+      'sdk:checkin-started:checkin',
+      'sdk:checkin-ended:checkin'
+    ])
+    await sensing.stop()
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(names()).toHaveLength(4)
+  })
+
+  it('return check hands back to continuous mode', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    await sensing.startReturnCheck()
+    expect(sensing.phase()).toBe('return-check')
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(sensing.phase()).toBe('continuous')
+    expect(names()).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:checkin-ended:continuous',
+      'sdk:checkin-started:return-check',
+      'sdk:checkin-ended:return-check',
+      'sdk:checkin-started:continuous'
+    ])
+  })
+
+  it('pause stops the camera and skips check-ins until resumed', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    await sensing.pause()
+    expect(sensing.phase()).toBe('idle')
+    await sensing.resume()
+    expect(sensing.phase()).toBe('continuous')
+    expect(names()).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:checkin-ended:continuous',
+      'privacy:camera-paused',
+      'privacy:camera-resumed',
+      'sdk:checkin-started:continuous'
+    ])
+  })
+})
+
+describe('capture messages', () => {
+  it('forwards metrics and only emits validation codes that persist', async () => {
+    const { sensing, events } = setup()
+    await sensing.startContinuous()
+    const e = { sender: h.wc }
+    h.handlers['capture:metrics']({ t: 1 }, e)
+    h.handlers['capture:metrics']({ t: 2 }, { sender: {} }) // not the capture window
+    h.handlers['capture:validation']({ t: 0, code: 17, hint: 'Face the camera.' }, e)
+    await vi.advanceTimersByTimeAsync(300)
+    h.handlers['capture:validation']({ t: 0, code: 0, hint: '' }, e)
+    await vi.advanceTimersByTimeAsync(300)
+    h.handlers['capture:validation']({ t: 0, code: 7, hint: 'Chest' }, e)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(events.filter((x) => x.name === 'sdk:metrics')).toHaveLength(1)
+    expect(events.filter((x) => x.name === 'sdk:validation').map((x) => x.payload)).toMatchObject([
+      { code: 7, hint: 'Chest' }
+    ])
+  })
+})

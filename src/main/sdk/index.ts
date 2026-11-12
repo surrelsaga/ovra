@@ -86,6 +86,9 @@ export function createSensing(deps: SensingDeps): SensingService {
     })
   }
 
+  const devVideo = (): string | null =>
+    app.isPackaged ? null : privacy.getSettings().devVideoSource
+
   function createWindow(): Promise<BrowserWindow> {
     const ses = session.fromPartition(PARTITION)
     const w = new BrowserWindow({
@@ -97,7 +100,10 @@ export function createSensing(deps: SensingDeps): SensingService {
         contextIsolation: true,
         sandbox: true,
         backgroundThrottling: false,
-        session: ses
+        session: ses,
+        // ponytail: dev video source only. The dev page is served over http, which may not load
+        // file:// media; never relaxed in packaged builds or with the real camera.
+        webSecurity: !devVideo()
       }
     })
     // Camera (video only) for this window; deny every other permission.
@@ -192,7 +198,7 @@ export function createSensing(deps: SensingDeps): SensingService {
     if (g !== gen || paused) return
 
     const settings = privacy.getSettings()
-    const file = app.isPackaged ? null : settings.devVideoSource
+    const file = devVideo()
     const req: CaptureStartRequest = {
       phase,
       apiKey,

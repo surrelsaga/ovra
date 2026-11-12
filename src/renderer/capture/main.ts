@@ -115,9 +115,11 @@ async function start(req: CaptureStartRequest): Promise<void> {
     lastCode = code
     ovra.send('capture:validation', { t: Date.now(), code, hint })
   })
-  sdk.on('error', (code, message, retryable) =>
+  sdk.on('error', (code, message, retryable) => {
     ovra.send('capture:error', { code, message, retryable })
-  )
+    // Terminal error: release the stream now instead of holding the camera until main stops us.
+    if (!retryable && active === a) enqueue(stop)
+  })
   sdk.on('streamAvailable', (stream) => {
     a.streams.push(stream)
     const s = stream.getVideoTracks()[0]?.getSettings()

@@ -1,0 +1,600 @@
+/* Owner: Agent D. Move card. Tokens from src/shared/theme.css only. */
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+}
+
+.card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.card-hidden {
+  border: none;
+}
+
+/* Frameless window: the header is the drag handle. */
+.card-header {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-target);
+  gap: var(--space-2);
+}
+
+.card-eyebrow {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-btn,
+.btn {
+  -webkit-app-region: no-drag;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.icon-btn {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin-right: calc(-1 * var(--space-2));
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+}
+
+.icon-btn:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.btn {
+  flex: 1;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  background: var(--panel-raised);
+  border: 1px solid var(--border-strong);
+}
+
+.btn:hover {
+  background: var(--panel-hover);
+}
+
+.btn-primary {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.actions-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.card-move .actions-row {
+  margin-top: var(--space-2);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* --- Nudge ---------------------------------------------------------------- */
+
+.nudge-figure {
+  display: grid;
+  place-items: center;
+  height: 150px;
+  margin: var(--space-2) 0;
+  background: var(--panel);
+  border-radius: var(--radius-md);
+}
+
+.nudge-figure .figure {
+  width: 128px;
+  height: 128px;
+}
+
+.nudge-msg {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+}
+
+/* --- Guided move ---------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto var(--space-3);
+  flex-shrink: 0;
+}
+
+.stage .figure {
+  position: absolute;
+  inset: 18px;
+  width: 104px;
+  height: 104px;
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.ring-track,
+.ring-fill {
+  fill: none;
+  stroke-width: 4;
+}
+
+.ring-track {
+  stroke: var(--border);
+}
+
+.ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.step-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+.step-time {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.step-howto {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.feedback {
+  min-height: 22px;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--ok);
+}
+
+.breath-cue {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  color: var(--calm);
+  transition: opacity var(--duration) var(--ease);
+}
+
+.breath-cue.is-out {
+  color: var(--text-secondary);
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: auto 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.steps li::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--text-muted);
+}
+
+.steps li.is-done::before {
+  background: var(--text-muted);
+}
+
+.steps li.is-current {
+  color: var(--text);
+}
+
+.steps li.is-current::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* --- Away and return ------------------------------------------------------ */
+
+.moon {
+  width: 72px;
+  height: 72px;
+  margin: var(--space-4) auto var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--orb-dim);
+  box-shadow: inset -18px -6px 0 0 var(--bg);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.moon-waking {
+  background: var(--orb-calm);
+  box-shadow: 0 0 28px var(--orb-calm-glow);
+  opacity: 1;
+  animation: moon-pulse var(--orb-calm-period) var(--ease) infinite;
+}
+
+.moon-calm {
+  background: var(--orb-calm);
+  box-shadow: 0 0 28px var(--orb-calm-glow);
+  opacity: 1;
+}
+
+.moon-uneasy {
+  background: var(--orb-uneasy);
+  box-shadow: 0 0 28px var(--orb-uneasy-glow);
+  opacity: 1;
+}
+
+@keyframes moon-pulse {
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.away-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.away-time {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.return-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  text-align: center;
+}
+
+.progress {
+  height: 6px;
+  margin-top: var(--space-5);
+  background: var(--panel-raised);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+
+/* --- Line figure ---------------------------------------------------------- */
+
+.figure {
+  overflow: visible;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.figure g {
+  transform-box: view-box;
+}
+
+.fig-prop,
+.fig-ground {
+  stroke: var(--border-strong);
+}
+
+.fig-cue {
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0;
+}
+
+.fig-sun {
+  stroke: var(--boost);
+  stroke-width: 2;
+  transform-origin: 96px 20px;
+  animation: spin 24s linear infinite;
+}
+
+/* Joints: head pivots at the neck, arms at the shoulder, body at the hip. */
+.fig-seated .fig-head {
+  transform-origin: 60px 37px;
+}
+.fig-seated .fig-arm {
+  transform-origin: 60px 44px;
+}
+.fig-seated .fig-body {
+  transform-origin: 60px 72px;
+}
+.fig-standing .fig-arm {
+  transform-origin: 60px 40px;
+}
+.fig-standing .fig-body {
+  transform-origin: 60px 68px;
+}
+.fig-walking .fig-leg {
+  transform-origin: 58px 68px;
+}
+.fig-walking .fig-arm {
+  transform-origin: 58px 40px;
+}
+
+.fig--sit .fig-body {
+  animation: settle 4s var(--ease) infinite;
+}
+
+/* Inhale on the first half of the period, like the orb. */
+.fig--breathe .fig-body {
+  animation: breathe var(--orb-breath-period) ease-in-out infinite;
+}
+
+.fig--neck-left .fig-head {
+  animation: tilt-left 5s var(--ease) infinite;
+}
+.fig--neck-right .fig-head {
+  animation: tilt-right 5s var(--ease) infinite;
+}
+
+.fig--shoulder-roll .fig-arm {
+  animation: shoulder-roll 2.4s ease-in-out infinite;
+}
+
+.fig--look-up .fig-head {
+  animation: look-up 4s var(--ease) infinite;
+}
+.fig--look-up .fig-cue {
+  animation: cue 4s var(--ease) infinite;
+}
+
+.fig--stand-up .fig-swap-a {
+  animation: swap-a 4s var(--ease) infinite;
+}
+.fig--stand-up .fig-swap-b {
+  animation: swap-b 4s var(--ease) infinite;
+}
+
+.fig--reach-up .fig-arm-l {
+  animation: reach-l 4s var(--ease) infinite;
+}
+.fig--reach-up .fig-arm-r {
+  animation: reach-r 4s var(--ease) infinite;
+}
+
+.fig--side-bend .fig-body {
+  animation: side-bend 6s ease-in-out infinite;
+}
+
+.fig--fold .fig-body {
+  animation: fold 5s var(--ease) infinite;
+}
+
+.fig--walk .fig-leg-a,
+.fig--outside .fig-leg-a,
+.fig--walk .fig-arm-b,
+.fig--outside .fig-arm-b {
+  animation: swing 1.2s ease-in-out infinite;
+}
+.fig--walk .fig-leg-b,
+.fig--outside .fig-leg-b,
+.fig--walk .fig-arm-a,
+.fig--outside .fig-arm-a {
+  animation: swing 1.2s ease-in-out infinite reverse;
+}
+.fig-ground {
+  stroke-dasharray: 10 8;
+}
+.fig--walk .fig-ground,
+.fig--outside .fig-ground {
+  animation: ground 0.6s linear infinite;
+}
+
+@keyframes settle {
+  50% {
+    transform: translateY(1.5px);
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+/* The card is a mirror: "tilt left" leans toward the screen's left. */
+@keyframes tilt-left {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30%,
+  75% {
+    transform: rotate(-24deg);
+  }
+}
+@keyframes tilt-right {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30%,
+  75% {
+    transform: rotate(24deg);
+  }
+}
+@keyframes shoulder-roll {
+  25% {
+    transform: translateY(-5px);
+  }
+  50% {
+    transform: translateY(-3px) scaleX(0.96);
+  }
+  75% {
+    transform: translateY(1px);
+  }
+}
+@keyframes look-up {
+  30%,
+  70% {
+    transform: translateY(-4px) scaleY(0.92);
+  }
+}
+@keyframes cue {
+  30%,
+  70% {
+    opacity: 1;
+  }
+}
+@keyframes swap-a {
+  0%,
+  35% {
+    opacity: 1;
+  }
+  50%,
+  90% {
+    opacity: 0;
+  }
+}
+@keyframes swap-b {
+  0%,
+  35% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  50%,
+  90% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reach-l {
+  35%,
+  75% {
+    transform: rotate(150deg);
+  }
+}
+@keyframes reach-r {
+  35%,
+  75% {
+    transform: rotate(-150deg);
+  }
+}
+@keyframes side-bend {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-16deg);
+  }
+  75% {
+    transform: rotate(16deg);
+  }
+}
+@keyframes fold {
+  35%,
+  75% {
+    transform: scaleY(0.6);
+  }
+}
+@keyframes swing {
+  0%,
+  100% {
+    transform: rotate(22deg);
+  }
+  50% {
+    transform: rotate(-22deg);
+  }
+}
+@keyframes ground {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

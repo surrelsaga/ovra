@@ -77,3 +77,13 @@ face/telemetry consent changes restart capture, nudges during calibration, music
 - **Needs Daniel:** renew Presage credits; live camera test; threshold tuning (`src/main/state/config.ts`,
   `src/main/moves/config.ts`); real links in `FALLBACK_PLAYLISTS` (`src/main/music/config.ts`); macOS camera and
   Spotify Automation prompts on first run; review `docs/privacy.md` (DEV consent section); demo video and DEV post.
+
+## Phase 4 (part 1) — merged (2026-11-13)
+
+- README (`ff52af4`). License still TBD (Daniel).
+- Packaged macOS build (`b5c7324`): `npm run build:mac` → unsigned arm64 `Ovra.app` + `.dmg`; keys from
+  `~/Library/Application Support/Ovra/.env`; camera + Apple Events only. Launch check pending Daniel. See `docs/packaging.md`.
+- Polish (`a358ebc`): calibration live preview (main window only, during calibration, after consent, video only,
+  mirrored, "Not recorded"); calm SDK-failure fallback message; Spotify-not-running state. 242 tests.
+- Deferred until the build is finished: DEV post draft + demo script, Windows controller.
+- Still blocked on Presage credits: calm-working e2e rerun, quit-during-capture proof, live camera test, tuning.

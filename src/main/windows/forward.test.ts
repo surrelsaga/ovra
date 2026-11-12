@@ -187,6 +187,7 @@ describe('bus → push forwarding', () => {
 
   it('animates breath during a Breathe-along step and stops after', () => {
     vi.useFakeTimers()
+    vi.setSystemTime(windowsConfig.breathPeriodMs * 1000)
     const bus = createBus()
     const fw = bindForwarding(bus, fakeShell())
     bus.emit('move:step', { moveId: 'breathe', stepIndex: 0, step: breatheStep, remainingSec: 60 })

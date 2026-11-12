@@ -26,9 +26,12 @@ export interface Forwarder {
   dispose(): void
 }
 
-/** 0 = exhaled, 1 = inhaled. Smooth in for half the period, out for the other half. */
-export function breathAt(elapsedMs: number, periodMs: number = cfg.breathPeriodMs): number {
-  return (1 - Math.cos((2 * Math.PI * elapsedMs) / periodMs)) / 2
+/**
+ * 0 = exhaled, 1 = inhaled. Wall-clock phase (inhale in the first half of `now % period`),
+ * the same phase the move card uses, so orb and card stay in sync.
+ */
+export function breathAt(now: number, periodMs: number = cfg.breathPeriodMs): number {
+  return (1 - Math.cos((2 * Math.PI * (now % periodMs)) / periodMs)) / 2
 }
 
 export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
@@ -58,12 +61,8 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
 
   const startBreath = (): void => {
     if (breathTimer) return
-    const start = Date.now()
-    update({ breath: 0 })
-    breathTimer = setInterval(
-      () => update({ breath: breathAt(Date.now() - start) }),
-      cfg.breathTickMs
-    )
+    update({ breath: breathAt(Date.now()) })
+    breathTimer = setInterval(() => update({ breath: breathAt(Date.now()) }), cfg.breathTickMs)
   }
 
   const endSession = (): void => {

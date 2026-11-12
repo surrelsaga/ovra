@@ -49,3 +49,7 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
 - **D. Moves** → main `142fbb5` (35 module tests, 171 total). Harness re-run by the orchestrator: every move end to end,
   `HARNESS OK`, 26 screenshots reviewed (dark card, line figures, live feedback, break timer, return results).
   **Needs Daniel:** tune tilt (20°), breathing-drop (10 %) and stand-up thresholds in `src/main/moves/config.ts` live.
+- **E. Orb + shell**: reviewed (31 harness screenshots: dark sidebar app, one-question onboarding, new session,
+  music, history, privacy, settings, calibration, summary; orb in every state). Sent back for 3 fixes before merge:
+  orb click-through on transparent areas, shared camera-paused state (`OrbView.paused`, added on main `787a68b`),
+  stable onboarding question count.

@@ -581,6 +581,8 @@ export interface IpcPush {
   'push:session-tick': SessionTick
   'push:session-summary': SessionSummary
   'push:calibration': { progress: number; hint: string | null }
+  /** SDK failure (e.g. credits exhausted) so the main window can show a calm fallback message. */
+  'push:sdk-error': SdkError
   'push:state': StateUpdate
   'push:orb': OrbView
   'push:music': MusicStatus
@@ -645,6 +647,7 @@ export const IPC_PUSH_CHANNELS = [
   'push:session-tick',
   'push:session-summary',
   'push:calibration',
+  'push:sdk-error',
   'push:state',
   'push:orb',
   'push:music',

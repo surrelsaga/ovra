@@ -25,3 +25,9 @@ Format:
   (added to `IPC_INVOKE_CHANNELS`).
 - Why: the orb's transparent area blocked clicks on the desktop, and the pause-camera control had no shared state.
 - Status: applied on main
+
+## 2026-11-13 — polish (4.3) — push:sdk-error
+- File: src/shared/types.ts
+- Change: `'push:sdk-error': SdkError` in `IpcPush` and `IPC_PUSH_CHANNELS`.
+- Why: the calibration screen shows a calm fallback message when the SDK fails (e.g. credits exhausted).
+- Status: applied on main

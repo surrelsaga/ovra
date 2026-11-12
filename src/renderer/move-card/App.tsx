@@ -147,7 +147,9 @@ function MoveCard({ view }: { view: MoveView }): React.JSX.Element {
           className="step-time"
           aria-label={awayStep ? undefined : `${remainingSec} seconds left`}
         >
-          {awayStep ? `~${Math.round(step.durationSec / 60)} min` : clock(remainingSec)}
+          {awayStep
+            ? `~${Math.max(1, Math.round(step.durationSec / 60))} min`
+            : clock(remainingSec)}
         </span>
       </div>
       <p className="step-howto">{step.howTo}</p>

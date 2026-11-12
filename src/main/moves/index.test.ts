@@ -82,7 +82,7 @@ function setup(opts: SetupOpts = {}) {
     if (card.kind !== 'nudge') throw new Error(`card is ${card.kind}`)
     return card.nudge.id
   }
-  return { bus, moves, state, metrics, events, card: () => card, nudgeId }
+  return { bus, moves, session, state, metrics, events, card: () => card, nudgeId }
 }
 
 beforeEach(() => {
@@ -149,6 +149,14 @@ describe('nudges', () => {
     expect(t.events('move:nudge')).toHaveLength(0)
     vi.advanceTimersByTime(45 * MIN)
     t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 2700, remainingSec: 0 })
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch'])
+  })
+
+  it('falls back to timed nudges when the session loses sensing', () => {
+    const t = setup()
+    t.bus.emit('session:status', { ...t.session, sensingEnabled: false })
+    vi.advanceTimersByTime(46 * MIN)
+    t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 2760, remainingSec: 0 })
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch'])
   })
 

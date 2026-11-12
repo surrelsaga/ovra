@@ -308,6 +308,13 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
     })
   })
 
+  // Calibration can fail mid-start; the session then runs without sensing and we fall back to timed nudges.
+  bus.on('session:status', (s) => {
+    if (!session || s.id !== session.id) return
+    session = s
+    sensing = s.sensingEnabled && privacy.canUseCamera()
+  })
+
   bus.on('sdk:metrics', (m) => {
     if (session) onMetrics(m)
   })

@@ -108,8 +108,10 @@ export function createMusic(deps: MusicDeps): MusicService {
   /** Plays the best song for the target; else a fallback playlist once per target (or a user playlist at start). */
   async function playNext(atStart: boolean): Promise<void> {
     const target = tracker.current()
-    if (!session || leaveAlone || !target) return
+    if (!session || privacy.get().music !== 'spotify' || leaveAlone || !target) return
+    const activeSession = session
     available = await controller.isAvailable()
+    if (session !== activeSession || privacy.get().music !== 'spotify') return
     if (!available) return hint()
     const songs = library.songs()
     const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
@@ -134,7 +136,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   }
 
   function evaluate(): void {
-    if (!session || leaveAlone) return
+    if (!session || privacy.get().music !== 'spotify' || leaveAlone) return
     const desired = desiredTarget({ situation, activity: session.config.activity, remainingSec })
     const changed = tracker.update(desired, session.config.activity, now())
     if (!changed) return
@@ -211,6 +213,8 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (endTimer) clearTimeout(endTimer)
     endTimer = null
     session = null
+    nowPlaying = null
+    available = false
     tracker.reset()
     pausedForBreak = false
   }
@@ -236,9 +240,21 @@ export function createMusic(deps: MusicDeps): MusicService {
     safe(controller.resume())
   })
   bus.on('data:deleted-all', () => {
+    play = null
+    stopInternal()
+    nowPlaying = null
+    available = false
+    leaveAlone = privacy.getSettings().leaveMusicAlone
     scorer.reset()
     library.forget()
     play = null
+    emitStatus()
+  })
+
+  bus.on('privacy:changed', (p) => {
+    if (p.music !== 'none') return
+    stopInternal()
+    nowPlaying = null
     emitStatus()
   })
 

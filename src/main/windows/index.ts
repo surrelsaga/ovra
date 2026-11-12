@@ -118,6 +118,13 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
     card.setAlwaysOnTop(true, 'floating')
 
     wins = { main, orb, card }
+    for (const w of Object.values(wins)) {
+      w.webContents.on('did-finish-load', () => {
+        forwarder?.snapshot((channel, payload) => push(w, channel, payload))
+        push(w, 'push:privacy', privacy.get())
+        push(w, 'push:settings', privacy.getSettings())
+      })
+    }
     loaded = Promise.all([
       loadPage(main, 'main-window'),
       loadPage(orb, 'orb'),

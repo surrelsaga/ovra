@@ -23,6 +23,7 @@ export interface ShellControl {
 
 export interface Forwarder {
   orb(): OrbView
+  snapshot(send: <C extends IpcPushChannel>(channel: C, payload: IpcPush[C]) => void): void
   dispose(): void
 }
 
@@ -36,6 +37,11 @@ export function breathAt(now: number, periodMs: number = cfg.breathPeriodMs): nu
 
 export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
   let view: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
+  const latest = new Map<IpcPushChannel, IpcPush[IpcPushChannel]>()
+  const send = <C extends IpcPushChannel>(channel: C, payload: IpcPush[C]): void => {
+    latest.set(channel, payload)
+    shell.push(channel, payload)
+  }
   let situation: Situation | null = null
   let status: SessionStatus | null = null
   let bubbleTimer: ReturnType<typeof setTimeout> | undefined
@@ -43,7 +49,7 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
 
   const update = (patch: Partial<OrbView>): void => {
     view = { ...view, ...patch }
-    shell.push('push:orb', view)
+    send('push:orb', view)
   }
 
   const say = (text: string, ttlMs: number = cfg.bubbleTtlMs): void => {
@@ -70,32 +76,32 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     clearTimeout(bubbleTimer)
     situation = null
     view = { mood: 'calm', listening: view.listening, paused: false, away: false }
-    shell.push('push:orb', view)
+    send('push:orb', view)
     // Blocked by the window layer while the camera is still on; retried on sdk:checkin-ended.
     shell.hideOrb()
     shell.showMain()
   }
 
   const offs = [
-    bus.on('session:started', (s) => shell.push('push:session', s)),
+    bus.on('session:started', (s) => send('push:session', s)),
     bus.on('session:status', (s) => {
-      shell.push('push:session', s)
+      send('push:session', s)
       const prev = status
       status = s.status
       if (s.status === 'running' && prev !== 'running' && prev !== 'on-break') shell.showOrb()
       if (s.status === 'ended' && prev !== 'ended') endSession()
     }),
-    bus.on('session:tick', (t) => shell.push('push:session-tick', t)),
+    bus.on('session:tick', (t) => send('push:session-tick', t)),
     bus.on('session:ended', (summary) => {
-      shell.push('push:session-summary', summary)
+      send('push:session-summary', summary)
       if (status !== 'ended') {
         status = 'ended'
         endSession()
       }
     }),
-    bus.on('sdk:calibration-progress', (p) => shell.push('push:calibration', p)),
+    bus.on('sdk:calibration-progress', (p) => send('push:calibration', p)),
     bus.on('state:updated', (s) => {
-      shell.push('push:state', s)
+      send('push:state', s)
       if (!s.situation) return
       const changed = s.situation !== situation
       situation = s.situation
@@ -105,7 +111,8 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
       }
     }),
     bus.on('music:status', (m) => {
-      shell.push('push:music', m)
+      send('push:music', m)
+      if (view.nowPlaying && !m.nowPlaying) update({ nowPlaying: undefined })
       if (view.nowPlaying && m.target) {
         update({ nowPlaying: { ...view.nowPlaying, word: TARGET_WORD[m.target] } })
       }
@@ -121,14 +128,18 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
       say(t.reason || targetLines[t.word])
     }),
     bus.on('move:card', (card) => {
-      shell.push('push:move-card', card)
+      send('push:move-card', card)
       shell.setMoveCard(card)
       if (card.kind !== 'move') stopBreath()
     }),
     bus.on('move:step', (e) => (e.step.animation === 'breathe' ? startBreath() : stopBreath())),
     bus.on('move:completed', stopBreath),
     bus.on('move:skipped', stopBreath),
-    bus.on('sdk:checkin-started', () => update({ listening: true })),
+    bus.on('sdk:checkin-started', () => {
+      update({ listening: true })
+      shell.showOrb()
+      if (status === 'calibrating') shell.showMain()
+    }),
     bus.on('sdk:checkin-ended', () => {
       update({ listening: false })
       if (status === 'ended') shell.hideOrb()
@@ -138,12 +149,16 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     // Pausing stops the camera, so the ring goes too. A later check-in start still shows it.
     bus.on('privacy:camera-paused', () => update({ paused: true, listening: false })),
     bus.on('privacy:camera-resumed', () => update({ paused: false })),
-    bus.on('privacy:changed', (p) => shell.push('push:privacy', p)),
+    bus.on('privacy:changed', (p) => send('push:privacy', p)),
     bus.on('orb:bubble', (b) => say(b.text, b.ttlMs))
   ]
 
   return {
     orb: () => view,
+    snapshot: (send) => {
+      for (const [channel, payload] of latest) send(channel, payload)
+      send('push:orb', view)
+    },
     dispose: () => {
       offs.forEach((off) => off())
       clearTimeout(bubbleTimer)

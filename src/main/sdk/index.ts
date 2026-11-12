@@ -13,6 +13,7 @@ import type {
 import { onCapture, push } from '../ipc'
 import { loadPage, preloadPath } from '../paths'
 import { sensingConfig, type SensingConfig } from './config'
+import { nativeWork } from './native-work'
 import { createValidationSmoother } from './hint'
 
 export interface SensingDeps {
@@ -47,6 +48,8 @@ export function createSensing(deps: SensingDeps): SensingService {
   let stopping: Promise<void> | null = null
   let stopWaiter: ((stopped: boolean) => void) | null = null
   let listening = false
+  let phaseDeadline: number | undefined
+  let faceEnabled = privacy.canUseFace()
 
   const report = (err: unknown): void =>
     bus.emit('sdk:error', {
@@ -73,7 +76,13 @@ export function createSensing(deps: SensingDeps): SensingService {
     if (listening) return
     listening = true
     onCapture('capture:metrics', (m, e) => {
-      if (fromCapture(e) && current) bus.emit('sdk:metrics', m)
+      if (!fromCapture(e) || !current || !privacy.canUseCamera()) return
+      if (privacy.canUseFace()) bus.emit('sdk:metrics', m)
+      else {
+        const vitals = { ...m }
+        delete vitals.face
+        bus.emit('sdk:metrics', vitals)
+      }
     })
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
@@ -130,14 +139,14 @@ export function createSensing(deps: SensingDeps): SensingService {
       w.destroy()
     })
     w.on('closed', () => {
-      if (win === w) {
-        win = null
-        winReady = null
-      }
+      if (win !== w) return
+      win = null
+      winReady = null
       resolveStop(true)
       if (current) stopCapture().catch(report)
     })
     win = w
+    nativeWork.start()
     bindSmartSpectraIpc(w)
     listen()
     return loadPage(w, 'capture').then(
@@ -233,9 +242,11 @@ export function createSensing(deps: SensingDeps): SensingService {
       }
       const g = ++gen
       await stopCapture()
-      if (g !== gen || paused) return skip()
+      if (g !== gen) return
+      if (paused) return skip()
       const w = await ensureWindow()
-      if (g !== gen || paused) return skip()
+      if (g !== gen) return
+      if (paused) return skip()
 
       const settings = privacy.getSettings()
       const file = devVideo()
@@ -257,6 +268,7 @@ export function createSensing(deps: SensingDeps): SensingService {
 
       if (durationMs === undefined) return
       const startedAt = Date.now()
+      phaseDeadline = startedAt + durationMs
       phaseTimer = setTimeout(() => {
         if (phase === 'calibration') emitProgress(startedAt, durationMs)
         endTimed(g).catch(report)
@@ -272,7 +284,24 @@ export function createSensing(deps: SensingDeps): SensingService {
     }
   }
 
-  return {
+  bus.on('privacy:changed', () => {
+    const face = privacy.canUseFace()
+    const changed = face !== faceEnabled
+    faceEnabled = face
+    if (!privacy.canUseCamera()) {
+      void service.stop().catch(report)
+      return
+    }
+    if (changed && current) {
+      const duration =
+        current === 'continuous'
+          ? undefined
+          : Math.max(0, (phaseDeadline ?? Date.now()) - Date.now())
+      void runCapture(current, duration).catch(report)
+    }
+  })
+
+  const service: SensingService = {
     startCalibration: () => runCapture('calibration', cfg.calibrationMs),
 
     startCheckins(intervalMin) {
@@ -306,7 +335,13 @@ export function createSensing(deps: SensingDeps): SensingService {
       const w = win
       win = null
       winReady = null
-      w?.close()
+      if (w && !w.isDestroyed()) {
+        await new Promise<void>((resolve) => {
+          w.once('closed', resolve)
+          w.destroy()
+        })
+      }
+      await nativeWork.settle()
     },
 
     async pause() {
@@ -327,4 +362,5 @@ export function createSensing(deps: SensingDeps): SensingService {
 
     phase: () => current ?? 'idle'
   }
+  return service
 }

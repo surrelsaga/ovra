@@ -12,6 +12,14 @@ const captureOk = new Set<string>(IPC_CAPTURE_CHANNELS)
 
 /** Exposes window.ovra with whitelisted, typed channels only. */
 export function exposeBridge(opts: { allowCaptureSend: boolean }): void {
+  const latest = new Map<string, unknown>()
+  // Pages may receive initial pushes before React mounts its subscriptions.
+  if (!opts.allowCaptureSend) {
+    for (const channel of IPC_PUSH_CHANNELS) {
+      if (!channel.startsWith('push:capture-'))
+        ipcRenderer.on(channel, (_e, payload) => latest.set(channel, payload))
+    }
+  }
   const bridge: OvraBridge = {
     invoke: ((channel: string, req?: unknown) => {
       if (!invokeOk.has(channel)) return Promise.reject(new Error(`Blocked channel ${channel}`))
@@ -21,7 +29,15 @@ export function exposeBridge(opts: { allowCaptureSend: boolean }): void {
       if (!pushOk.has(channel)) throw new Error(`Blocked channel ${channel}`)
       const listener = (_e: unknown, payload: unknown): void => cb(payload)
       ipcRenderer.on(channel, listener)
-      return () => ipcRenderer.off(channel, listener)
+      let subscribed = true
+      if (latest.has(channel))
+        queueMicrotask(() => {
+          if (subscribed) cb(latest.get(channel))
+        })
+      return () => {
+        subscribed = false
+        ipcRenderer.off(channel, listener)
+      }
     }) as OvraBridge['on'],
     send: ((channel: string, payload: unknown) => {
       if (!opts.allowCaptureSend || !captureOk.has(channel))

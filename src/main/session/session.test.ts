@@ -162,14 +162,18 @@ describe('session', () => {
     expect(t.sensing.startCheckins).toHaveBeenCalledTimes(2)
   })
 
-  it('continuous mode keeps running through breaks', async () => {
+  it('continuous mode keeps sensing through breaks and starts a return check', async () => {
     const t = setup()
     await t.svc.start({ ...cfg, cameraMode: 'continuous' })
     t.bus.emit('state:baseline-ready', { ok: true })
     t.bus.emit('break:away', { since: Date.now(), manual: true })
     t.bus.emit('break:away', { since: Date.now(), manual: false })
-    expect(t.svc.current()?.status).toBe('running')
+    expect(t.svc.current()?.status).toBe('on-break')
     expect(t.sensing.stop).not.toHaveBeenCalled()
+    t.bus.emit('break:returned', { awayMs: 10_000 })
+    expect(t.sensing.startReturnCheck).toHaveBeenCalledOnce()
+    t.bus.emit('sdk:checkin-ended', { phase: 'return-check' })
+    expect(t.sensing.startContinuous).toHaveBeenCalledTimes(2)
   })
 
   it('ticks every second and auto-ends at the session length', async () => {
@@ -255,17 +259,54 @@ describe('session', () => {
     expect(rec.moves).toHaveLength(3)
   })
 
-  it('delete everything mid-session drops what was collected so far', async () => {
+  it('delete everything mid-session stops without writing a new record', async () => {
     const t = setup()
     await t.svc.start(cfg)
     t.bus.emit('move:skipped', { moveId: 'walk' })
     t.bus.emit('music:track-changed', track('spotify:track:a'))
     t.bus.emit('data:deleted-all', {})
-    const rec = (await t.svc.end())!
-    expect(rec).toMatchObject({ moves: [], learnedSongIds: [], moodTimeline: [], snoozes: 0 })
+    expect(await t.svc.end()).toBeNull()
+    expect(t.privacy.saveSession).not.toHaveBeenCalled()
+    expect(t.sensing.stop).toHaveBeenCalledOnce()
+    expect(t.svc.current()).toBeNull()
+  })
+
+  it('revoking camera consent stops capture and switches to timed nudges', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'not-now' })
+    expect(t.svc.current()).toMatchObject({ status: 'running', sensingEnabled: false })
+    expect(t.sensing.stop).toHaveBeenCalledOnce()
+    expect(t.state.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('concurrent end calls share the same cleanup and saved record', async () => {
+    const t = setup(false)
+    await t.svc.start(cfg)
+    const [a, b] = await Promise.all([t.svc.end(), t.svc.end()])
+    expect(a).toEqual(b)
+    expect(t.privacy.saveSession).toHaveBeenCalledOnce()
   })
 
   it('end() without a session returns null', async () => {
     expect(await setup().svc.end()).toBeNull()
   })
+})
+
+it('deletion during asynchronous end cannot resurrect a saved record', async () => {
+  const t = setup(false)
+  await t.svc.start(cfg)
+  let stopped!: () => void
+  t.sensing.stop.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        stopped = resolve
+      })
+  )
+  const ending = t.svc.end()
+  t.bus.emit('data:deleted-all', {})
+  stopped()
+  expect(await ending).toBeNull()
+  expect(t.privacy.saveSession).not.toHaveBeenCalled()
+  expect(t.seen['session:ended']).toBeUndefined()
 })

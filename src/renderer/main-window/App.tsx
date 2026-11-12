@@ -54,7 +54,13 @@ export default function App(): React.JSX.Element {
   useEffect(load, [])
   useEffect(() => {
     const offs = [
-      ovra().on('push:privacy', (privacy) => setData((d) => d && { ...d, privacy })),
+      ovra().on('push:privacy', (privacy) => {
+        setData((d) => d && { ...d, privacy })
+        if (!privacy.answeredAt) {
+          setSummary(null)
+          setPage('session')
+        }
+      }),
       ovra().on('push:settings', (settings) => setData((d) => d && { ...d, settings })),
       ovra().on('push:session', (s) => setSession(s)),
       ovra().on('push:session-summary', (s) => {

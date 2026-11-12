@@ -8,7 +8,7 @@ import {
   type SessionRecord,
   type Storage
 } from '@shared/types'
-import { handle } from '../ipc'
+import { broadcast, handle } from '../ipc'
 import { STORAGE_FILES } from '../storage'
 import { privacySchema, sessionRecordSchema, settingsSchema } from './schemas'
 
@@ -83,6 +83,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       const next: AppSettings = settingsSchema.parse({ ...settings, ...patch })
       settings = next
       await storage.write('settings', next)
+      broadcast('push:settings', structuredClone(next))
       return structuredClone(next)
     },
 
@@ -109,6 +110,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       await withSessions(() => Promise.all(STORAGE_FILES.map((f) => storage.remove(f))))
       privacy = { ...DEFAULT_PRIVACY }
       settings = structuredClone(DEFAULT_SETTINGS)
+      broadcast('push:settings', structuredClone(settings))
       bus.emit('privacy:changed', { ...privacy })
       bus.emit('data:deleted-all', {})
     },

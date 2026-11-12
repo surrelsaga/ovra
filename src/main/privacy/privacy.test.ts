@@ -16,6 +16,7 @@ import { createPrivacy, registerPrivacyIpc } from '.'
 
 const handlers = new Map<string, (req: unknown) => unknown>()
 vi.mock('../ipc', () => ({
+  broadcast: vi.fn(),
   handle: (channel: string, fn: (req: unknown) => unknown) => {
     handlers.set(channel, fn)
     return () => handlers.delete(channel)

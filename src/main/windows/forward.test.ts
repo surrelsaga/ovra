@@ -230,3 +230,20 @@ describe('bus → push forwarding', () => {
     expect(breathAt(10_000)).toBeCloseTo(0)
   })
 })
+
+it('replays current state and move card to a newly loaded renderer', () => {
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell())
+  const current = session('running')
+  bus.emit('session:status', current)
+  bus.emit('privacy:camera-paused', {})
+  bus.emit('move:card', { kind: 'away', since: 123, manual: true })
+  const seen = new Map<string, unknown>()
+  fw.snapshot((channel, payload) => {
+    seen.set(channel, payload)
+  })
+  expect(seen.get('push:session')).toEqual(current)
+  expect(seen.get('push:orb')).toMatchObject({ paused: true, listening: false })
+  expect(seen.get('push:move-card')).toEqual({ kind: 'away', since: 123, manual: true })
+  fw.dispose()
+})

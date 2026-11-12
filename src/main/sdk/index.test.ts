@@ -43,6 +43,7 @@ vi.mock('electron', () => ({
   })
 }))
 vi.mock('@smartspectra/node-sdk/main', () => ({ bindSmartSpectraIpc: vi.fn() }))
+vi.mock('./native-work', () => ({ nativeWork: { start: vi.fn(), settle: vi.fn(async () => {}) } }))
 vi.mock('../paths', () => ({ preloadPath: () => 'preload.js', loadPage: h.loadPage }))
 vi.mock('../ipc', () => ({
   onCapture: (channel: string, fn: (payload: unknown, e: { sender: unknown }) => void) => {
@@ -61,6 +62,7 @@ function fakePrivacy(consent = true): PrivacyService {
     assertCameraConsent: () => {
       if (!consent) throw new Error('no camera consent')
     },
+    canUseCamera: () => consent,
     canUseFace: () => false,
     get: () => ({ ...DEFAULT_PRIVACY, camera: consent ? 'yes' : null }),
     getSettings: () => ({ ...DEFAULT_SETTINGS, devVideoSource: '/videos/calm.mp4' })
@@ -71,6 +73,8 @@ interface Setup {
   sensing: ReturnType<typeof createSensing>
   events: { name: BusEventName; payload: unknown }[]
   names: () => string[]
+  bus: ReturnType<typeof createBus>
+  privacy: PrivacyService
 }
 
 function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
@@ -87,9 +91,10 @@ function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
     'privacy:camera-resumed'
   ] as const)
     bus.on(name, (payload) => events.push({ name, payload }))
+  const privacy = fakePrivacy(opts.consent ?? true)
   const sensing = createSensing({
     bus,
-    privacy: fakePrivacy(opts.consent ?? true),
+    privacy,
     getApiKey: () => (opts.key === undefined ? 'test-key' : opts.key),
     config: { calibrationMs: 10_000, checkinMs: 5_000, returnCheckMs: 3_000, hintPersistMs: 1_000 }
   })
@@ -100,7 +105,7 @@ function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
         (e) =>
           `${e.name}${(e.payload as { phase?: string }).phase ? ':' + (e.payload as { phase: string }).phase : ''}`
       )
-  return { sensing, events, names }
+  return { sensing, events, names, bus, privacy }
 }
 
 beforeEach(() => {
@@ -180,7 +185,6 @@ describe('phases and check-in scheduler', () => {
     expect(names()).toEqual([
       'sdk:checkin-started:continuous',
       'sdk:checkin-ended:continuous',
-      'sdk:checkin-ended:return-check',
       'sdk:checkin-started:calibration'
     ])
     expect(sensing.phase()).toBe('calibration')
@@ -350,5 +354,38 @@ describe('capture messages', () => {
     expect(events.filter((x) => x.name === 'sdk:validation').map((x) => x.payload)).toMatchObject([
       { code: 7, hint: 'Chest' }
     ])
+  })
+})
+
+describe('live privacy changes', () => {
+  it('stops capture and scheduled check-ins when consent is revoked', async () => {
+    const t = setup()
+    t.sensing.startCheckins(3)
+    await t.sensing.startContinuous()
+    vi.spyOn(t.privacy, 'canUseCamera').mockReturnValue(false)
+    t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'not-now' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.sensing.phase()).toBe('idle')
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(t.names().filter((n) => n.startsWith('sdk:checkin-started'))).toHaveLength(1)
+  })
+
+  it('restarts with face metrics disabled and drops in-flight face data immediately', async () => {
+    const t = setup()
+    const face = vi.spyOn(t.privacy, 'canUseFace').mockReturnValue(true)
+    t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'yes', face: 'vitals-and-face' })
+    await t.sensing.startContinuous()
+    face.mockReturnValue(false)
+    t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'yes', face: 'vitals-only' })
+    h.handlers['capture:metrics'](
+      { t: 1, face: { present: true, expressions: { happy: 80 } } },
+      { sender: h.wc }
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.events.filter((e) => e.name === 'sdk:metrics').at(-1)?.payload).toEqual({ t: 1 })
+    expect(
+      h.pushes.filter((p) => p.channel === 'push:capture-start').at(-1)?.payload
+    ).toMatchObject({ face: false })
+    expect(t.sensing.phase()).toBe('continuous')
   })
 })

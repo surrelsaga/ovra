@@ -320,3 +320,39 @@ describe('music service', () => {
     expect(music.status()).toMatchObject({ scoringQueue: 0, scoredCount: 0 })
   })
 })
+
+it('disabling music clears stale now-playing state without controlling playback', async () => {
+  const t = await setup()
+  await t.music.startSession(session())
+  t.controller.start('spotify:track:steady')
+  await Promise.resolve()
+  expect(t.music.status().nowPlaying).not.toBeNull()
+  t.controller.calls = []
+  await t.music.stopSession()
+  await t.music.startSession(session({ music: false }))
+  expect(t.music.status()).toMatchObject({ nowPlaying: null, available: false, target: null })
+  t.bus.emit('break:away', { since: Date.now(), manual: true })
+  expect(t.controller.calls).toEqual([])
+})
+
+it('does not play after deletion while checking Spotify availability', async () => {
+  const t = await setup()
+  let resolve!: (available: boolean) => void
+  let checking!: () => void
+  const entered = new Promise<void>((r) => {
+    checking = r
+  })
+  t.controller.isAvailable = () => {
+    checking()
+    return new Promise((r) => {
+      resolve = r
+    })
+  }
+  const started = t.music.startSession(session())
+  await entered
+  t.bus.emit('data:deleted-all', {})
+  resolve(true)
+  await started
+  expect(t.controller.calls).toEqual([])
+  expect(await t.music.library()).toEqual({ songs: [], playlists: [] })
+})

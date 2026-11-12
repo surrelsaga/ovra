@@ -66,6 +66,8 @@ export function createSessionService(deps: SessionDeps): SessionService {
   let offs: (() => void)[] = []
   let tick: ReturnType<typeof setInterval> | undefined
   let resumeAfterReturnCheck = false
+  let ending: Promise<SessionRecord | null> | null = null
+  let dataGeneration = 0
 
   const update = (patch: Partial<Session>): void => {
     if (!session) return
@@ -100,10 +102,10 @@ export function createSessionService(deps: SessionDeps): SessionService {
       }),
       bus.on('break:away', ({ manual }) => {
         // Continuous mode keeps sensing through breaks (away is detected from the camera).
-        if (!manual || session?.status !== 'running') return
-        if (session.sensingEnabled && session.config.cameraMode !== 'checkins') return
+        if (session?.status !== 'running') return
         setStatus('on-break')
-        if (session.sensingEnabled) sensing.stop().catch(warn('stop'))
+        if (manual && session.sensingEnabled && session.config.cameraMode === 'checkins')
+          sensing.stop().catch(warn('stop'))
       }),
       bus.on('break:returned', () => {
         if (session?.status !== 'on-break') return
@@ -133,8 +135,16 @@ export function createSessionService(deps: SessionDeps): SessionService {
       bus.on('music:track-changed', (t) => {
         if (!t.isAd && t.id) songs.add(t.id)
       }),
-      // "Delete everything" mid-session: drop what this session has collected so far.
-      bus.on('data:deleted-all', clearRecord)
+      bus.on('privacy:changed', (p) => {
+        if (!session || p.camera === 'yes') return
+        resumeAfterReturnCheck = false
+        update({
+          sensingEnabled: false,
+          status: session.status === 'calibrating' ? 'running' : session.status
+        })
+        sensing.stop().catch(warn('stop'))
+        state.dispose()
+      })
     ]
   }
 
@@ -154,7 +164,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
   }
 
   async function start(input: SessionConfig): Promise<Session> {
-    if (session) throw new Error('A session is already running')
+    if (session || ending) throw new Error('A session is already running')
     const config = normalizeConfig(input, privacy)
     const sensingEnabled = privacy.canUseCamera()
     session = {
@@ -179,6 +189,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     if (sensingEnabled) {
       state.reset()
       try {
+        await sensing.resume()
         await sensing.startCalibration()
       } catch (e) {
         warn('startCalibration')(e)
@@ -189,7 +200,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     return session
   }
 
-  async function end(): Promise<SessionRecord | null> {
+  async function finish(discard: boolean): Promise<SessionRecord | null> {
     const s = session
     if (!s) return null
     session = null
@@ -197,6 +208,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     offs.forEach((off) => off())
     offs = []
     const endedAt = Date.now()
+    const generation = dataGeneration
 
     // Camera off first; one module failing to stop must not lose the record.
     await Promise.allSettled([
@@ -219,11 +231,25 @@ export function createSessionService(deps: SessionDeps): SessionService {
       longestSeatedMin: Math.floor(longestSeated),
       learnedSongIds: [...songs]
     }
-    await privacy.saveSession(record).catch(warn('saveSession'))
+    if (!discard && generation === dataGeneration)
+      await privacy.saveSession(record).catch(warn('saveSession'))
     bus.emit('session:status', { ...s, status: 'ended', endedAt })
-    bus.emit('session:ended', record)
-    return record
+    if (!discard && generation === dataGeneration) bus.emit('session:ended', record)
+    return discard || generation !== dataGeneration ? null : record
   }
+
+  function end(discard = false): Promise<SessionRecord | null> {
+    if (ending) return ending
+    ending = finish(discard).finally(() => {
+      ending = null
+    })
+    return ending
+  }
+
+  bus.on('data:deleted-all', () => {
+    dataGeneration++
+    void end(true)
+  })
 
   return { start, end, current: () => session }
 }

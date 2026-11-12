@@ -117,7 +117,7 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
   }
 
   const maybeNudge = (input: NudgeInput): void => {
-    if (!session || !idle()) return
+    if (!session || session.status !== 'running' || !idle()) return
     if (!canNudge(Date.now(), lastNudgeAt, privacy.getSettings().nudgeMinIntervalMin)) return
     const pick = pickMove(input, cfg)
     if (pick) showNudge(pick.moveId, pick.message)
@@ -226,7 +226,8 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
   // --- Breaks and the return check -------------------------------------------
 
   const startBreak = (manual: boolean): void => {
-    stopTicker()
+    clearAll()
+    returnCheck = null
     nudge = null
     beforeBreak = latestState?.situation ?? null
     brk = { since: Date.now(), manual, sawAway: !manual }
@@ -323,6 +324,15 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
     if (phase !== 'return-check' || !returnCheck || returnCheck.done) return
     const { returnedAt } = returnCheck
     later(cfg.returnCheck.settleMs, () => finishReturnCheck(returnedAt))
+  })
+
+  bus.on('privacy:changed', () => {
+    sensing = !!session?.sensingEnabled && privacy.canUseCamera()
+    lastFace = null
+    if (active) {
+      active.seatedFace = null
+      active.tiltSamples = 0
+    }
   })
 
   // --- Service ---------------------------------------------------------------

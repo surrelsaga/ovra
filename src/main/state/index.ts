@@ -176,6 +176,17 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     emit()
   })
 
+  bus.on('privacy:changed', () => {
+    if (privacy.canUseFace()) return
+    if (baseline) delete baseline.blinkRate
+    buf = buf.map((s) => {
+      const vitals = { ...s }
+      delete vitals.face
+      return vitals
+    })
+    history = []
+  })
+
   bus.on('privacy:camera-paused', () => {
     paused = true
   })

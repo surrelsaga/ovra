@@ -35,6 +35,7 @@ during sessions the user starts (video is not saved), and Apple Events for
 Spotify control during those sessions. It does not request microphone,
 Documents, or Downloads access. Its hardened runtime entitlements allow
 Electron's V8 JIT and unsigned executable memory and disable library validation
-so the Presage SDK's bundled dylibs can load. No app sandbox is enabled, so a
-camera sandbox entitlement is not needed. Camera use still requires the user's
-consent and macOS permission.
+so the Presage SDK's bundled dylibs can load. The camera entitlement is present
+on both the app and Electron renderer helper so hardened runtime permits the
+renderer camera capture. Camera use still requires the user's consent and
+macOS permission.

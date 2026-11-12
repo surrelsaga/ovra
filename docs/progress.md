@@ -33,3 +33,12 @@ Six Claude Code workers via Orca (run `run_e94a5d3d429a`), each in its own workt
 | D. Moves | feat/moves | ctx_046fd6134722 |
 | E. Orb + shell | feat/shell | ctx_add8dec41d2f |
 | F. Privacy + storage | feat/privacy | ctx_0118162b82a0 |
+
+### Merged
+- **F. Privacy + storage** → main `25247c1` (40 tests). Notes for Phase 3: changing camera consent mid-session must
+  stop sensing (listen to `privacy:changed`); the storage guard matches exact key names; `docs/privacy.md` has the
+  DEV "Consent and Data Handling" draft for Daniel to edit.
+- **B. State engine + session** → main `dfeb683` (38 module tests, 78 total). Expected on test videos: calm →
+  focused; tense and low-energy probably also focused (vitals barely differ in the acted clips) until Daniel tunes
+  thresholds live. Crashing via "pulse +20 % + negative face" needs tense already held (smoothing). Baevsky is in the
+  baseline but not used by rules yet.

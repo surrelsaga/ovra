@@ -1,0 +1,6 @@
+node_modules/
+out/
+dist/
+.env
+test-media/
+.DS_Store

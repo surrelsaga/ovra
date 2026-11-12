@@ -1,0 +1,23 @@
+const { SmartSpectraSDK, breathingMetrics, cardioMetrics } = require('@smartspectra/node-sdk/renderer');
+const { decodeMetrics } = require('@smartspectra/node-sdk/messages');
+const p = new URLSearchParams(location.hash.slice(1));
+const log = (...a) => console.log('SPIKE', ...a);
+(async () => {
+  const v = document.createElement('video'); v.src = p.get('video'); v.muted = true; v.playsInline = true;
+  await v.play();
+  const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const g = c.getContext('2d');
+  const h = 430, w = Math.round(v.videoWidth * h / v.videoHeight);
+  const draw = () => { g.fillStyle = '#000'; g.fillRect(0, 0, 1280, 720); g.drawImage(v, (1280 - w) / 2, 0, w, h); v.requestVideoFrameCallback(draw); };
+  v.requestVideoFrameCallback(draw);
+  const stream = c.captureStream(30);
+  const sdk = new SmartSpectraSDK({ apiKey: p.get('key'), requestedMetrics: [...breathingMetrics, ...cardioMetrics], enableTelemetry: false });
+  let n = 0, last = null; const t0 = performance.now();
+  sdk.on('validationStatus', (code, ts, hint) => { if (code !== last) { log('validation', code, hint); last = code; } });
+  sdk.on('error', (code, msg) => log('error', code, msg));
+  sdk.on('processingStatus', (s) => log('status', s));
+  sdk.on('metrics', (buf) => { n++; const m = decodeMetrics(buf); const pr = m.cardio?.pulseRate?.at(-1); if (pr && n % 40 === 0) log('pulse', ((performance.now() - t0) / 1000).toFixed(1) + 's', pr.value.toFixed(1), Math.round(pr.confidence), pr.stable); });
+  sdk.useMediaStream(stream);
+  await sdk.start();
+  log('started');
+  setTimeout(async () => { await sdk.stop(); sdk.destroy(); log('DONE metricsEvents=' + n); }, +p.get('dur') * 1000);
+})().catch((e) => log('DONE fail', e && e.message));

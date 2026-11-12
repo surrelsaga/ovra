@@ -179,8 +179,17 @@ Everything talks through typed events so modules can be built in parallel:
 - Read fields from the `metrics` event: `cardio.pulseRate`, `cardio.hrv`, `breathing.rate`, `face.landmarks`, `face.blinking`, `face.talking`, `face.expression`.
 - Use `validationStatus` events (code + hint) for "no face", "too dark", "move closer". This is also the **away detection** signal.
 - Do **not** request any of these, or `start()` fails: `BREATHING_AMPLITUDE`, `APNEA`, `RESPIRATORY_LINE_LENGTH`, `BASELINE`, `INHALE_EXHALE_RATIO`.
-- Set `enableTelemetry = false` unless the user opted in.
+- Set `enableTelemetry = false` unless the user opted in. **The SDK defaults it to `true`**, so always pass it explicitly.
 - Do **not** use Presage LLM Insights (`requestInsight()`).
+
+### Spike findings (see docs/spike-notes.md)
+
+- The SDK emits **no metrics** until it sees enough of the chest (validation `7`). Breathing rate needs the chest in view; pulse and HRV need it to pass the check too. Calibration must show the hints so the user sits back.
+- **Breathing rate is often missing** at normal laptop framing. Everything downstream treats breathing as optional.
+- When the person leaves, metrics simply stop and validation flaps between `15`, `2` and `17`. `kNoFaceFound` is not reliable. Away = no face data for N seconds.
+- Head roll from landmarks 33 and 263 (outer eye corners) is a usable tilt signal (±40–50° on a tilt, ±3° at rest).
+- Expression scores are percentages (0–100). Validation codes flap quickly; smooth them before showing hints.
+- The capture renderer sends the main process only **derived** face values (present, blinking, talking, expression scores, head roll, face position and size), never landmarks.
 
 ### Camera modes
 
@@ -192,8 +201,9 @@ Everything talks through typed events so modules can be built in parallel:
 ### Dev video source
 
 - A dev-only setting (hidden in production builds) that feeds a file from `test-media/` into the SDK.
-- Approach: play the file in a hidden `<video>` element, call `video.captureStream()`, and pass that stream to the renderer SDK with `useMediaStream()`.
-- Confirm this works in the spike (section 13). If it doesn't, check the SDK docs for a video file input option.
+- Approach (confirmed in the spike): play the file in a hidden `<video>`, draw each frame into a 1280×720 canvas, `canvas.captureStream(30)`, and pass that stream to the renderer SDK with `useMediaStream()`.
+- The canvas draw applies a configurable **framing pad** (scale the video down and pad the bottom) because the current test videos have the face at the bottom edge and fail the SDK's chest check otherwise.
+- The capture window needs `backgroundThrottling: false`. `useFile()` on the main-process SDK did not work with these videos.
 
 ---
 
@@ -203,8 +213,11 @@ The SDK only measures. This module turns measurements into decisions.
 
 ### Baseline
 
-- Built during calibration from stable readings: median pulse, median breathing rate, median RMSSD, median Baevsky.
+- Built during calibration from stable readings: median pulse, median breathing rate, median RMSSD, median Baevsky (and blink rate if face is on).
+- Breathing, HRV and blink rate are each optional in the baseline (the spike showed breathing is often missing and HRV needs a still minute). Pulse is required.
 - Kept in memory only. Dropped when the session ends.
+
+Every rule below that uses breathing or RMSSD falls back to the signals that are present. If only pulse is available, the classifier still runs but lowers its confidence.
 
 ### Situations
 
@@ -226,7 +239,7 @@ Rules:
 ### Seated time and away detection
 
 - **Seated time:** minutes the face has been in frame without a gap of over ~60 seconds. In check-in mode, a check-in with no face counts as a gap.
-- **Away:** in continuous mode, no face for 20+ seconds. In check-in mode, the user clicks "I'm going" and later "I'm back".
+- **Away:** in continuous mode, no face data (no metrics or `face.present = false`) for 20+ seconds. In check-in mode, the user clicks "I'm going" and later "I'm back".
 
 ### Output
 
@@ -236,6 +249,7 @@ Emit `state:updated` with: `situation`, `confidence`, `seatedMinutes`, `away`, `
 
 - Unit tests with fake metric streams for each situation.
 - Running the dev video source on `calm-working.mp4` gives Focused, and `tense.mp4` gives Tense (after tuning).
+  Spike note: the acted `tense.mp4` doesn't raise pulse, so this may only pass with face support or after Daniel's tuning. Report the result; don't bend the rules to fit one clip.
 
 ---
 
@@ -274,9 +288,9 @@ Things to test on day 1 (section 13):
 
 ### Scoring pipeline (once per song, background, cached)
 
-1. **Last.fm tags.** Call `track.getTopTags` (artist + track). Tags like "chill", "energetic", "sad", "upbeat", "instrumental" are real crowd data about the song. If the track has no tags, also try the artist's top tags.
-2. **LLM via OpenRouter.** Send title, artist and the Last.fm tags. Ask for energy, mood, vocals and confidence as strict JSON. The LLM uses the tags plus what it knows about the song. Batch up to ~50 songs per request.
-3. **Web search, only if needed.** If confidence is still low (no tags and the LLM isn't sure), use OpenRouter's web search on that song. This is the last resort because it's slower and may cost money.
+1. **Last.fm tags.** Call `track.getTopTags` (artist + track) and **always** `artist.getTopTags` too. Spike: track tags currently come back empty even for very popular songs, while artist tags work. Handle error 6 (not found).
+2. **LLM via OpenRouter.** Send title, artist and the Last.fm tags. Ask for energy, mood, vocals and confidence as strict JSON. The LLM uses the tags plus what it knows about the song. Batch up to ~50 songs per request. Spike: the account is free tier (50 free-model requests/day); free models are slow (~30–40 s) and sometimes rate-limited, so try a configured list of free models in order with backoff.
+3. **Web search: not in the MVP.** It's a paid OpenRouter plugin and the account has no credits. Low-confidence songs stay "Not sure yet" and get learned from the body.
 4. **Cache** the result keyed by Spotify ID: scores, confidence, source, timestamp. Never re-score unless the user asks.
 
 Rules:
@@ -316,6 +330,12 @@ Rules:
 - No more than one target change every ~3 minutes.
 - "Leave my music alone" toggle turns off all switching but keeps learning.
 - If Spotify isn't running, show a quiet hint in the orb bubble ("Open Spotify to let me pick music") and carry on without music.
+
+### Spike findings for the Mac controller
+
+- `player position` comes back with the locale's decimal separator (`2,84`). Parse `,` and `.`.
+- Ads: id starts with `spotify:ad:`, artist and album are empty, `next track` can't skip them. Set `isAd`.
+- Any `tell application "Spotify"` launches Spotify. `isAvailable()` must check `application "Spotify" is running` first and never launch it.
 
 ### Interface (for Mac now, Windows later)
 

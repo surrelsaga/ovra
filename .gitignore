@@ -4,3 +4,9 @@ dist/
 .env
 test-media/
 .DS_Store
+*.log
+.eslintcache
+.vite/
+spike/*.json
+spike/*.log
+spike/electron/renderer.bundle.js

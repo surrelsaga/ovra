@@ -197,12 +197,14 @@ describe('phases and check-in scheduler', () => {
     await sensing.startContinuous()
     await sensing.pause()
     expect(sensing.phase()).toBe('idle')
+    await sensing.startReturnCheck() // can't run while paused, but still reports ended
     await sensing.resume()
     expect(sensing.phase()).toBe('continuous')
     expect(names()).toEqual([
       'sdk:checkin-started:continuous',
       'sdk:checkin-ended:continuous',
       'privacy:camera-paused',
+      'sdk:checkin-ended:return-check',
       'privacy:camera-resumed',
       'sdk:checkin-started:continuous'
     ])

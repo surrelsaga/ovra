@@ -182,7 +182,9 @@ export function createSensing(deps: SensingDeps): SensingService {
 
   async function runCapture(phase: ActivePhase, durationMs?: number): Promise<void> {
     privacy.assertCameraConsent() // no camera code before consent
-    if (paused) return
+    // A phase that can't run still reports ended, so callers waiting on it (session) never hang.
+    const skip = (): void => bus.emit('sdk:checkin-ended', { phase })
+    if (paused) return skip()
     const apiKey = deps.getApiKey()
     if (!apiKey) {
       bus.emit('sdk:error', {
@@ -190,12 +192,12 @@ export function createSensing(deps: SensingDeps): SensingService {
         message: 'The Presage API key is missing. Set PRESAGE_API_KEY in .env.',
         retryable: false
       })
-      return
+      return skip()
     }
     const g = ++gen
     await stopCapture()
     const w = await ensureWindow()
-    if (g !== gen || paused) return
+    if (g !== gen || paused) return skip()
 
     const settings = privacy.getSettings()
     const file = devVideo()

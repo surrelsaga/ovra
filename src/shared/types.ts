@@ -175,7 +175,7 @@ export interface Session {
   startedAt: number
   endedAt?: number
   status: SessionStatus
-  /** True if the camera was declined or paused for the whole session. */
+  /** True when sensing runs this session (camera consent given and started). False if the camera was declined. */
   sensingEnabled: boolean
 }
 

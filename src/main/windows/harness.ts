@@ -408,13 +408,16 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   for (const [i, step] of orbSteps(bus).entries()) {
     step.run()
     await shot(orb, dir, `${20 + i}-orb-${step.name}`)
+    // A few more frames of the animated states (stepped animations swap whole pixels).
+    if (['stormy', 'bright', 'listening', 'breathing'].includes(step.name))
+      for (const f of [1, 2, 3]) await shot(orb, dir, `${20 + i}-orb-${step.name}-f${f}`)
   }
   // Click-through: real mouse moves over empty space, then over the moon (the window logs each switch).
   const mouse = (x: number, y: number): void =>
     orb.webContents.sendInputEvent({ type: 'mouseMove', x, y })
   mouse(8, 8)
   await wait(300)
-  mouse(150, 166)
+  mouse(140, 142) // moon centre
   await shot(orb, dir, '40-orb-hover-controls')
   await orb.webContents.executeJavaScript(
     `document.head.insertAdjacentHTML('beforeend', '<style id="hit">[data-hit]{outline:2px dashed #7fd1ae;outline-offset:2px} .orb-app{outline:2px dashed #f08080;outline-offset:-2px}</style>')`

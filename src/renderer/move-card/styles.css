@@ -393,6 +393,9 @@ body,
 .fig-walking .fig-leg {
   transform-origin: 58px 68px;
 }
+.fig-walking .fig-shin {
+  transform-origin: 58px 87px;
+}
 .fig-walking .fig-arm {
   transform-origin: 58px 40px;
 }
@@ -446,24 +449,55 @@ body,
   animation: fold 5s var(--ease) infinite;
 }
 
-.fig--walk .fig-leg-a,
-.fig--outside .fig-leg-a,
-.fig--walk .fig-arm-b,
-.fig--outside .fig-arm-b {
-  animation: swing 1.2s ease-in-out infinite;
+/* Walk cycle, 1.2s per stride. Leg a with arm b; leg b and arm a start half a stride later. */
+.fig-walking .fig-leg {
+  animation: walk-hip 1.2s linear infinite;
 }
-.fig--walk .fig-leg-b,
-.fig--outside .fig-leg-b,
-.fig--walk .fig-arm-a,
-.fig--outside .fig-arm-a {
-  animation: swing 1.2s ease-in-out infinite reverse;
+.fig-walking .fig-shin {
+  animation: walk-knee 1.2s linear infinite;
+}
+.fig-walking .fig-arm {
+  animation: walk-arm 1.2s ease-in-out infinite;
+}
+.fig-walking .fig-leg-b,
+.fig-walking .fig-leg-b .fig-shin,
+.fig-walking .fig-arm-a {
+  animation-delay: -0.6s;
+}
+/* Body is lowest when both feet are down, twice per stride. */
+.fig-walking .fig-bob {
+  animation: walk-bob 0.6s ease-in-out infinite;
 }
 .fig-ground {
   stroke-dasharray: 10 8;
 }
-.fig--walk .fig-ground,
-.fig--outside .fig-ground {
+.fig-walking .fig-ground {
   animation: ground 0.6s linear infinite;
+}
+
+/* Reduced motion: a still mid-stride pose instead of the theme's frozen first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .fig-walking .fig-leg,
+  .fig-walking .fig-shin,
+  .fig-walking .fig-arm,
+  .fig-walking .fig-bob {
+    animation: none;
+  }
+  .fig-walking .fig-leg-a {
+    transform: rotate(-22deg);
+  }
+  .fig-walking .fig-leg-b {
+    transform: rotate(20deg);
+  }
+  .fig-walking .fig-leg-b .fig-shin {
+    transform: rotate(35deg);
+  }
+  .fig-walking .fig-arm-a {
+    transform: rotate(28deg);
+  }
+  .fig-walking .fig-arm-b {
+    transform: rotate(-28deg);
+  }
 }
 
 @keyframes settle {
@@ -552,13 +586,13 @@ body,
 @keyframes reach-l {
   35%,
   75% {
-    transform: rotate(150deg);
+    transform: rotate(120deg);
   }
 }
 @keyframes reach-r {
   35%,
   75% {
-    transform: rotate(-150deg);
+    transform: rotate(-120deg);
   }
 }
 @keyframes side-bend {
@@ -579,18 +613,70 @@ body,
     transform: scaleY(0.6);
   }
 }
-@keyframes swing {
+/* Facing right: negative angles swing a limb forward. 0% = heel strike, ~60% = toe off. */
+@keyframes walk-hip {
   0%,
   100% {
-    transform: rotate(22deg);
+    transform: rotate(-24deg);
   }
-  50% {
+  30% {
+    transform: rotate(-2deg);
+  }
+  60% {
+    transform: rotate(20deg);
+  }
+  72% {
+    transform: rotate(6deg);
+  }
+  88% {
     transform: rotate(-22deg);
   }
 }
+/* Knee stays nearly straight on the ground and bends on the back-swing. */
+@keyframes walk-knee {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(8deg);
+  }
+  45% {
+    transform: rotate(6deg);
+  }
+  62% {
+    transform: rotate(40deg);
+  }
+  74% {
+    transform: rotate(55deg);
+  }
+  90% {
+    transform: rotate(4deg);
+  }
+}
+/* Arm b swings forward with leg a. */
+@keyframes walk-arm {
+  0%,
+  100% {
+    transform: rotate(-30deg);
+  }
+  50% {
+    transform: rotate(30deg);
+  }
+}
+@keyframes walk-bob {
+  0%,
+  100% {
+    transform: translateY(1.5px);
+  }
+  50% {
+    transform: translateY(-0.5px);
+  }
+}
+/* Ground moves left, so the figure walks right. */
 @keyframes ground {
   to {
-    stroke-dashoffset: -18;
+    stroke-dashoffset: 18;
   }
 }
 @keyframes spin {

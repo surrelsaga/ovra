@@ -35,9 +35,9 @@ function Seated({ bodyStyle }: { bodyStyle?: CSSProperties }): React.JSX.Element
 }
 
 function Standing({ armsUp }: { armsUp?: boolean }): React.JSX.Element {
-  // Arms hang from the shoulder (60,40); "up" is the same line rotated over the head.
-  const l = armsUp ? 'rotate(150 60 40)' : undefined
-  const r = armsUp ? 'rotate(-150 60 40)' : undefined
+  // Arms hang from the shoulder (60,40); "up" is the same line rotated into a V above the head.
+  const l = armsUp ? 'rotate(120 60 40)' : undefined
+  const r = armsUp ? 'rotate(-120 60 40)' : undefined
   return (
     <g className="fig-standing">
       <line className="fig-prop" x1="28" y1="106" x2="92" y2="106" />
@@ -59,6 +59,28 @@ function Standing({ armsUp }: { armsUp?: boolean }): React.JSX.Element {
   )
 }
 
+/** Hip at (58,68), knee at (58,87): the thigh swings at the hip, the shin bends at the knee. */
+function Leg({ side }: { side: 'a' | 'b' }): React.JSX.Element {
+  return (
+    <g className={`fig-leg fig-leg-${side}`}>
+      <line x1="58" y1="68" x2="58" y2="87" />
+      <g className="fig-shin">
+        <polyline points="58,87 58,105 63,105" />
+      </g>
+    </g>
+  )
+}
+
+/** Upper arm + forearm with a slight elbow bend, swinging at the shoulder (58,40). */
+function Arm({ side }: { side: 'a' | 'b' }): React.JSX.Element {
+  return (
+    <g className={`fig-arm fig-arm-${side}`}>
+      <polyline points="58,40 58,54 63,66" />
+    </g>
+  )
+}
+
+// Facing right. Leg a and arm b are in phase; leg b and arm a run half a stride behind (styles.css).
 function Walking({ outside }: { outside?: boolean }): React.JSX.Element {
   return (
     <g className="fig-walking">
@@ -69,21 +91,18 @@ function Walking({ outside }: { outside?: boolean }): React.JSX.Element {
         </g>
       )}
       <line className="fig-ground" x1="10" y1="106" x2="110" y2="106" />
-      <g className="fig-leg fig-leg-a">
-        <line x1="58" y1="68" x2="58" y2="105" />
-      </g>
-      <g className="fig-leg fig-leg-b">
-        <line x1="58" y1="68" x2="58" y2="105" />
-      </g>
-      <line x1="58" y1="33" x2="58" y2="68" />
-      <circle cx="60" cy="23" r="9" />
-      <g className="fig-arm fig-arm-a">
-        <line x1="58" y1="40" x2="58" y2="64" />
-      </g>
-      <g className="fig-arm fig-arm-b">
-        <line x1="58" y1="40" x2="58" y2="64" />
-      </g>
       {!outside && <path className="fig-prop" d="M80 80h10l-1.5 18h-7z" />}
+      <g className="fig-bob">
+        <Leg side="b" />
+        <Leg side="a" />
+        {/* Slight forward lean from the hip. */}
+        <g transform="rotate(7 58 68)">
+          <Arm side="a" />
+          <line x1="58" y1="33" x2="58" y2="68" />
+          <circle cx="58" cy="23" r="9" />
+          <Arm side="b" />
+        </g>
+      </g>
     </g>
   )
 }

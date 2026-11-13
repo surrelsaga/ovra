@@ -1,4 +1,5 @@
-/* Orb window: transparent, everything floats. Dark pills stay readable on light desktops. */
+/* Orb window: transparent, everything floats. Dark pills stay readable on light desktops.
+ * Square 2-px corners and a stepped bubble tail match the pixel moon; text stays Inter. */
 html,
 body {
   background: transparent;
@@ -9,7 +10,7 @@ body {
 .orb-app {
   height: 100vh;
   display: grid;
-  grid-template-rows: 84px 164px 40px 1fr;
+  grid-template-rows: 76px 132px 36px 1fr;
   justify-items: center;
   align-items: center;
 }
@@ -24,7 +25,7 @@ body {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: 2px;
   background: var(--panel-raised);
   box-shadow: var(--shadow-panel);
   color: var(--text);
@@ -32,24 +33,59 @@ body {
   text-align: center;
   animation: bubble-in var(--duration) var(--ease);
 }
+.bubble::before,
 .bubble::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 7px;
+  bottom: -7px;
+  background: var(--border-strong);
+  /* Pixel-stepped tail: an outline layer, then the fill one pixel in. */
+  clip-path: polygon(
+    0 0,
+    12px 0,
+    12px 3px,
+    10px 3px,
+    10px 5px,
+    8px 5px,
+    8px 7px,
+    4px 7px,
+    4px 5px,
+    2px 5px,
+    2px 3px,
+    0 3px
+  );
+}
+.bubble::after {
   left: calc(50% - 5px);
   width: 10px;
-  height: 10px;
-  transform: rotate(45deg);
+  height: 7px;
+  bottom: -6px;
   background: var(--panel-raised);
-  border-right: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
+  clip-path: polygon(
+    0 0,
+    10px 0,
+    10px 3px,
+    8px 3px,
+    8px 5px,
+    6px 5px,
+    6px 6px,
+    4px 6px,
+    4px 5px,
+    2px 5px,
+    2px 3px,
+    0 3px
+  );
 }
 
 .orb-app__moon {
   display: grid;
   place-items: center;
-  width: 160px;
-  height: 160px;
+  /* The moon's 32-cell art box (22-cell disk + halo, ring and sparkles) at 4 px a cell. */
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
   cursor: grab;
   touch-action: none;
@@ -62,11 +98,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: 280px;
+  max-width: 256px;
   margin: 0;
   padding: 6px var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: 2px;
   background: var(--panel);
   box-shadow: var(--shadow-panel);
   font-size: var(--text-xs);
@@ -113,7 +149,7 @@ body {
   gap: var(--space-1);
   padding: var(--space-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: 2px;
   background: var(--panel);
   box-shadow: var(--shadow-panel);
   opacity: 0;
@@ -133,7 +169,7 @@ body {
   width: var(--touch-target);
   height: var(--touch-target);
   border: 0;
-  border-radius: 50%;
+  border-radius: 2px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;

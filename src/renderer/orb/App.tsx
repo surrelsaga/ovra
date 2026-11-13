@@ -139,7 +139,12 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <div className="orb-app" data-hover={hover || undefined}>
+    <div
+      className="orb-app"
+      data-hover={hover || undefined}
+      // Mouse presses never take focus, so a later key press can't show a focus ring; Tab still can.
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <div className="orb-app__bubble-zone" aria-live="polite">
         {view.bubble && (
           <p className="bubble" data-hit>

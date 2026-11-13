@@ -7,17 +7,21 @@ body {
   user-select: none;
 }
 
+/* Bubble zone, moon, then the chip and controls tucked right under it. */
 .orb-app {
   height: 100vh;
-  display: grid;
-  grid-template-rows: 76px 132px 36px 1fr;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 4px;
 }
 
 .orb-app__bubble-zone {
-  align-self: end;
-  padding: 0 var(--space-3);
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  height: 76px;
+  padding: 0 var(--space-2);
   max-width: 100%;
 }
 .bubble {
@@ -84,8 +88,11 @@ body {
   display: grid;
   place-items: center;
   /* The moon's 32-cell art box (22-cell disk + halo, ring and sparkles) at 4 px a cell. */
+  flex: none;
   width: 128px;
   height: 128px;
+  /* The art box has a few transparent pixels below the halo; tuck what follows into them. */
+  margin-bottom: -8px;
   border-radius: 50%;
   cursor: grab;
   touch-action: none;
@@ -98,7 +105,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: 256px;
+  max-width: 200px;
   margin: 0;
   padding: 6px var(--space-3);
   border: 1px solid var(--border);
@@ -107,6 +114,9 @@ body {
   box-shadow: var(--shadow-panel);
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+.orb-app__info:empty {
+  display: none;
 }
 .pill svg {
   width: 13px;
@@ -142,16 +152,15 @@ body {
   color: var(--boost);
 }
 
-/* Mini controls: shown on hover or keyboard focus. */
+/* Mini controls: shown on hover or keyboard focus. Four 32-px buttons, about 1.5x the moon's disk. */
 .controls {
-  align-self: start;
   display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  padding: 1px;
   border: 1px solid var(--border);
   border-radius: 2px;
   background: var(--panel);
-  box-shadow: var(--shadow-panel);
+  /* Hard 1-px drop like the pixel moon, instead of a soft blur. */
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
   opacity: 0;
   transform: translateY(-4px);
   transition:
@@ -166,8 +175,8 @@ body {
 .control {
   display: grid;
   place-items: center;
-  width: var(--touch-target);
-  height: var(--touch-target);
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 2px;
   background: transparent;
@@ -183,8 +192,8 @@ body {
   color: var(--accent);
 }
 .control svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 @keyframes bubble-in {

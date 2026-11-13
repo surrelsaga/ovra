@@ -415,15 +415,60 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   // Click-through: real mouse moves over empty space, then over the moon (the window logs each switch).
   const mouse = (x: number, y: number): void =>
     orb.webContents.sendInputEvent({ type: 'mouseMove', x, y })
-  mouse(8, 8)
-  await wait(300)
-  mouse(140, 142) // moon centre
+  const moonCentre = async (): Promise<[number, number]> =>
+    orb.webContents.executeJavaScript(
+      `(() => { const r = document.querySelector('.orb-app__moon').getBoundingClientRect(); return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)] })()`
+    )
+  const hover = async (): Promise<void> => {
+    mouse(2, 2)
+    await wait(1000)
+    mouse(...(await moonCentre()))
+  }
+  await hover()
   await shot(orb, dir, '40-orb-hover-controls')
   await orb.webContents.executeJavaScript(
     `document.head.insertAdjacentHTML('beforeend', '<style id="hit">[data-hit]{outline:2px dashed #7fd1ae;outline-offset:2px} .orb-app{outline:2px dashed #f08080;outline-offset:-2px}</style>')`
   )
   await shot(orb, dir, '41-orb-hit-areas')
   await orb.webContents.executeJavaScript(`document.getElementById('hit').remove()`)
+  // Hover on a dark and a light desktop, with and without the now-playing chip.
+  const backdrop = (bg: string): Promise<unknown> =>
+    orb.webContents.executeJavaScript(`document.body.style.background = '${bg}'`)
+  for (const chip of [true, false]) {
+    if (!chip)
+      bus.emit('music:track-changed', {
+        id: 'spotify:ad:x',
+        uri: 'spotify:ad:x',
+        name: '',
+        artist: '',
+        album: '',
+        durationMs: 30_000,
+        positionMs: 0,
+        state: 'playing',
+        isAd: true
+      })
+    for (const [name, bg] of [
+      ['dark', '#1e1f24'],
+      ['light', '#f2f2f2']
+    ]) {
+      await backdrop(bg)
+      await hover()
+      await shot(orb, dir, `42-orb-hover-${chip ? 'chip' : 'nochip'}-${name}`)
+    }
+  }
+  // A mouse click on the moon must not leave a focus ring.
+  // A real first click activates the inactive orb window, so start from another window.
+  const [cx, cy] = await moonCentre()
+  main.focus()
+  await wait(300)
+  orb.focus()
+  orb.webContents.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 })
+  orb.webContents.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 })
+  await shot(orb, dir, '43-orb-after-click-light')
+  // The click must not leave keyboard focus on the moon (a later key press would show the ring).
+  const focused = await orb.webContents.executeJavaScript(`document.activeElement?.className`)
+  console.log(`[harness:shell] focused after click: ${focused || 'nothing'}`)
+  await backdrop('')
   mouse(8, 8)
   await wait(1000)
 

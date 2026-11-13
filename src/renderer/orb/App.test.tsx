@@ -106,6 +106,17 @@ describe('orb window', () => {
     expect(ignoreCalls(bridge).at(-1)).toEqual({ ignore: true })
   })
 
+  it('mouse presses never take focus (no stray focus ring), keyboard focus still works', () => {
+    installFakeBridge()
+    render(<App />)
+    const handle = screen.getByRole('button', { name: /Drag or use arrow keys/ })
+    // fireEvent returns false when the default (focusing) was prevented.
+    expect(fireEvent.mouseDown(handle)).toBe(false)
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'End session' }))).toBe(false)
+    handle.focus()
+    expect(handle).toHaveFocus()
+  })
+
   it('stays clickable while dragging off the moon', () => {
     const bridge = installFakeBridge()
     const { container } = render(<App />)

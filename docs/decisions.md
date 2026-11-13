@@ -45,3 +45,4 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
 21. **No SDK runs without Daniel's OK** (2026-11-13): Presage credits are limited. Unit tests and mocks only; ask before any harness, dev video or live camera run. Added to AGENTS.md.
 22. **Tests restore Spotify's original state** (volume, track, play state, shuffle, repeat) after touching the real app. Added to AGENTS.md.
 23. **Strong Claude agents allowed again** (2026-11-13): Daniel asked to stop the Codex simulator worker and use a Claude Opus 5.5 agent instead; use Claude when tasks need judgment, Codex for well-specified work.
+24. **Agent choice (2026-11-14):** Codex by default; Claude agents only for hard, open-ended tasks that need judgment or clarification (saves Claude usage).

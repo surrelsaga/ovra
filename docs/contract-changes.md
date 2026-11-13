@@ -37,3 +37,10 @@ Format:
 - Change: `getVolume?(): Promise<number | null>` on `MusicController`.
 - Why: Settle's early switch can fade out and restore the user's volume (PLAN.md §6).
 - Status: applied on main
+
+## 2026-11-13 — simulator — dev simulator controls and status
+- File: src/shared/types.ts
+- Change: `SimScenario`, `SimAction`, `SimulatorStatus`; invoke `simulator:status`, `simulator:set-scenario`,
+  `simulator:action`, `simulator:set-fast-mode`; push `push:simulator`. Dev builds only.
+- Why: the dev simulator window controls the fake sensing service and shows what the app decided.
+- Status: applied on main

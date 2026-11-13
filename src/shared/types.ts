@@ -529,6 +529,24 @@ export interface BusEvents {
 export type BusEventName = keyof BusEvents
 
 // ---------------------------------------------------------------------------
+// Dev simulator (dev builds only; stands in for the camera, never uses the SDK)
+// ---------------------------------------------------------------------------
+
+export type SimScenario = 'calm' | 'tense' | 'crashing' | 'low' | 'good' | 'away'
+
+/** Momentary actions for move checks. */
+export type SimAction = 'tilt-left' | 'tilt-right' | 'stand-up' | 'breathing-slows'
+
+export interface SimulatorStatus {
+  scenario: SimScenario
+  fastMode: boolean
+  state: StateUpdate | null
+  targetWord: TargetWord | null
+  lastNudge: Nudge | null
+  phase: SensingPhase
+}
+
+// ---------------------------------------------------------------------------
 // IPC: renderer → main (invoke / handle)
 // ---------------------------------------------------------------------------
 
@@ -570,6 +588,11 @@ export interface IpcInvoke {
 
   /** Dev builds only: lists files in test-media/. */
   'dev:list-videos': { req: void; res: string[] }
+  /** Dev simulator only. */
+  'simulator:status': { req: void; res: SimulatorStatus }
+  'simulator:set-scenario': { req: { scenario: SimScenario }; res: SimulatorStatus }
+  'simulator:action': { req: { action: SimAction }; res: void }
+  'simulator:set-fast-mode': { req: { value: boolean }; res: SimulatorStatus }
 }
 
 export type IpcInvokeChannel = keyof IpcInvoke
@@ -591,6 +614,8 @@ export interface IpcPush {
   'push:move-card': MoveCardView
   'push:privacy': PrivacySettings
   'push:settings': AppSettings
+  /** Dev simulator window only. */
+  'push:simulator': SimulatorStatus
   /** Capture window only. */
   'push:capture-start': CaptureStartRequest
   /** Capture window only. */
@@ -641,7 +666,11 @@ export const IPC_INVOKE_CHANNELS = [
   'window:open-main',
   'window:orb-moved',
   'window:orb-ignore-mouse',
-  'dev:list-videos'
+  'dev:list-videos',
+  'simulator:status',
+  'simulator:set-scenario',
+  'simulator:action',
+  'simulator:set-fast-mode'
 ] as const satisfies readonly IpcInvokeChannel[]
 
 export const IPC_PUSH_CHANNELS = [
@@ -656,6 +685,7 @@ export const IPC_PUSH_CHANNELS = [
   'push:move-card',
   'push:privacy',
   'push:settings',
+  'push:simulator',
   'push:capture-start',
   'push:capture-stop'
 ] as const satisfies readonly IpcPushChannel[]

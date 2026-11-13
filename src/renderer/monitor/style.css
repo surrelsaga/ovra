@@ -1,0 +1,101 @@
+body {
+  font-size: 12px;
+  line-height: 1.4;
+}
+main {
+  padding: 16px 18px 20px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+}
+h2 {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+p {
+  margin: 4px 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+b {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+.pill {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-pill);
+  padding: 5px 10px;
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--text-secondary);
+}
+.hint {
+  color: var(--warn);
+  min-height: 19px;
+}
+.signals {
+  padding: 4px 12px 9px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th,
+td {
+  padding: 4px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+th:first-child {
+  text-align: left;
+}
+tbody th {
+  font-weight: var(--weight-regular);
+  color: var(--text-secondary);
+}
+td {
+  color: var(--text);
+  width: 24%;
+  overflow-wrap: anywhere;
+}
+thead {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.legend {
+  display: block;
+  margin-top: 8px;
+}
+.failure {
+  color: var(--warn);
+}
+.track {
+  color: var(--accent);
+}

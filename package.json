@@ -14,6 +14,7 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "dev:simulate": "OVRA_SIMULATE=1 electron-vite dev",
+    "dev:monitor": "OVRA_MONITOR=1 electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",

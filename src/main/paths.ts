@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 
-export type RendererPage = 'main-window' | 'orb' | 'move-card' | 'capture'
+export type RendererPage = 'main-window' | 'orb' | 'move-card' | 'capture' | 'monitor'
 export type PreloadName = 'index' | 'capture'
 
 /** Absolute path to a built preload script. */

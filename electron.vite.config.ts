@@ -34,7 +34,8 @@ export default defineConfig({
           orb: resolve('src/renderer/orb/index.html'),
           'move-card': resolve('src/renderer/move-card/index.html'),
           capture: resolve('src/renderer/capture/index.html'),
-          simulator: resolve('src/renderer/simulator/index.html')
+          simulator: resolve('src/renderer/simulator/index.html'),
+          monitor: resolve('src/renderer/monitor/index.html')
         }
       }
     }

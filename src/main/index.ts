@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { startApp } from './app'
 
 // Isolate Chromium files too, before Electron creates its default session.
-if (!app.isPackaged && process.env.OVRA_HARNESS === 'e2e') {
+if (!app.isPackaged && ['e2e', 'monitor'].includes(process.env.OVRA_HARNESS ?? '')) {
   const dir = mkdtempSync(join(tmpdir(), 'ovra-e2e-'))
   app.setPath('userData', dir)
   app.setPath('sessionData', join(dir, 'chromium'))
@@ -16,6 +16,7 @@ if (!app.isPackaged && process.env.OVRA_HARNESS === 'e2e') {
 
 const harnesses: Record<string, () => Promise<{ runHarness: () => Promise<void> }>> = {
   e2e: () => import('./e2e/harness'),
+  monitor: () => import('./monitor/harness'),
   sensing: () => import('./sdk/harness'),
   shell: () => import('./windows/harness'),
   moves: () => import('./moves/harness')

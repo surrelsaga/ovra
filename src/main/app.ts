@@ -16,6 +16,7 @@ import { createMusicController } from './music/controller'
 import { createMoves, registerMovesIpc } from './moves'
 import { createSessionService, registerSessionIpc } from './session'
 import { createWindows, registerWindowsIpc } from './windows'
+import { startMonitor } from './monitor'
 
 export interface AppOptions {
   background?: boolean
@@ -62,6 +63,7 @@ export async function startApp(options: AppOptions = {}) {
   })
   const moves = createMoves({ bus, privacy }, options.movesConfig)
   const session = createSessionService({ bus, privacy, sensing, state, music, moves })
+  startMonitor({ bus, sensing, state, session, music })
   registerSessionIpc(session, sensing)
   registerMusicIpc(music)
   registerMovesIpc(moves)
@@ -72,7 +74,7 @@ export async function startApp(options: AppOptions = {}) {
   windows.showMain()
   const shutdown = async (): Promise<void> => {
     clearInterval(autoDelete)
-    await session.end()
+    await session.end('quit')
     await sensing.stop()
   }
   installQuitHandler(shutdown)

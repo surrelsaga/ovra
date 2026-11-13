@@ -91,3 +91,4 @@ face/telemetry consent changes restart capture, nudges during calibration, music
 - Windows Spotify controller (`6a21108`): PowerShell/SMTC, unit-tested only; no exact-track picks or fades on Windows.
   Needs a real Windows PC check (`docs/windows.md`).
 **All technical implementation done (257 tests).** Left: credit-blocked checks and Daniel's deliverables.
+- Dev sensing simulator (`193acdb`): `npm run dev:simulate` drives the real app with fake readings (no SDK); test script in `docs/simulator.md`. 274 tests.

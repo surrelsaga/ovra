@@ -200,6 +200,14 @@ export function Calibration({
       <p className="muted">
         Sit back so your shoulders and chest are in view, and breathe normally.
       </p>
+      <div className="calibration-hint" role="status" aria-live="polite">
+        <p className="muted">
+          {cal.hint ? 'Let’s get you in view.' : 'Make yourself comfortable.'}
+        </p>
+        <p className="calibration-hint__text">
+          {cal.hint ?? 'You’re in view. Keep breathing normally.'}
+        </p>
+      </div>
       {previewEnabled && (
         <div className="calibration-preview" aria-label="Live camera preview">
           {devVideo ? (
@@ -235,7 +243,7 @@ export function Calibration({
       <div className="calibration">
         <Progress value={cal.progress} label="Calibration progress" />
         <div className="calibration__meta">
-          <span aria-live="polite">{cal.hint ?? 'Looking good'}</span>
+          <span>{cal.progress === 0 ? 'Finding your position' : 'Getting to know you'}</span>
           <span>{secLeft > 0 ? `About ${secLeft} s left` : 'Almost done'}</span>
         </div>
         {session.config.music && music.scoringQueue > 0 && (

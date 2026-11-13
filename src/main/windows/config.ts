@@ -13,6 +13,7 @@ export const windowsConfig = {
   /** How often the breath value is pushed to the orb. */
   breathTickMs: 100,
   bubbleTtlMs: 7_000,
+  cameraTeachLimit: 3,
   /** Wait this long after the last drag before saving the orb position. */
   orbSaveDelayMs: 400,
   videoExtensions: ['.mp4', '.mov', '.webm', '.m4v']

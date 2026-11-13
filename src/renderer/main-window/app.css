@@ -513,3 +513,23 @@ code {
 .threshold .input:not(.input--small) {
   flex: 1;
 }
+
+.onboarding__camera {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.calibration-hint {
+  max-width: 560px;
+  margin: var(--space-3) 0;
+}
+.calibration-hint__text {
+  margin-top: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+}

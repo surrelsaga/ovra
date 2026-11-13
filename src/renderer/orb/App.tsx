@@ -11,7 +11,7 @@ import { AppWindow, Camera, CameraOff, Hand, Music, Square } from 'lucide-react'
 import type { MusicStatus, OrbView } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { MoonOrb } from '../ui/MoonOrb'
-import { awayText, orbConfig } from './config'
+import { awayText, cameraLabel, orbConfig } from './config'
 import './orb.css'
 
 const START: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
@@ -119,9 +119,25 @@ export default function App(): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
   const { dragging, ...drag } = useDrag()
   const hover = useClickThrough(dragging)
+  const [cameraNote, setCameraNote] = useState<{ on: boolean; text: string | null }>({
+    on: false,
+    text: null
+  })
+  if (cameraNote.on !== view.listening) {
+    setCameraNote({ on: view.listening, text: view.listening ? 'Camera on' : 'Camera off' })
+  }
+  useEffect(() => {
+    if (!cameraNote.text) return
+    const timer = setTimeout(
+      () => setCameraNote((note) => ({ ...note, text: null })),
+      orbConfig.cameraNoteMs
+    )
+    return () => clearTimeout(timer)
+  }, [cameraNote.on, cameraNote.text])
+  const cameraTip = cameraLabel(view, now)
 
   useEffect(() => {
-    if (!view.away) return
+    if (!view.away && !view.nextCheckAt) return
     const tick = (): void => setNow(Date.now())
     const first = setTimeout(tick, 0)
     const id = setInterval(tick, orbConfig.awayTickMs)
@@ -129,7 +145,7 @@ export default function App(): React.JSX.Element {
       clearTimeout(first)
       clearInterval(id)
     }
-  }, [view.away])
+  }, [view.away, view.nextCheckAt])
 
   const toggleCamera = (): void =>
     void ovra().invoke(view.paused ? 'camera:resume' : 'camera:pause')
@@ -158,35 +174,70 @@ export default function App(): React.JSX.Element {
         data-hit
         role="button"
         tabIndex={0}
-        aria-label="Ovra moon. Drag or use arrow keys to move."
+        aria-label={`Ovra moon. ${cameraTip}. Drag or use arrow keys to move.`}
+        aria-describedby="moon-camera-tip"
         {...drag}
       >
         <MoonOrb {...view} />
+        <span className="camera-tooltip" role="tooltip" id="moon-camera-tip">
+          {cameraTip}
+        </span>
       </div>
 
       <div className="orb-app__info">
-        {view.away && view.awaySince ? (
+        {view.away ? (
           <p className="pill" data-hit>
-            {awayText(now - view.awaySince)}
+            {awayText(now - (view.awaySince ?? now))}
           </p>
         ) : view.paused ? (
           <p className="pill pill--paused" data-hit>
-            <CameraOff aria-hidden /> Camera paused
+            <span
+              className="camera-dot camera-dot--paused"
+              role="img"
+              aria-label={cameraTip}
+              tabIndex={0}
+            >
+              <span className="camera-tooltip" role="tooltip">
+                {cameraTip}
+              </span>
+            </span>
+            Camera paused
           </p>
-        ) : view.listening ? (
-          <p className="pill pill--listening" data-hit>
-            <Camera aria-hidden /> Camera on
+        ) : cameraNote.text ? (
+          <p className="pill" data-hit role="status">
+            {cameraNote.text}
           </p>
         ) : view.nowPlaying ? (
           <p
             className="pill now-playing"
             data-hit
-            title={`${view.nowPlaying.name} · ${view.nowPlaying.artist}`}
+            tabIndex={0}
+            aria-label={[view.nowPlaying.word, view.nowPlaying.name, view.nowPlaying.artist]
+              .filter(Boolean)
+              .join(' · ')}
+            title={[view.nowPlaying.word, view.nowPlaying.name, view.nowPlaying.artist]
+              .filter(Boolean)
+              .join(' · ')}
           >
-            {view.nowPlaying.word && (
-              <span className={`word word--${view.nowPlaying.word.toLowerCase()}`}>
-                {view.nowPlaying.word}
+            {view.listening && (
+              <span
+                className="camera-dot camera-dot--on"
+                role="img"
+                aria-label={cameraTip}
+                tabIndex={0}
+              >
+                <span className="camera-tooltip" role="tooltip">
+                  {cameraTip}
+                </span>
               </span>
+            )}
+            {view.nowPlaying.word && (
+              <>
+                <span className={`word word--${view.nowPlaying.word.toLowerCase()}`}>
+                  {view.nowPlaying.word}
+                </span>
+                <span aria-hidden>·</span>
+              </>
             )}
             <span className="now-playing__text">
               {view.nowPlaying.name} · <span className="muted">{view.nowPlaying.artist}</span>

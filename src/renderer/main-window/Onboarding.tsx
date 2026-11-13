@@ -56,6 +56,21 @@ export function Onboarding(props: {
               {/* Numbered against all seven, so the total never jumps when camera questions are skipped. */}
               Question {CONSENT_QUESTIONS.indexOf(q) + 1} of {CONSENT_QUESTIONS.length}
             </p>
+            {q.key === 'camera' && (
+              <div className="onboarding__camera">
+                <MoonOrb
+                  mood="calm"
+                  listening
+                  away={false}
+                  size={88}
+                  label="Example: camera on, light circling the moon"
+                />
+                <p>
+                  When this little light circles me, the camera is on. When it&apos;s gone, the
+                  camera is off.
+                </p>
+              </div>
+            )}
             <ConsentField
               key={q.key}
               question={q}

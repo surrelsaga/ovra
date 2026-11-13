@@ -86,11 +86,13 @@ export function MoonOrb(props: MoonProps): React.JSX.Element {
     [d, grid, away, phase, reveal]
   )
   // The camera indicator: on for the whole time `listening` is true, then fades in two steps.
-  const satAlpha = listening
-    ? 1
-    : still
-      ? 0
-      : (FADE[Math.floor(motion.ms / moonMotion.fadeStepMs)] ?? 0)
+  const satAlpha = props.paused
+    ? 0
+    : listening
+      ? 1
+      : still
+        ? 0
+        : (FADE[Math.floor(motion.ms / moonMotion.fadeStepMs)] ?? 0)
   const sat = satAlpha
     ? satelliteCells(grid, grid / 2 - 1, still ? 0 : motion.step % SAT_STEPS, still ? 0 : 2)
     : null
@@ -144,6 +146,17 @@ export function MoonOrb(props: MoonProps): React.JSX.Element {
           ))}
         <path className="px px--night" d={art.night} />
         <path className="px px--night-edge" d={art.nightEdge} />
+        {props.paused && (
+          <g
+            className="moon__camera-off"
+            data-testid="camera-off-badge"
+            transform={`translate(${grid - 9} ${grid - 10})`}
+          >
+            <path className="moon__badge-bg" d="M1 0h4v1h1v4H5v1H1V5H0V1h1z" />
+            <path d="M1 2h3v1h1v2H4V4H1z" />
+            <path className="moon__badge-slash" d="M1 1h1v1h1v1h1v1h1v1H4V4H3V3H2V2H1z" />
+          </g>
+        )}
         {sat && (
           <g
             className="moon__satellite"

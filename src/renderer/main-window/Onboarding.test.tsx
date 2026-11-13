@@ -35,6 +35,13 @@ describe('onboarding', () => {
     // Camera: must answer.
     seen.push(screen.getByRole('group').querySelector('legend')!.textContent!)
     expect(next()).toBeDisabled()
+    expect(screen.getByTestId('camera-satellite')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "When this little light circles me, the camera is on. When it's gone, the camera is off."
+      )
+    ).toBeInTheDocument()
+    expect(bridge.invokes).toEqual([])
     fireEvent.click(screen.getByLabelText(/^Yes/))
     expect(next()).toBeEnabled()
 

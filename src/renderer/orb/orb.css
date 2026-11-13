@@ -9,6 +9,7 @@ body {
 
 /* Bubble zone, moon, then the chip and controls tucked right under it. */
 .orb-app {
+  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -108,8 +109,9 @@ body {
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  max-width: 200px;
+  gap: 6px;
+  max-width: 208px;
+  white-space: nowrap;
   margin: 0;
   padding: 6px var(--space-3);
   border: 1px solid var(--border);
@@ -134,6 +136,7 @@ body {
   color: var(--warn);
 }
 .now-playing__text {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -205,4 +208,47 @@ body {
     opacity: 0;
     transform: translateY(4px);
   }
+}
+
+.camera-dot {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--text-secondary);
+  border-radius: 1px;
+}
+.camera-dot--on {
+  background: var(--orb-listening-ring);
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.camera-dot--paused {
+  background: linear-gradient(135deg, transparent 40%, var(--warn) 40% 60%, transparent 60%);
+  border-color: var(--warn);
+}
+.camera-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  top: 36px;
+  left: 10px;
+  width: calc(100% - 20px);
+  padding: 6px var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+}
+.orb-app__moon:hover > .camera-tooltip,
+.orb-app__moon:focus-visible > .camera-tooltip,
+.camera-dot:hover > .camera-tooltip,
+.camera-dot:focus-visible > .camera-tooltip {
+  display: block;
 }

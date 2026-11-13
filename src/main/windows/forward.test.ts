@@ -258,3 +258,43 @@ it('replays current state and move card to a newly loaded renderer', () => {
   expect(seen.get('push:move-card')).toEqual({ kind: 'away', since: 123, manual: true })
   fw.dispose()
 })
+
+it('keeps the target before the first track, recovers the song from music status and clears ads', () => {
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell())
+  bus.emit('music:target-changed', { target: 'steady', word: 'Focus', reason: '' })
+  const track = {
+    id: 'spotify:track:bones',
+    uri: 'spotify:track:bones',
+    name: 'Bones',
+    artist: 'Imagine Dragons',
+    album: '',
+    durationMs: 200_000,
+    positionMs: 0,
+    state: 'playing' as const,
+    isAd: false
+  }
+  bus.emit('music:track-changed', track)
+  expect(fw.orb().nowPlaying).toEqual({ name: 'Bones', artist: 'Imagine Dragons', word: 'Focus' })
+  const music = {
+    available: true,
+    leaveAlone: false,
+    target: 'steady' as const,
+    nowPlaying: track,
+    scoringQueue: 0,
+    scoredCount: 0
+  }
+  bus.emit('music:status', {
+    ...music,
+    target: 'lift',
+    nowPlaying: { ...track, name: 'Another song' }
+  })
+  expect(fw.orb().nowPlaying).toMatchObject({ name: 'Another song', word: 'Boost' })
+  bus.emit('music:status', { ...music, nowPlaying: { ...track, isAd: true } })
+  expect(fw.orb().nowPlaying).toBeUndefined()
+  bus.emit('music:status', music)
+  expect(fw.orb().nowPlaying?.name).toBe('Bones')
+  bus.emit('music:status', { ...music, nowPlaying: null })
+  expect(fw.orb().nowPlaying).toBeUndefined()
+  fw.dispose()
+})

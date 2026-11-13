@@ -14,6 +14,7 @@ describe('orb window', () => {
   afterEach(() => vi.useRealTimers())
 
   it('maps every orb view field to what is shown', async () => {
+    vi.useFakeTimers()
     const bridge = installFakeBridge()
     render(<App />)
     expect(moon()).toHaveAttribute('data-mood', 'calm')
@@ -31,8 +32,9 @@ describe('orb window', () => {
 
     bridge.push('push:orb', { ...base, paused: true })
     expect(screen.getByText('Camera paused')).toBeInTheDocument()
-    // Camera went off: the satellite is fading out (gone after ~600 ms, see the indicator test).
-    expect(screen.getByTestId('camera-satellite')).toHaveAttribute('opacity', '0.6')
+    // A user pause shows its badge immediately, without a lingering satellite.
+    expect(screen.queryByTestId('camera-satellite')).toBeNull()
+    expect(screen.getByTestId('camera-off-badge')).toBeInTheDocument()
     expect(moon()).toHaveAccessibleName('Ovra moon, calm, camera paused')
 
     bridge.push('push:orb', {
@@ -42,7 +44,8 @@ describe('orb window', () => {
       awaySince: Date.now() - 12 * 60_000
     })
     expect(moon()).toHaveAttribute('data-away', 'true')
-    expect(await screen.findByText('Away · 12 min')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(0))
+    expect(screen.getByText('Away · 12 min')).toBeInTheDocument()
 
     bridge.push('push:orb', { ...base, breath: 1 })
     expect(moon()).toHaveAttribute('data-breathing', 'true')
@@ -54,6 +57,7 @@ describe('orb window', () => {
       ...base,
       nowPlaying: { name: 'Weightless', artist: 'Marconi Union', word: 'Calm' }
     })
+    act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs))
     expect(screen.getByText('Calm')).toBeInTheDocument()
     expect(screen.getByText(/Weightless/)).toBeInTheDocument()
   })
@@ -183,5 +187,102 @@ describe('orb window', () => {
     expect(ignoreCalls(bridge).at(-1)).toEqual({ ignore: false })
     fireEvent.pointerMove(handle, { pointerId: 1, screenX: 40, screenY: 10 })
     expect(bridge.invokes.some((c) => c.channel === 'window:orb-moved')).toBe(true)
+  })
+})
+
+describe('song pill and camera status', () => {
+  const song = { name: 'Bones', artist: 'Imagine Dragons', word: 'Focus' as const }
+  afterEach(() => vi.useRealTimers())
+
+  it('keeps the song through continuous listening and unrelated pushes after the brief change note', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    bridge.push('push:orb', { ...base, listening: true, nowPlaying: song })
+    expect(screen.getByRole('status')).toHaveTextContent('Camera on')
+    act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs - 1))
+    expect(screen.getByRole('status')).toHaveTextContent('Camera on')
+    act(() => vi.advanceTimersByTime(1))
+    const pill = screen.getByLabelText('Focus · Bones · Imagine Dragons')
+    expect(pill).toHaveAttribute('title', 'Focus · Bones · Imagine Dragons')
+    expect(screen.getByRole('img', { name: "Camera on · checking how you're doing" })).toHaveClass(
+      'camera-dot--on'
+    )
+    bridge.push('push:orb', { ...base, listening: true, mood: 'bright', nowPlaying: song })
+    act(() => vi.advanceTimersByTime(60_000))
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(pill).toBeInTheDocument()
+  })
+
+  it('announces off for three seconds, hides the dot between check-ins, and cancels older notes', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    bridge.push('push:orb', { ...base, listening: true, nowPlaying: song })
+    act(() => vi.advanceTimersByTime(2000))
+    bridge.push('push:orb', { ...base, nowPlaying: song })
+    expect(screen.getByRole('status')).toHaveTextContent('Camera off')
+    act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs - 1))
+    expect(screen.getByRole('status')).toHaveTextContent('Camera off')
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByLabelText('Focus · Bones · Imagine Dragons')).toBeInTheDocument()
+    expect(document.querySelector('.camera-dot')).toBeNull()
+    expect(screen.queryByTestId('camera-off-badge')).toBeNull()
+  })
+
+  it('gives away priority over pause, and pause priority over notes and music', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    bridge.push('push:orb', { ...base, listening: true, nowPlaying: song })
+    bridge.push('push:orb', { ...base, paused: true, nowPlaying: song })
+    expect(screen.getByText('Camera paused')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Camera paused by you' })).toHaveClass(
+      'camera-dot--paused'
+    )
+    expect(screen.queryByTestId('camera-satellite')).toBeNull()
+    expect(screen.getByTestId('camera-off-badge')).toBeInTheDocument()
+    bridge.push('push:orb', {
+      ...base,
+      paused: true,
+      away: true,
+      awaySince: Date.now() - 3 * 60_000,
+      nowPlaying: song
+    })
+    act(() => vi.advanceTimersByTime(0))
+    expect(screen.getByText('Away · 3 min')).toBeInTheDocument()
+    expect(screen.queryByText('Camera paused')).toBeNull()
+    bridge.push('push:orb', { ...base, paused: true, nowPlaying: song })
+    act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs))
+    expect(screen.getByText('Camera paused')).toBeInTheDocument()
+    bridge.push('push:orb', { ...base, nowPlaying: song })
+    expect(screen.getByLabelText('Focus · Bones · Imagine Dragons')).toBeInTheDocument()
+  })
+
+  it('describes on, paused and off, with a countdown only when known and still in the future', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    const handle = screen.getByRole('button', { name: /Drag or use arrow keys/ })
+    expect(handle).toHaveAccessibleDescription('Camera off')
+    bridge.push('push:orb', { ...base, nextCheckAt: Date.now() + 5 * 60_000 })
+    expect(handle).toHaveAccessibleDescription('Camera off · next check in 5 min')
+    act(() => vi.advanceTimersByTime(60_000))
+    expect(handle).toHaveAccessibleDescription('Camera off · next check in 4 min')
+    act(() => vi.advanceTimersByTime(4 * 60_000))
+    expect(handle).toHaveAccessibleDescription('Camera off')
+    bridge.push('push:orb', { ...base, listening: true })
+    expect(handle).toHaveAccessibleDescription("Camera on · checking how you're doing")
+    bridge.push('push:orb', { ...base, paused: true })
+    expect(handle).toHaveAccessibleDescription('Camera paused by you')
+  })
+
+  it('cleans up the change-note timer when unmounted', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    const view = render(<App />)
+    bridge.push('push:orb', { ...base, listening: true })
+    view.unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

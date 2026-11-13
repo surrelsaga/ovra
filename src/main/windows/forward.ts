@@ -8,6 +8,9 @@ import {
   type MoveCardView,
   type OrbView,
   type Situation,
+  type TargetWord,
+  type Session,
+  type PrivacyService,
   type SessionStatus
 } from '@shared/types'
 import { situationLines, targetLines, windowsConfig as cfg } from './config'
@@ -35,7 +38,11 @@ export function breathAt(now: number, periodMs: number = cfg.breathPeriodMs): nu
   return (1 - Math.cos((2 * Math.PI * (now % periodMs)) / periodMs)) / 2
 }
 
-export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
+export function bindForwarding(
+  bus: Bus,
+  shell: ShellControl,
+  privacy?: Pick<PrivacyService, 'getSettings' | 'setSettings'>
+): Forwarder {
   let view: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
   const latest = new Map<IpcPushChannel, IpcPush[IpcPushChannel]>()
   const send = <C extends IpcPushChannel>(channel: C, payload: IpcPush[C]): void => {
@@ -43,7 +50,13 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     shell.push(channel, payload)
   }
   let situation: Situation | null = null
+  let targetWord: TargetWord | null = null
   let status: SessionStatus | null = null
+  let session: Session | null = null
+  let nextCheckAt: number | undefined
+  let teachCount = privacy?.getSettings().cameraTeachCount ?? cfg.cameraTeachLimit
+  let teachOff = false
+  let teachingUntil = 0
   let bubbleTimer: ReturnType<typeof setTimeout> | undefined
   let breathTimer: ReturnType<typeof setInterval> | undefined
 
@@ -52,10 +65,32 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     send('push:orb', view)
   }
 
-  const say = (text: string, ttlMs: number = cfg.bubbleTtlMs): void => {
+  const say = (text: string, ttlMs: number = cfg.bubbleTtlMs, teaching = false): void => {
+    if (!teaching && Date.now() < teachingUntil) return
+    if (teaching) teachingUntil = Date.now() + ttlMs
     clearTimeout(bubbleTimer)
     update({ bubble: text })
     bubbleTimer = setTimeout(() => update({ bubble: undefined }), ttlMs)
+  }
+
+  const nextCheck = (): number | undefined =>
+    session?.sensingEnabled &&
+    session.config.cameraMode === 'checkins' &&
+    status === 'running' &&
+    !view.paused &&
+    !view.away
+      ? nextCheckAt
+      : undefined
+
+  const intervalMs = (): number => (session?.config.checkinIntervalMin ?? 0) * 60_000
+
+  const cameraOff = (): void => {
+    const wasOn = view.listening
+    update({ listening: false, calibration: undefined, nextCheckAt: nextCheck() })
+    if (wasOn && teachOff) {
+      say('Camera off.', cfg.bubbleTtlMs, true)
+      teachOff = false
+    }
   }
 
   const stopBreath = (): void => {
@@ -75,6 +110,9 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     stopBreath()
     clearTimeout(bubbleTimer)
     situation = null
+    targetWord = null
+    teachingUntil = 0
+    nextCheckAt = undefined
     view = { mood: 'calm', listening: view.listening, paused: false, away: false }
     send('push:orb', view)
     // Blocked by the window layer while the camera is still on; retried on sdk:checkin-ended.
@@ -88,6 +126,13 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
       send('push:session', s)
       const prev = status
       status = s.status
+      session = s
+      if (s.status === 'running' && (prev === 'calibrating' || prev === 'on-break')) {
+        nextCheckAt = Date.now() + intervalMs()
+      }
+      if (!view.listening && (view.nextCheckAt !== undefined || nextCheck() !== undefined)) {
+        update({ nextCheckAt: nextCheck() })
+      }
       if (s.status === 'running' && prev !== 'running' && prev !== 'on-break') shell.showOrb()
       if (s.status === 'ended' && prev !== 'ended') endSession()
     }),
@@ -115,18 +160,19 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     }),
     bus.on('music:status', (m) => {
       send('push:music', m)
-      if (view.nowPlaying && !m.nowPlaying) update({ nowPlaying: undefined })
-      if (view.nowPlaying && m.target) {
-        update({ nowPlaying: { ...view.nowPlaying, word: TARGET_WORD[m.target] } })
-      }
+      targetWord = m.target ? TARGET_WORD[m.target] : null
+      if (m.nowPlaying && !m.nowPlaying.isAd) {
+        update({
+          nowPlaying: { name: m.nowPlaying.name, artist: m.nowPlaying.artist, word: targetWord }
+        })
+      } else if (view.nowPlaying) update({ nowPlaying: undefined })
     }),
     bus.on('music:track-changed', (t) => {
       if (t.isAd) return update({ nowPlaying: undefined })
-      update({
-        nowPlaying: { name: t.name, artist: t.artist, word: view.nowPlaying?.word ?? null }
-      })
+      update({ nowPlaying: { name: t.name, artist: t.artist, word: targetWord } })
     }),
     bus.on('music:target-changed', (t) => {
+      targetWord = t.word
       if (view.nowPlaying) update({ nowPlaying: { ...view.nowPlaying, word: t.word } })
       say(t.reason || targetLines[t.word])
     }),
@@ -139,21 +185,48 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     bus.on('move:completed', stopBreath),
     bus.on('move:skipped', stopBreath),
     bus.on('sdk:checkin-started', ({ phase }) => {
-      update({ listening: true, calibration: phase === 'calibration' ? 0 : undefined })
+      const turningOn = !view.listening
+      if (phase === 'checkin') nextCheckAt = Date.now() + intervalMs()
+      update({
+        listening: true,
+        calibration: phase === 'calibration' ? 0 : undefined,
+        nextCheckAt: undefined
+      })
+      if (turningOn) {
+        teachOff = teachCount < cfg.cameraTeachLimit
+        if (!teachOff && Date.now() < teachingUntil) {
+          clearTimeout(bubbleTimer)
+          teachingUntil = 0
+          update({ bubble: undefined })
+        }
+        if (teachOff) {
+          teachCount++
+          void privacy
+            ?.setSettings({ cameraTeachCount: teachCount })
+            .catch(() => console.warn('windows: could not save camera teaching count'))
+          say('Camera on. See the little light circling me?', cfg.bubbleTtlMs, true)
+        }
+      }
       shell.showOrb()
       if (status === 'calibrating') shell.showMain()
     }),
-    bus.on('sdk:checkin-ended', () => {
-      update({ listening: false, calibration: undefined })
+    bus.on('sdk:checkin-ended', ({ phase }) => {
+      if (phase === 'calibration' || phase === 'return-check')
+        nextCheckAt = Date.now() + intervalMs()
+      cameraOff()
       if (status === 'ended') shell.hideOrb()
     }),
-    bus.on('break:away', (b) => update({ away: true, awaySince: b.since })),
+    bus.on('break:away', (b) => update({ away: true, awaySince: b.since, nextCheckAt: undefined })),
     bus.on('break:returned', () => update({ away: false, awaySince: undefined })),
     // Pausing stops the camera, so the satellite goes too. A later check-in start still shows it.
-    bus.on('privacy:camera-paused', () =>
-      update({ paused: true, listening: false, calibration: undefined })
-    ),
-    bus.on('privacy:camera-resumed', () => update({ paused: false })),
+    bus.on('privacy:camera-paused', () => {
+      update({ paused: true })
+      cameraOff()
+    }),
+    bus.on('privacy:camera-resumed', () => {
+      update({ paused: false })
+      update({ nextCheckAt: nextCheck() })
+    }),
     bus.on('privacy:changed', (p) => send('push:privacy', p)),
     bus.on('orb:bubble', (b) => say(b.text, b.ttlMs))
   ]

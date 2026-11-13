@@ -89,3 +89,10 @@ Format:
 - Change: add `dev:monitor`: `OVRA_MONITOR=1 electron-vite dev`. No dependency changes.
 - Why: open the normal consent-controlled app alongside the dev-only sensing monitor window.
 - Status: applied in 25ba7a9
+
+## 2026-11-14 — orb pill — camera teaching and next check
+
+- File: src/shared/types.ts
+- Change: additive `AppSettings.cameraTeachCount: number`, default `0`; additive `OrbView.nextCheckAt?: number` (estimated next check-in timestamp, omitted when unknown).
+- Why: persist the first three camera indicator lessons and describe camera-off gaps without hiding the song. Existing settings merge over defaults; the privacy settings schema validates the inherited additive field.
+- Status: applied in 0fedda5

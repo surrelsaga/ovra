@@ -18,6 +18,7 @@ import type {
   Song,
   StateUpdate
 } from '@shared/types'
+import { orbConfig } from '../../renderer/orb/config'
 import { createBus } from '../bus'
 import { handle } from '../ipc'
 import { createPrivacy, registerPrivacyIpc } from '../privacy'
@@ -173,10 +174,10 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
         remainingSec: config.lengthMin * 60 - elapsedSec
       })
       if (session.status !== 'calibrating') return
-      p = Math.min(1, p + 0.1)
+      p = elapsedSec <= 3 ? 0 : Math.min(1, p + 0.2)
       bus.emit('sdk:calibration-progress', {
         progress: p,
-        hint: p < 0.4 ? 'Place more of the chest in view.' : null
+        hint: p === 0 ? 'Move up, or tilt the camera down.' : null
       })
       setMusic({
         scoringQueue: Math.max(0, music.scoringQueue - 1),
@@ -184,6 +185,8 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
       })
       if (p >= 1) {
         bus.emit('sdk:checkin-ended', { phase: 'calibration' })
+        // Fake sensing after calibration enables countdowns without ever requesting a preview stream.
+        session = { ...session, sensingEnabled: privacy.canUseCamera() }
         setStatus('running')
       }
     }, 1000)
@@ -457,6 +460,59 @@ async function indicatorTour(orb: BrowserWindow, bus: Bus, dir: string): Promise
   await backdrop('')
 }
 
+/** Song and camera status, using only fake bus events and isolated harness settings. */
+async function pillTour(orb: BrowserWindow, bus: Bus, dir: string): Promise<void> {
+  bus.emit('music:track-changed', {
+    id: 'spotify:track:bones',
+    uri: 'spotify:track:bones',
+    name: 'Bones',
+    artist: 'Imagine Dragons',
+    album: '',
+    durationMs: 200_000,
+    positionMs: 0,
+    state: 'playing',
+    isAd: false
+  })
+  bus.emit('music:target-changed', { target: 'steady', word: 'Focus', reason: '' })
+  const hover = async (selector: string, name: string): Promise<void> => {
+    const point: { x: number; y: number } = await orb.webContents.executeJavaScript(
+      `(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return {x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2)} })()`
+    )
+    orb.webContents.sendInputEvent({ type: 'mouseMove', ...point })
+    await shot(orb, dir, name)
+    orb.webContents.sendInputEvent({ type: 'mouseMove', x: 2, y: 2 })
+  }
+  for (const count of [2, 3, 4]) {
+    bus.emit('sdk:checkin-started', { phase: 'checkin' })
+    await shot(orb, dir, `pill-${count}-on-note-and-lesson`)
+    await wait(orbConfig.cameraNoteMs)
+    await shot(orb, dir, `pill-${count}-song-camera-on`)
+    if (count === 2) {
+      await hover('.orb-app__moon', 'pill-tooltip-moon-on')
+      await hover('.camera-dot', 'pill-tooltip-dot-on')
+      bus.emit('privacy:camera-paused', {})
+      await shot(orb, dir, 'pill-paused-dot-and-badge')
+      await hover('.camera-dot', 'pill-tooltip-dot-paused')
+      bus.emit('privacy:camera-resumed', {})
+    }
+    bus.emit('sdk:checkin-ended', { phase: 'checkin' })
+    await shot(orb, dir, `pill-${count}-off-note-and-lesson`)
+    await wait(orbConfig.cameraNoteMs)
+    await shot(orb, dir, `pill-${count}-song-camera-off`)
+  }
+  await hover('.orb-app__moon', 'pill-tooltip-off-next-check')
+  bus.emit('break:away', { since: Date.now() - 3 * MIN, manual: true })
+  await shot(orb, dir, 'pill-away')
+  bus.emit('break:returned', { awayMs: 3 * MIN })
+  // Keep evidence of actual DOM labels alongside the screenshots (no SDK data).
+  const labels = await orb.webContents.executeJavaScript(`({
+    pill: document.querySelector('.pill')?.getAttribute('aria-label'),
+    moon: document.querySelector('.orb-app__moon')?.getAttribute('aria-label'),
+    bubble: document.querySelector('.bubble')?.textContent
+  })`)
+  await writeFile(join(dir, 'pill-labels.json'), JSON.stringify(labels, null, 2))
+}
+
 async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await mkdir(dir, { recursive: true })
   const { main, orb } = shell.windows()!
@@ -464,6 +520,7 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await shot(main, dir, '01-onboarding-hello')
   await click(main, 'Let’s start')
   await shot(main, dir, '02-onboarding-camera')
+  await shot(main, dir, '02-onboarding-camera-moving')
   await click(main, 'Yes')
   await click(main, 'Next')
   await click(main, 'Next')
@@ -490,9 +547,12 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
 
   await nav(main, 'session')
   await click(main, 'Start session')
-  await wait(3000)
+  await wait(1000)
   await shot(main, dir, '12-calibration')
+  await shot(orb, dir, '13-first-camera-on-bubble')
   await wait(8000) // calibration finishes, orb shows
+  await shot(orb, dir, '14-first-camera-off-bubble')
+  await pillTour(orb, bus, dir)
 
   for (const [i, step] of orbSteps(bus).entries()) {
     step.run()

@@ -208,3 +208,15 @@
     opacity: 0;
   }
 }
+
+.moon__camera-off {
+  fill: var(--text-secondary);
+}
+.moon__camera-off .moon__badge-bg {
+  fill: var(--panel);
+  stroke: var(--border-strong);
+  stroke-width: 0.5;
+}
+.moon__camera-off .moon__badge-slash {
+  fill: var(--warn);
+}

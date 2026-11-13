@@ -190,21 +190,25 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
     bindBus() {
       if (forwarder) return
       ensure()
-      forwarder = bindForwarding(bus, {
-        push: (channel, payload) => {
-          for (const w of Object.values(ensure())) push(w, channel, payload)
+      forwarder = bindForwarding(
+        bus,
+        {
+          push: (channel, payload) => {
+            for (const w of Object.values(ensure())) push(w, channel, payload)
+          },
+          showOrb: () => service.showOrb(),
+          hideOrb: () => service.hideOrb(),
+          showMain: () => service.showMain(),
+          setMoveCard: (view) => {
+            cardView = view
+            const { card } = ensure()
+            if (view.kind === 'hidden') return card.hide()
+            placeCard()
+            if (!deps.background) card.showInactive()
+          }
         },
-        showOrb: () => service.showOrb(),
-        hideOrb: () => service.hideOrb(),
-        showMain: () => service.showMain(),
-        setMoveCard: (view) => {
-          cardView = view
-          const { card } = ensure()
-          if (view.kind === 'hidden') return card.hide()
-          placeCard()
-          if (!deps.background) card.showInactive()
-        }
-      })
+        privacy
+      )
     },
     orbMoved({ x, y }) {
       const { orb } = ensure()

@@ -24,10 +24,28 @@ const settings: AppSettings = {
   devVideoSource: null,
   devFramingPad: 0.4,
   orbPosition: null,
-  thresholdOverrides: {}
+  thresholdOverrides: {},
+  cameraTeachCount: 0
 }
 
 describe('calibration preview', () => {
+  it('puts the framing hint in a prominent live status while positioning progress stays at zero', () => {
+    const bridge = installFakeBridge()
+    render(
+      <Calibration
+        session={{ ...session('calibrating'), sensingEnabled: false }}
+        settings={settings}
+      />
+    )
+    bridge.push('push:calibration', { progress: 0, hint: 'Move up, or tilt the camera down.' })
+    expect(screen.getByRole('status')).toHaveTextContent('Let’s get you in view.')
+    expect(screen.getByRole('status')).toHaveTextContent('Move up, or tilt the camera down.')
+    expect(screen.getByText('Move up, or tilt the camera down.')).toHaveClass(
+      'calibration-hint__text'
+    )
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+  })
+
   it('shows an unrecorded preview and stops its stream when calibration ends', async () => {
     installFakeBridge()
     const stop = vi.fn()

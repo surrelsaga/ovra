@@ -19,7 +19,7 @@ export const CONSENT_QUESTIONS: ConsentQuestion[] = [
     key: 'camera',
     legend: 'Can Ovra use your camera during sessions you start?',
     description:
-      'Only inside a session you start, and the moon shows a ring whenever the camera is on. The app never saves or uploads video.',
+      'Only inside a session you start. A little light circles the moon whenever the camera is on. The app never saves or uploads video.',
     required: true,
     options: [
       {

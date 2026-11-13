@@ -32,7 +32,10 @@ app.whenReady().then(async () => {
       if (!load) throw new Error(`Unknown harness "${name}"`)
       await (await load()).runHarness()
     } else {
-      const services = await startApp()
+      const services =
+        process.env.OVRA_SIMULATE === '1' && !app.isPackaged
+          ? await (await import('./simulator')).startSimulator()
+          : await startApp()
       app.on('activate', () => services.windows.showMain())
     }
   } catch (err) {

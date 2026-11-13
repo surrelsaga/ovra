@@ -1,0 +1,86 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 var(--font);
+}
+main {
+  padding: 16px;
+}
+.banner {
+  margin: 0 0 8px;
+  padding: 12px;
+  border: 1px solid var(--warn);
+  border-radius: 10px;
+  color: var(--warn);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+h2 {
+  margin: 18px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover {
+  background: var(--panel-hover);
+}
+button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.hint {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 12px;
+}
+.toggle input {
+  accent-color: var(--accent);
+}
+dl {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+dt {
+  color: var(--text-muted);
+}
+dd {
+  margin: 0;
+}
+dd.live {
+  color: var(--ok);
+}

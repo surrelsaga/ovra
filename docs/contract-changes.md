@@ -14,12 +14,14 @@ Format:
 ```
 
 ## 2026-11-12 — F — data:deleted-all bus event
+
 - File: src/shared/types.ts
 - Change: `'data:deleted-all': Record<string, never>` in `BusEvents`, emitted by privacy at the end of `deleteEverything()`.
 - Why: music must drop its in-memory songs/playlists instead of rewriting songs.json after a delete-all.
 - Status: applied on main
 
 ## 2026-11-12 — orchestrator (from E's report) — orb paused state and click-through
+
 - File: src/shared/types.ts
 - Change: `OrbView.paused: boolean`; IPC invoke `'window:orb-ignore-mouse': { req: { ignore: boolean }; res: void }`
   (added to `IPC_INVOKE_CHANNELS`).
@@ -27,18 +29,21 @@ Format:
 - Status: applied on main
 
 ## 2026-11-13 — polish (4.3) — push:sdk-error
+
 - File: src/shared/types.ts
 - Change: `'push:sdk-error': SdkError` in `IpcPush` and `IPC_PUSH_CHANNELS`.
 - Why: the calibration screen shows a calm fallback message when the SDK fails (e.g. credits exhausted).
 - Status: applied on main
 
 ## 2026-11-13 — orchestrator — MusicController.getVolume (optional)
+
 - File: src/shared/types.ts
 - Change: `getVolume?(): Promise<number | null>` on `MusicController`.
 - Why: Settle's early switch can fade out and restore the user's volume (PLAN.md §6).
 - Status: applied on main
 
 ## 2026-11-13 — simulator — dev simulator controls and status
+
 - File: src/shared/types.ts
 - Change: `SimScenario`, `SimAction`, `SimulatorStatus`; invoke `simulator:status`, `simulator:set-scenario`,
   `simulator:action`, `simulator:set-fast-mode`; push `push:simulator`. Dev builds only.
@@ -46,8 +51,17 @@ Format:
 - Status: applied on main
 
 ## 2026-11-13 — simulator — music target-change gap override (dev only)
+
 - File: src/main/music/selector/index.ts, src/main/music/index.ts, src/main/app.ts
 - Change: `createTargetTracker(gap?: TargetGap)` (read on every update); `MusicDeps.targetGap?: TargetGap`;
   `AppOptions.musicTargetGap?: TargetGap`. Defaults stay `musicConfig.switching` (3 min, ×3 in Downtime).
 - Why: the dev simulator's fast mode shortens the music target-change gap to 15 s (18 s in Downtime).
 - Status: applied in feat/simulator (requested by the coordinator)
+
+## 2026-11-13 — orb indicator — OrbView.calibration
+
+- File: src/shared/types.ts
+- Change: `OrbView.calibration?: number` (0–1), set by the windows forwarder from `sdk:calibration-progress`
+  between `sdk:checkin-started` and `sdk:checkin-ended` with phase `calibration`; undefined otherwise.
+- Why: the moon waxes from crescent to full with calibration progress (camera indicator redesign).
+- Status: applied in feat/orb-indicator (requested by the coordinator)

@@ -411,8 +411,10 @@ export const ORB_MOOD: Record<Situation, OrbMood> = {
 
 export interface OrbView {
   mood: OrbMood
-  /** Camera is on. Shows the orbiting ring. Can't be hidden while true. */
+  /** Camera is on. Shows the orbiting satellite. Can't be hidden while true. */
   listening: boolean
+  /** Calibration progress, 0–1, only while calibrating. The moon waxes with it. */
+  calibration?: number
   /** The user paused the camera for this session (mini control). */
   paused: boolean
   away: boolean

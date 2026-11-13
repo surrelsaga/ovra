@@ -1,5 +1,6 @@
 // Owner: Agent A (sensing). SmartSpectra setup, check-in scheduler, calibration, return check,
 // dev video source. Capture runs in a hidden renderer (src/renderer/capture/).
+import { existsSync } from 'node:fs'
 import { app, BrowserWindow, session, type IpcMainEvent } from 'electron'
 import { bindSmartSpectraIpc } from '@smartspectra/node-sdk/main'
 import type {
@@ -253,6 +254,11 @@ export function createSensing(deps: SensingDeps): SensingService {
 
       const settings = privacy.getSettings()
       const file = devVideo()
+      if (file && !existsSync(file))
+        console.warn(
+          `[sensing] dev video source "${file}" doesn't exist, so the camera can't start. ` +
+            'Clear devVideoSource in Settings or settings.json.'
+        )
       const req: CaptureStartRequest = {
         phase,
         apiKey,

@@ -252,6 +252,14 @@ describe('phases and check-in scheduler', () => {
     ])
   })
 
+  it('says in the dev log when the dev video source does not exist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const t = setup()
+    await t.sensing.startCalibration()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"/videos/calm.mp4" doesn\'t exist'))
+    warn.mockRestore()
+  })
+
   it('calibration emits progress and ends on time', async () => {
     const { sensing, events, names } = setup()
     await sensing.startCalibration()

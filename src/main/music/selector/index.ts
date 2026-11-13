@@ -155,8 +155,16 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
   return top[Math.floor(ctx.rng() * top.length)]
 }
 
-/** At most one target change per ~3 min (longer in downtime). */
-export function createTargetTracker(): {
+export interface TargetGap {
+  minTargetChangeMs: number
+  downtimeChangeMultiplier: number
+}
+
+/**
+ * At most one target change per ~3 min (longer in downtime). `gap` is read on every update, so the
+ * dev simulator can swap its values; the app uses the defaults.
+ */
+export function createTargetTracker(gap: TargetGap = cfg.switching): {
   current(): MusicTarget | null
   reset(): void
   /** Returns the new target if it changed now, else null. */
@@ -172,10 +180,9 @@ export function createTargetTracker(): {
     },
     update(desired, activity, now) {
       if (desired === target) return null
-      const gap =
-        cfg.switching.minTargetChangeMs *
-        (activity === 'downtime' ? cfg.switching.downtimeChangeMultiplier : 1)
-      if (target !== null && now - changedAt < gap) return null
+      const minMs =
+        gap.minTargetChangeMs * (activity === 'downtime' ? gap.downtimeChangeMultiplier : 1)
+      if (target !== null && now - changedAt < minMs) return null
       target = desired
       changedAt = now
       return desired

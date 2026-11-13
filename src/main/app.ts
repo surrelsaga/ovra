@@ -3,6 +3,7 @@ import { app } from 'electron'
 import type { Bus, PrivacyService, SensingService } from '@shared/types'
 import type { SensingConfig } from './sdk/config'
 import type { MovesConfig } from './moves/config'
+import type { TargetGap } from './music/selector'
 import { appConfig } from './config'
 import { installQuitHandler } from './quit'
 import { createBus } from './bus'
@@ -20,6 +21,8 @@ export interface AppOptions {
   background?: boolean
   sensingConfig?: Partial<SensingConfig>
   movesConfig?: MovesConfig
+  /** Dev simulator: shorter music target-change gap. */
+  musicTargetGap?: TargetGap
   setup?: (privacy: PrivacyService) => Promise<void>
   /** Dev simulator: replaces the SDK sensing service (the SDK is then never loaded). */
   createSensing?: (deps: { bus: Bus; privacy: PrivacyService }) => SensingService
@@ -47,7 +50,14 @@ export async function startApp(options: AppOptions = {}) {
       config: options.sensingConfig
     })
   const state = createStateEngine({ bus, privacy })
-  const music = createMusic({ bus, storage, privacy, controller: createMusicController(), getKey })
+  const music = createMusic({
+    bus,
+    storage,
+    privacy,
+    controller: createMusicController(),
+    getKey,
+    targetGap: options.musicTargetGap
+  })
   const moves = createMoves({ bus, privacy }, options.movesConfig)
   const session = createSessionService({ bus, privacy, sensing, state, music, moves })
   registerSessionIpc(session, sensing)

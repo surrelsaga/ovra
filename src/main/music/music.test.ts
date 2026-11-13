@@ -96,7 +96,13 @@ const session = (patch: Partial<Session['config']> = {}): Session => ({
 })
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test fixture, inferred
-async function setup(opts: { songs?: Song[]; privacy?: Partial<PrivacySettings> } = {}) {
+async function setup(
+  opts: {
+    songs?: Song[]
+    privacy?: Partial<PrivacySettings>
+    targetGap?: { minTargetChangeMs: number; downtimeChangeMultiplier: number }
+  } = {}
+) {
   const bus = createBus()
   const storage = memoryStorage()
   storage.files.set('songs', structuredClone(opts.songs ?? LIBRARY))
@@ -111,7 +117,15 @@ async function setup(opts: { songs?: Song[]; privacy?: Partial<PrivacySettings> 
   for (const name of ['music:target-changed', 'music:track-changed', 'orb:bubble'] as const) {
     bus.on(name, (payload) => events.push({ name, payload }))
   }
-  const music = createMusic({ bus, storage, privacy, controller, getKey: () => null, rng: () => 0 })
+  const music = createMusic({
+    bus,
+    storage,
+    privacy,
+    controller,
+    getKey: () => null,
+    rng: () => 0,
+    targetGap: opts.targetGap
+  })
   const state = (situation: Situation | null): void =>
     bus.emit('state:updated', {
       t: Date.now(),
@@ -189,6 +203,19 @@ describe('music service', () => {
     bus.emit('session:tick', { sessionId: 's1', elapsedSec: 180, remainingSec: 3000 })
     expect(targets()).toEqual(['steady', 'ease-down'])
     state('low')
+    expect(targets()).toEqual(['steady', 'ease-down'])
+  })
+
+  it('uses an overridden target-change gap (dev simulator fast mode)', async () => {
+    const { music, state, targets } = await setup({
+      targetGap: { minTargetChangeMs: 15_000, downtimeChangeMultiplier: 1.2 }
+    })
+    await music.startSession(session())
+    await vi.advanceTimersByTimeAsync(10_000)
+    state('tense')
+    expect(targets()).toEqual(['steady'])
+    await vi.advanceTimersByTimeAsync(5_000)
+    state('tense')
     expect(targets()).toEqual(['steady', 'ease-down'])
   })
 

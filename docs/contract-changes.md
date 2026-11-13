@@ -44,3 +44,10 @@ Format:
   `simulator:action`, `simulator:set-fast-mode`; push `push:simulator`. Dev builds only.
 - Why: the dev simulator window controls the fake sensing service and shows what the app decided.
 - Status: applied on main
+
+## 2026-11-13 — simulator — music target-change gap override (dev only)
+- File: src/main/music/selector/index.ts, src/main/music/index.ts, src/main/app.ts
+- Change: `createTargetTracker(gap?: TargetGap)` (read on every update); `MusicDeps.targetGap?: TargetGap`;
+  `AppOptions.musicTargetGap?: TargetGap`. Defaults stay `musicConfig.switching` (3 min, ×3 in Downtime).
+- Why: the dev simulator's fast mode shortens the music target-change gap to 15 s (18 s in Downtime).
+- Status: applied in feat/simulator (requested by the coordinator)

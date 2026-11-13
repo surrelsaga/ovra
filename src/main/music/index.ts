@@ -22,7 +22,8 @@ import {
   effective,
   pickSong,
   steadyEnergy,
-  TARGET_REASON
+  TARGET_REASON,
+  type TargetGap
 } from './selector'
 
 export interface MusicDeps {
@@ -32,6 +33,8 @@ export interface MusicDeps {
   controller: MusicController
   /** Returns a key or null. Never log it. */
   getKey: (name: 'OPENROUTER_API_KEY' | 'LASTFM_API_KEY') => string | null
+  /** Dev simulator: shorter target-change gap. Defaults to musicConfig.switching. */
+  targetGap?: TargetGap
   /** Test seams. */
   now?: () => number
   rng?: () => number
@@ -53,7 +56,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   const now = deps.now ?? Date.now
   const rng = deps.rng ?? Math.random
   const library = createLibrary(deps.storage)
-  const tracker = createTargetTracker()
+  const tracker = createTargetTracker(deps.targetGap)
   const scorer = createScorer({
     library,
     aiEnabled: () => privacy.get().aiScoring,

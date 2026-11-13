@@ -176,4 +176,18 @@ describe('target tracker', () => {
     expect(d.update('lift', 'downtime', 180_000)).toBeNull()
     expect(d.update('lift', 'downtime', 540_000)).toBe('lift')
   })
+
+  it('reads an overridden gap on every update (dev simulator fast mode)', () => {
+    const gap = { minTargetChangeMs: 15_000, downtimeChangeMultiplier: 1.2 }
+    const t = createTargetTracker(gap)
+    t.update('steady', 'deep-work', 0)
+    expect(t.update('ease-down', 'deep-work', 14_000)).toBeNull()
+    expect(t.update('ease-down', 'deep-work', 15_000)).toBe('ease-down')
+    const d = createTargetTracker(gap)
+    d.update('let-it-ride', 'downtime', 0)
+    expect(d.update('lift', 'downtime', 15_000)).toBeNull()
+    expect(d.update('lift', 'downtime', 18_000)).toBe('lift')
+    gap.minTargetChangeMs = 180_000 // fast mode off
+    expect(t.update('settle', 'deep-work', 30_000)).toBeNull()
+  })
 })

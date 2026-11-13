@@ -31,7 +31,14 @@ function setup(camera = true) {
     bus.on(e, (p) => ((seen[e] ??= [] as never) as BusEvents[E][]).push(p))
   }
   ;(
-    ['session:started', 'session:status', 'session:tick', 'session:ended', 'orb:bubble'] as const
+    [
+      'session:started',
+      'session:status',
+      'session:tick',
+      'session:ended',
+      'orb:bubble',
+      'monitor:session-change'
+    ] as const
   ).forEach(log)
   const sensing = {
     startCalibration: vi.fn(async () => {}),
@@ -336,4 +343,36 @@ it('terminal SDK errors stop retries and leave the timer and timed nudges runnin
   expect(t.seen['session:tick']).toHaveLength(1)
   expect(t.moves.stopSession).not.toHaveBeenCalled()
   await t.svc.end()
+})
+
+describe('monitor session sources', () => {
+  it.each(['ipc/user', 'quit'] as const)('reports %s without changing cleanup', async (source) => {
+    const t = setup(false)
+    await t.svc.start({ ...cfg, music: false })
+    await t.svc.end(source)
+    expect(t.seen['monitor:session-change']).toEqual([
+      { t: 1_000_000, status: 'running', reason: 'session started', source: 'session:start' },
+      { t: 1_000_000, status: 'ended', reason: 'session ended', source }
+    ])
+    expect(t.sensing.stop).toHaveBeenCalledOnce()
+  })
+
+  it('reports timer expiry and delete-all at their source', async () => {
+    const timed = setup(false)
+    await timed.svc.start({ ...cfg, lengthMin: 1, music: false })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(timed.seen['monitor:session-change']?.at(-1)).toMatchObject({
+      status: 'ended',
+      source: 'length elapsed'
+    })
+    const deleted = setup(false)
+    await deleted.svc.start({ ...cfg, music: false })
+    deleted.bus.emit('data:deleted-all', {})
+    await deleted.svc.end()
+    expect(deleted.seen['monitor:session-change']?.at(-1)).toMatchObject({
+      status: 'ended',
+      source: 'delete-all'
+    })
+    expect(deleted.privacy.saveSession).not.toHaveBeenCalled()
+  })
 })

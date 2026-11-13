@@ -323,6 +323,30 @@ describe('state engine', () => {
     expect(last(updates).situation).toBeNull()
   })
 
+  it('diagnostic reads leave calibration, classifier and away outputs identical', () => {
+    const runObserved = (
+      observe: boolean
+    ): { updates: StateUpdate[]; ready: { ok: boolean; reason?: string }[] } => {
+      vi.setSystemTime(1_000_000)
+      const t = setup('continuous')
+      if (observe) t.bus.on('sdk:metrics', () => t.engine.diagnostics())
+      t.phase('calibration', 90, { pulse: 60 })
+      expect(t.engine.diagnostics()).toMatchObject({
+        pulseCount: 90,
+        pulseSpanSec: 89,
+        baseline: true
+      })
+      t.bus.emit('sdk:checkin-started', { phase: 'continuous' })
+      t.bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
+      t.wait(30_000)
+      t.bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
+      const result = { updates: t.updates, ready: t.ready }
+      t.engine.dispose()
+      return result
+    }
+    expect(runObserved(true)).toEqual(runObserved(false))
+  })
+
   it('uses threshold overrides from settings', () => {
     overrides = { tensePulsePct: 0.3 }
     const { updates, phase, wait } = setup()

@@ -5,6 +5,7 @@ import { app, BrowserWindow, session, type IpcMainEvent } from 'electron'
 import { bindSmartSpectraIpc } from '@smartspectra/node-sdk/main'
 import type {
   Bus,
+  CaptureDiagnostics,
   CameraMode,
   CaptureStartRequest,
   PrivacyService,
@@ -86,6 +87,16 @@ export function createSensing(deps: SensingDeps): SensingService {
         bus.emit('sdk:metrics', vitals)
       }
     })
+    onCapture('capture:diag', (diag: CaptureDiagnostics, e) => {
+      if (
+        !app.isPackaged &&
+        process.env.OVRA_MONITOR === '1' &&
+        fromCapture(e) &&
+        current === diag.phase &&
+        privacy.canUseCamera()
+      )
+        bus.emit('monitor:diag', diag)
+    })
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
       smoother.push(v, Date.now())
@@ -97,7 +108,9 @@ export function createSensing(deps: SensingDeps): SensingService {
       if (!err.retryable || err.code === 'start-failed') stopCapture().catch(report)
     })
     onCapture('capture:status', (s, e) => {
-      if (fromCapture(e) && (s === 'idle' || s === 'error')) resolveStop(s === 'idle')
+      if (!fromCapture(e)) return
+      bus.emit('monitor:capture-status', { status: s })
+      if (s === 'idle' || s === 'error') resolveStop(s === 'idle')
     })
   }
 
@@ -267,6 +280,7 @@ export function createSensing(deps: SensingDeps): SensingService {
           : { kind: 'camera' },
         face: privacy.canUseFace(),
         telemetry: privacy.get().telemetry === true,
+        diagnostics: !app.isPackaged && process.env.OVRA_MONITOR === '1',
         durationMs
       }
       current = phase

@@ -11,6 +11,7 @@ import type {
   SensingService,
   Session,
   SessionConfig,
+  SessionEndSource,
   SessionRecord,
   SessionService,
   SessionStatus,
@@ -70,23 +71,33 @@ export function createSessionService(deps: SessionDeps): SessionService {
   let dataGeneration = 0
   let recordCameraMode: SessionRecord['cameraMode'] = 'off'
 
-  const update = (patch: Partial<Session>): void => {
+  const announceStatus = (status: SessionStatus, reason: string, source: string): void =>
+    bus.emit('monitor:session-change', { t: Date.now(), status, reason, source })
+  const update = (patch: Partial<Session>, reason: string, source: string): void => {
     if (!session) return
-    session = { ...session, ...patch }
-    bus.emit('session:status', session)
+    const previous = session.status
+    const next = { ...session, ...patch }
+    session = next
+    bus.emit('session:status', next)
+    if (previous !== next.status) announceStatus(next.status, reason, source)
   }
-  const setStatus = (status: SessionStatus): void => update({ status })
+  const setStatus = (status: SessionStatus, reason: string, source: string): void =>
+    update({ status }, reason, source)
   const bubble = (text: string): void =>
     bus.emit('orb:bubble', { text, ttlMs: sessionConfig.bubbleTtlMs })
   const warn = (what: string) => (e: unknown) => console.warn(`session: ${what} failed`, e)
 
-  const disableSensing = (): void => {
+  const disableSensing = (reason: string, source: string): void => {
     if (!session?.sensingEnabled) return
     resumeAfterReturnCheck = false
-    update({
-      sensingEnabled: false,
-      status: session.status === 'calibrating' ? 'running' : session.status
-    })
+    update(
+      {
+        sensingEnabled: false,
+        status: session.status === 'calibrating' ? 'running' : session.status
+      },
+      reason,
+      source
+    )
     sensing.stop().catch(warn('stop'))
     state.dispose()
   }
@@ -104,7 +115,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     return [
       bus.on('state:baseline-ready', ({ ok }) => {
         if (session?.status !== 'calibrating') return
-        setStatus('running')
+        setStatus('running', ok ? 'baseline built' : 'baseline failed', 'state:baseline-ready')
         if (!ok) bubble(sessionConfig.baselineFailedBubble)
         startSchedule(session)
       }),
@@ -115,13 +126,13 @@ export function createSessionService(deps: SessionDeps): SessionService {
       bus.on('break:away', ({ manual }) => {
         // Continuous mode keeps sensing through breaks (away is detected from the camera).
         if (session?.status !== 'running') return
-        setStatus('on-break')
+        setStatus('on-break', manual ? 'manual break' : 'away detected', 'break:away')
         if (manual && session.sensingEnabled && session.config.cameraMode === 'checkins')
           sensing.stop().catch(warn('stop'))
       }),
       bus.on('break:returned', () => {
         if (session?.status !== 'on-break') return
-        setStatus('running')
+        setStatus('running', 'returned', 'break:returned')
         if (!session.sensingEnabled) return
         resumeAfterReturnCheck = true
         sensing.startReturnCheck().catch((e) => {
@@ -148,11 +159,11 @@ export function createSessionService(deps: SessionDeps): SessionService {
         if (!t.isAd && t.id) songs.add(t.id)
       }),
       bus.on('privacy:changed', (p) => {
-        if (p.camera !== 'yes') disableSensing()
+        if (p.camera !== 'yes') disableSensing('camera consent withdrawn', 'privacy:changed')
       }),
       bus.on('sdk:error', (error) => {
         if (!session?.sensingEnabled || (error.retryable && error.code !== 'start-failed')) return
-        disableSensing()
+        disableSensing('sensing unavailable', 'sdk:error')
         bubble(sessionConfig.cameraFailedBubble)
       })
     ]
@@ -170,7 +181,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     const elapsedSec = Math.floor((Date.now() - session.startedAt) / 1000)
     const remainingSec = Math.max(0, session.config.lengthMin * 60 - elapsedSec)
     bus.emit('session:tick', { sessionId: session.id, elapsedSec, remainingSec })
-    if (remainingSec === 0) void end()
+    if (remainingSec === 0) void end('length elapsed')
   }
 
   async function start(input: SessionConfig): Promise<Session> {
@@ -191,6 +202,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
     bus.emit('session:started', session)
     bus.emit('session:status', session)
+    announceStatus(session.status, 'session started', 'session:start')
     tick = setInterval(onTick, sessionConfig.tickMs)
 
     // ponytail: music decides from session.config.music whether to play anything.
@@ -205,14 +217,14 @@ export function createSessionService(deps: SessionDeps): SessionService {
       } catch (e) {
         warn('startCalibration')(e)
         recordCameraMode = 'off'
-        disableSensing()
+        disableSensing('sensing unavailable', 'startCalibration')
         bubble(sessionConfig.cameraFailedBubble)
       }
     }
     return session
   }
 
-  async function finish(discard: boolean): Promise<SessionRecord | null> {
+  async function finish(discard: boolean, source: SessionEndSource): Promise<SessionRecord | null> {
     const s = session
     if (!s) return null
     session = null
@@ -246,13 +258,17 @@ export function createSessionService(deps: SessionDeps): SessionService {
     if (!discard && generation === dataGeneration)
       await privacy.saveSession(record).catch(warn('saveSession'))
     bus.emit('session:status', { ...s, status: 'ended', endedAt })
+    announceStatus('ended', 'session ended', source)
     if (!discard && generation === dataGeneration) bus.emit('session:ended', record)
     return discard || generation !== dataGeneration ? null : record
   }
 
-  function end(discard = false): Promise<SessionRecord | null> {
+  function end(
+    source: SessionEndSource = 'ipc/user',
+    discard = false
+  ): Promise<SessionRecord | null> {
     if (ending) return ending
-    ending = finish(discard).finally(() => {
+    ending = finish(discard, source).finally(() => {
       ending = null
     })
     return ending
@@ -261,7 +277,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
   bus.on('data:deleted-all', () => {
     dataGeneration++
     clearRecord()
-    void end(true)
+    void end('delete-all', true)
   })
 
   return { start, end, current: () => session }

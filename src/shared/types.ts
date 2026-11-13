@@ -115,9 +115,100 @@ export interface CaptureStartRequest {
   telemetry: boolean
   /** Stop automatically after this long. Omit for continuous. */
   durationMs?: number
+  /** Dev monitor only; keeps diagnostics work out of normal runs. */
+  diagnostics?: boolean
 }
 
 export type CaptureStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'error'
+
+/** Dev monitor counters; no raw measurements, expression scores or landmarks. */
+export interface MonitorCounts {
+  payloads: number
+  snapshots: number
+  pulse: { present: number; stable: number; confidenceSum: number; confidenceCount: number }
+  breathing: { present: number; stable: number; confidenceSum: number; confidenceCount: number }
+  hrv: { present: number; stable: number; confidenceSum: number; confidenceCount: number }
+  face: {
+    object: number
+    landmarks: number
+    present: number
+    blinking: number
+    talking: number
+    expressions: number
+  }
+  validationCodes: Record<string, number>
+}
+
+export interface CaptureDiagnostics extends MonitorCounts {
+  t: number
+  phase: Exclude<SensingPhase, 'idle'>
+  processing: string
+  validation: ValidationEvent | null
+}
+
+export interface MonitorMetricSummary {
+  payloads: number
+  snapshots: number
+  durationSec: number
+  pulse: { present: number; stable: number; confidence: number | null }
+  breathing: { present: number; stable: number; confidence: number | null }
+  hrv: { present: number; stable: number; confidence: number | null }
+  face: MonitorCounts['face']
+  validationCodes: Record<string, number>
+}
+
+export interface StateDiagnostics {
+  pulseCount: number
+  pulseSpanSec: number
+  pulseNeeded: number
+  pulseSpanNeededSec: number
+  awayNoFaceSec: number
+  baseline: boolean
+  baselineFailure: string | null
+  lastFace: number | null
+  phaseStart: number
+  phase: SensingPhase
+  paused: boolean
+}
+
+export type SessionEndSource = 'ipc/user' | 'length elapsed' | 'quit' | 'delete-all'
+export interface SessionStatusChange {
+  t: number
+  status: SessionStatus
+  reason: string
+  source: string
+}
+
+export interface MonitorSnapshot {
+  t: number
+  phase: SensingPhase
+  processing: string
+  capture: CaptureStatus
+  validation: ValidationEvent | null
+  recent: MonitorMetricSummary
+  phaseMetrics: MonitorMetricSummary
+  state: StateDiagnostics & {
+    secondsSinceFace: number | null
+    awayCountdownSec: number | null
+    away: boolean
+    situation: Situation | null
+    confidence: number
+    seatedMinutes: number
+    lastUpdated: number | null
+  }
+  session: {
+    status: SessionStatus | null
+    remainingSec: number | null
+    lastChange: SessionStatusChange | null
+  }
+  music: {
+    available: boolean
+    name: string | null
+    artist: string | null
+    target: TargetWord | null
+    leaveAlone: boolean
+  }
+}
 
 // ---------------------------------------------------------------------------
 // State engine — Baseline is in-memory only
@@ -484,6 +575,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // ---------------------------------------------------------------------------
 
 export interface BusEvents {
+  'monitor:diag': CaptureDiagnostics
+  'monitor:capture-status': { status: CaptureStatus }
+  'monitor:session-change': SessionStatusChange
   'session:started': Session
   'session:ended': SessionSummary
   'session:tick': SessionTick
@@ -618,6 +712,7 @@ export interface IpcPush {
   'push:settings': AppSettings
   /** Dev simulator window only. */
   'push:simulator': SimulatorStatus
+  'push:monitor': MonitorSnapshot
   /** Capture window only. */
   'push:capture-start': CaptureStartRequest
   /** Capture window only. */
@@ -631,6 +726,7 @@ export type IpcPushChannel = keyof IpcPush
 // ---------------------------------------------------------------------------
 
 export interface IpcCaptureSend {
+  'capture:diag': CaptureDiagnostics
   'capture:metrics': MetricsSnapshot
   'capture:validation': ValidationEvent
   'capture:status': CaptureStatus
@@ -688,11 +784,13 @@ export const IPC_PUSH_CHANNELS = [
   'push:privacy',
   'push:settings',
   'push:simulator',
+  'push:monitor',
   'push:capture-start',
   'push:capture-stop'
 ] as const satisfies readonly IpcPushChannel[]
 
 export const IPC_CAPTURE_CHANNELS = [
+  'capture:diag',
   'capture:metrics',
   'capture:validation',
   'capture:status',
@@ -770,6 +868,7 @@ export interface StateEngine {
   /** Start a fresh session: clears baseline and timers. */
   reset(): void
   current(): StateUpdate
+  diagnostics(): StateDiagnostics
   /** Session ends: drop the baseline from memory. */
   dispose(): void
 }
@@ -777,7 +876,7 @@ export interface StateEngine {
 /** src/main/session */
 export interface SessionService {
   start(config: SessionConfig): Promise<Session>
-  end(): Promise<SessionSummary | null>
+  end(source?: SessionEndSource): Promise<SessionSummary | null>
   current(): Session | null
 }
 

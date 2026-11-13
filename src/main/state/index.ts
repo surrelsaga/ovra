@@ -30,6 +30,9 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
 
   let mode: CameraMode = 'checkins'
   let baseline: Baseline | null = null
+  let baselineFailure: string | null = null
+  let calibrationPulseCount = 0
+  let calibrationPulseSpanSec = 0
   let phase: Exclude<SensingPhase, 'idle'> | null = null
   let phaseStart = 0
   let buf: MetricsSnapshot[] = []
@@ -68,6 +71,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   const reset = (): void => {
     stopTimer()
     baseline = null
+    baselineFailure = null
+    calibrationPulseCount = calibrationPulseSpanSec = 0
     phase = null
     buf = []
     history = []
@@ -151,7 +156,13 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     if (p === 'calibration') {
       const c = cfg()
       const r = buildBaseline(snaps, c, Date.now())
+      const pulses = snaps.filter((s) => s.pulse?.stable)
+      calibrationPulseCount = pulses.length
+      calibrationPulseSpanSec = pulses.length
+        ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
+        : 0
       baseline = 'baseline' in r ? r.baseline : null
+      baselineFailure = 'reason' in r ? r.reason : null
       bus.emit(
         'state:baseline-ready',
         'reason' in r ? { ok: false, reason: r.reason } : { ok: true }
@@ -196,5 +207,31 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     phaseStart = Date.now()
   })
 
-  return { reset, current, dispose: reset }
+  return {
+    reset,
+    current,
+    diagnostics: () => {
+      const activePulses = buf.filter((s) => s.pulse?.stable)
+      const pulses = phase === 'calibration' ? activePulses : null
+      const c = cfg()
+      return {
+        pulseCount: pulses ? pulses.length : calibrationPulseCount,
+        pulseSpanSec: pulses
+          ? pulses.length
+            ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
+            : 0
+          : calibrationPulseSpanSec,
+        pulseNeeded: c.baselineMinPulseReadings,
+        pulseSpanNeededSec: c.baselineMinPulseSpanSec,
+        awayNoFaceSec: c.awayNoFaceSec,
+        baseline: baseline !== null,
+        baselineFailure,
+        lastFace,
+        phaseStart,
+        phase: phase ?? 'idle',
+        paused
+      }
+    },
+    dispose: reset
+  }
 }

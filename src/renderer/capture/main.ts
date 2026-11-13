@@ -9,9 +9,11 @@ import {
   faceMetrics
 } from '@smartspectra/node-sdk/renderer'
 import { decodeMetrics } from '@smartspectra/node-sdk/messages'
-import type { CaptureStartRequest, MetricsSnapshot } from '@shared/types'
+import type { CaptureStartRequest, MetricsSnapshot, ValidationEvent } from '@shared/types'
 import { captureConfig as cfg } from './config'
 import { mergeSnapshots, reduceMetrics, type FrameSize } from './reduce'
+import { addPayload, emptyDiagnostics } from './diagnostics'
+import { monitorConfig } from '@shared/monitor-config'
 
 interface Active {
   sdk: SmartSpectraSDK
@@ -19,6 +21,8 @@ interface Active {
   streams: MediaStream[]
   cleanup: () => void
   flush: ReturnType<typeof setInterval>
+  diag?: ReturnType<typeof setInterval>
+  finishDiagnostics?: () => void
 }
 
 const ovra = window.ovra
@@ -99,6 +103,8 @@ async function start(req: CaptureStartRequest): Promise<void> {
   })
   let frame: FrameSize = { width: cfg.width, height: cfg.height }
   let pending: MetricsSnapshot | null = null
+  let diagnostics = req.diagnostics ? emptyDiagnostics(req.phase) : null
+  let currentValidation: ValidationEvent | null = null
   let lastCode: number | null = null
   const a: Active = {
     sdk,
@@ -107,15 +113,38 @@ async function start(req: CaptureStartRequest): Promise<void> {
     flush: setInterval(() => {
       if (!pending) return
       ovra.send('capture:metrics', pending)
+      if (diagnostics) diagnostics.snapshots++
       pending = null
     }, 1000 / cfg.maxSendsPerSec)
+  }
+  const reportDiagnostics = (): void => {
+    if (!diagnostics) return
+    diagnostics.t = Date.now()
+    diagnostics.processing =
+      Object.entries(ProcessingStatus).find(
+        ([name, value]) => name.startsWith('k') && value === sdk.processingStatus
+      )?.[0] ?? String(sdk.processingStatus)
+    diagnostics.validation = currentValidation
+    ovra.send('capture:diag', diagnostics)
+    diagnostics = emptyDiagnostics(req.phase)
+  }
+  if (diagnostics) {
+    a.diag = setInterval(reportDiagnostics, monitorConfig.updateMs)
+    a.finishDiagnostics = reportDiagnostics
   }
   active = a
 
   sdk.on('metrics', (buf) => {
-    pending = mergeSnapshots(pending, reduceMetrics(decodeMetrics(buf), frame, Date.now()))
+    const raw = decodeMetrics(buf)
+    const snapshot = reduceMetrics(raw, frame, Date.now())
+    if (diagnostics) addPayload(diagnostics, raw, snapshot)
+    pending = mergeSnapshots(pending, snapshot)
   })
   sdk.on('validationStatus', (code, _ts, hint) => {
+    if (diagnostics) {
+      diagnostics.validationCodes[code] = (diagnostics.validationCodes[code] ?? 0) + 1
+      currentValidation = { t: Date.now(), code, hint }
+    }
     if (code === lastCode) return
     lastCode = code
     ovra.send('capture:validation', { t: Date.now(), code, hint })
@@ -157,6 +186,7 @@ async function stop(): Promise<void> {
   }
   ovra.send('capture:status', 'stopping')
   clearInterval(a.flush)
+  clearInterval(a.diag)
   try {
     await a.sdk.stop()
   } catch (err) {
@@ -166,6 +196,7 @@ async function stop(): Promise<void> {
   a.cleanup()
   for (const s of a.streams) for (const t of s.getTracks()) t.stop()
   const ended = a.streams.every((s) => s.getTracks().every((t) => t.readyState === 'ended'))
+  a.finishDiagnostics?.()
   a.sdk.destroy()
   if (ended && idle) {
     ovra.send('capture:status', 'idle')

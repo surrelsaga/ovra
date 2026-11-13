@@ -195,7 +195,7 @@ export function Calibration({
   const secLeft = Math.ceil((1 - cal.progress) * mainConfig.calibrationSec)
   return (
     <section className="page page--center" aria-labelledby="calibration-title">
-      <MoonOrb mood="calm" listening away={false} size={128} />
+      <MoonOrb mood="calm" listening calibration={cal.progress} away={false} size={128} />
       <h1 id="calibration-title">Getting to know today’s you</h1>
       <p className="muted">
         Sit back so your shoulders and chest are in view, and breathe normally.

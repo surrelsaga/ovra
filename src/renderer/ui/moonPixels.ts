@@ -10,6 +10,9 @@ export interface MoonPixels {
   edge: string
   /** Away: the eclipsed part of the disk. */
   eclipse: string
+  /** Waxing: the unlit side, kept faintly visible (night tones). */
+  night: string
+  nightEdge: string
   /** Stepped halo: a solid ring of cells, then a dithered one. */
   halo: string
   haloDither: string
@@ -38,11 +41,32 @@ const CRATERS: [number, number, number][] = [
 
 const cell = (x: number, y: number): string => `M${x} ${y}h1v1h-1z`
 
+export interface MoonLight {
+  /** Waxing, 0 = thin crescent, 1 = full (default). Lit from the right. */
+  phase?: number
+  /** Moonrise, 0–1: how far the disk has built out from its centre (default 1, whole moon). */
+  reveal?: number
+}
+
+/**
+ * Waxing: is the cell lit at this phase? The terminator sweeps right to left across the disk
+ * inside the outline, starting from a crescent about a cell thick.
+ */
+function litAt(dx: number, dy: number, r: number, phase: number): boolean {
+  const half = Math.sqrt(Math.max(0, (r - 1) ** 2 - dy * dy))
+  return dx >= Math.cos(Math.PI * (0.15 + phase * 0.85)) * half
+}
+
 /**
  * A disk `d` cells wide, centred in a `grid`×`grid` square. Use even `d` and `grid`
  * so the disk stays symmetric.
  */
-export function moonPixels(d: number, grid: number, away = false): MoonPixels {
+export function moonPixels(
+  d: number,
+  grid: number,
+  away = false,
+  { phase = 1, reveal = 1 }: MoonLight = {}
+): MoonPixels {
   const c = grid / 2
   const r = d / 2
   const scale = d / 22
@@ -58,6 +82,11 @@ export function moonPixels(d: number, grid: number, away = false): MoonPixels {
   }
   const edge: string[] = []
   const eclipse: string[] = []
+  const night: string[] = []
+  const nightEdge: string[] = []
+  const rising = reveal < 1
+  // Moonrise builds one ring at a time; the growing edge is drawn in the outline colour.
+  const maxD = Math.ceil(reveal * (r + 1))
   const halo: string[] = []
   const haloDither: string[] = []
   // ponytail: eclipse as a second disk offset up-left; leaves a crescent on the lit side.
@@ -66,9 +95,10 @@ export function moonPixels(d: number, grid: number, away = false): MoonPixels {
   for (let y = 0; y < grid; y++) {
     for (let x = 0; x < grid; x++) {
       const p = cell(x, y)
+      const dd = dist(x, y)
+      if (rising && dd > maxD) continue
       if (!inside(x, y)) {
-        if (away) continue
-        const dd = dist(x, y)
+        if (away || rising) continue
         if (dd < r + 1) halo.push(p)
         else if (dd < r + 2.2 && (x + y) % 2 === 0) haloDither.push(p)
         continue
@@ -83,9 +113,17 @@ export function moonPixels(d: number, grid: number, away = false): MoonPixels {
         out.outline.push(p)
         continue
       }
+      if (rising && dd > maxD - 1.2) {
+        out.outline.push(p)
+        continue
+      }
       const nearEdge = n4.some(([a, b]) => n4Outline(a, b))
       if (away && Math.hypot(x + 0.5 - shadow.x, y + 0.5 - shadow.y) < shadow.r) {
         eclipse.push(p)
+        continue
+      }
+      if (!away && phase < 1 && !litAt(x + 0.5 - c, y + 0.5 - c, r, phase)) {
+        ;(nearEdge ? nightEdge : night).push(p)
         continue
       }
       if (nearEdge) edge.push(p)
@@ -112,6 +150,8 @@ export function moonPixels(d: number, grid: number, away = false): MoonPixels {
     tones: Object.fromEntries(TONES.map((t) => [t, out[t].join('')])) as Record<Tone, string>,
     edge: edge.join(''),
     eclipse: eclipse.join(''),
+    night: night.join(''),
+    nightEdge: nightEdge.join(''),
     halo: halo.join(''),
     haloDither: haloDither.join('')
   }
@@ -123,22 +163,27 @@ export function moonPixels(d: number, grid: number, away = false): MoonPixels {
   }
 }
 
+export const SAT_STEPS = 32
+
 /**
- * A solid 1-cell pixel circle of radius `radius` round the grid centre, as [x, y, turn]
- * where turn (0–1, clockwise from 12 o'clock) lets the ring light up in order.
+ * Camera satellite at `step` on a pixel circle of `radius` round the grid centre, clockwise from
+ * 12 o'clock, 32 steps a turn. Returns [x, y, size, back] trail first, head last: the head is a
+ * 2×2 block (back 0), then `trail` single cells behind it.
  */
-export function ringCells(grid: number, radius: number): [number, number, number][] {
+export function satelliteCells(
+  grid: number,
+  radius: number,
+  step: number,
+  trail = 2
+): [number, number, number, number][] {
   const c = grid / 2
-  const cells: [number, number, number][] = []
-  for (let y = 0; y < grid; y++)
-    for (let x = 0; x < grid; x++) {
-      const dx = x + 0.5 - c
-      const dy = y + 0.5 - c
-      const dd = Math.hypot(dx, dy)
-      if (dd < radius - 0.5 || dd >= radius + 0.5) continue
-      const turn = (Math.atan2(dx, -dy) / (2 * Math.PI) + 1) % 1
-      cells.push([x, y, turn])
-    }
+  const cells: [number, number, number, number][] = []
+  for (let back = trail; back >= 0; back--) {
+    const a = ((step - back) / SAT_STEPS) * 2 * Math.PI - Math.PI / 2
+    const size = back === 0 ? 2 : 1
+    const at = (v: number): number => Math.round(c - size / 2 + v * radius)
+    cells.push([at(Math.cos(a)), at(Math.sin(a)), size, back])
+  }
   return cells
 }
 

@@ -25,13 +25,14 @@ describe('orb window', () => {
     }
 
     bridge.push('push:orb', { ...base, listening: true, bubble: 'Checking in' })
-    expect(screen.getByTestId('listening-ring')).toBeInTheDocument()
+    expect(screen.getByTestId('camera-satellite')).toBeInTheDocument()
     expect(screen.getByText('Camera on')).toBeInTheDocument()
     expect(screen.getByText('Checking in')).toBeInTheDocument()
 
     bridge.push('push:orb', { ...base, paused: true })
     expect(screen.getByText('Camera paused')).toBeInTheDocument()
-    expect(screen.queryByTestId('listening-ring')).toBeNull()
+    // Camera went off: the satellite is fading out (gone after ~600 ms, see the indicator test).
+    expect(screen.getByTestId('camera-satellite')).toHaveAttribute('opacity', '0.6')
     expect(moon()).toHaveAccessibleName('Ovra moon, calm, camera paused')
 
     bridge.push('push:orb', {
@@ -55,6 +56,60 @@ describe('orb window', () => {
     })
     expect(screen.getByText('Calm')).toBeInTheDocument()
     expect(screen.getByText(/Weightless/)).toBeInTheDocument()
+  })
+
+  it('camera indicator: moonrise, satellite steps while on, two-step fade when off', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    const sat = (): HTMLElement | null => screen.queryByTestId('camera-satellite')
+    const head = (): string | null => sat()?.querySelector('.sat--0')?.getAttribute('x') ?? null
+    expect(sat()).toBeNull()
+
+    bridge.push('push:orb', { ...base, listening: true, calibration: 0 })
+    // Satellite shows from the first frame; the moon builds out from its centre.
+    expect(sat()).toHaveAttribute('opacity', '1')
+    expect(moon()).toHaveAttribute('data-rise', '0.060')
+    expect(moon()).toHaveAttribute('data-phase', '0.000')
+    const x0 = head()
+    act(() => void vi.advanceTimersByTime(110))
+    expect(head()).not.toBe(x0)
+    act(() => void vi.advanceTimersByTime(1000))
+    expect(moon()).not.toHaveAttribute('data-rise')
+
+    // Waxing follows calibration progress in 24 steps; check-ins show the full moon.
+    bridge.push('push:orb', { ...base, listening: true, calibration: 0.5 })
+    expect(moon()).toHaveAttribute('data-phase', '0.500')
+    bridge.push('push:orb', { ...base, listening: true })
+    expect(moon()).not.toHaveAttribute('data-phase')
+    act(() => void vi.advanceTimersByTime(60_000))
+    expect(sat()).toHaveAttribute('opacity', '1')
+
+    bridge.push('push:orb', { ...base, listening: false })
+    expect(sat()).toHaveAttribute('opacity', '0.6')
+    act(() => void vi.advanceTimersByTime(330))
+    expect(sat()).toHaveAttribute('opacity', '0.25')
+    act(() => void vi.advanceTimersByTime(330))
+    expect(sat()).toBeNull()
+    expect(moon()).not.toHaveAttribute('data-rise')
+  })
+
+  it('reduced motion parks the satellite at the top, no moonrise', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }))
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    render(<App />)
+    bridge.push('push:orb', { ...base, listening: true })
+    const sat = (): Element | null =>
+      screen.getByTestId('camera-satellite').querySelector('.sat--0')
+    expect(moon()).not.toHaveAttribute('data-rise')
+    expect(screen.getByTestId('camera-satellite').querySelectorAll('rect')).toHaveLength(1)
+    expect(sat()).toHaveAttribute('y', '0')
+    act(() => void vi.advanceTimersByTime(1000))
+    expect(sat()).toHaveAttribute('y', '0')
+    bridge.push('push:orb', { ...base, listening: false })
+    expect(screen.queryByTestId('camera-satellite')).toBeNull()
+    vi.unstubAllGlobals()
   })
 
   it('has labelled mini controls; pause reads its state from push:orb', () => {

@@ -8,7 +8,6 @@
   --period: var(--orb-calm-period);
   /* Grey-blue ink the shading steps towards. */
   --ink: #3b4252;
-  --orbit-period: 4.8s;
   position: relative;
   flex: none;
 }
@@ -68,6 +67,13 @@
 .px--eclipse {
   fill: color-mix(in srgb, var(--core) 16%, var(--bg));
 }
+/* Waxing: the unlit side stays faintly visible. */
+.px--night {
+  fill: color-mix(in srgb, var(--core) 15%, var(--bg));
+}
+.px--night-edge {
+  fill: color-mix(in srgb, var(--core) 22%, var(--bg));
+}
 
 /* Idle pulse: the solid halo steps between two strengths, the dithered ring blinks in and out. */
 .moon__halo,
@@ -120,16 +126,22 @@
 }
 
 /*
- * Listening: a solid pixel ring with a brighter head walking round. This is the camera indicator:
- * the whole ring always shows (at least 70%), with a dark 1-px edge for light desktops. Under
- * reduced motion it stays fully lit.
+ * Camera indicator: a bright 2×2 satellite with a two-cell trail, stepped round by MoonOrb.
+ * Same colours in every mood; a dark 1-px edge (stroke under the fill) for light desktops.
  */
-.moon__ring-edge {
-  fill: var(--bg);
+.moon__satellite {
+  stroke: var(--bg);
+  stroke-linejoin: miter;
+  paint-order: stroke;
 }
-.moon__ring rect {
+.sat--0 {
+  fill: #fff;
+}
+.sat--1 {
   fill: var(--orb-listening-ring);
-  animation: moon-orbit var(--orbit-period) step-end infinite;
+}
+.sat--2 {
+  fill: color-mix(in srgb, var(--orb-listening-ring) 55%, var(--bg));
 }
 
 @keyframes moon-halo {
@@ -194,21 +206,5 @@
   }
   75% {
     opacity: 0;
-  }
-}
-/* Pixels just behind the head fade back in steps. */
-@keyframes moon-orbit {
-  0% {
-    opacity: 1;
-    fill: #fff;
-  }
-  6% {
-    opacity: 1;
-  }
-  12% {
-    opacity: 0.85;
-  }
-  18% {
-    opacity: 0.7;
   }
 }

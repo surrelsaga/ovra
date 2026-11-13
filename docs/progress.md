@@ -87,3 +87,7 @@ face/telemetry consent changes restart capture, nudges during calibration, music
   mirrored, "Not recorded"); calm SDK-failure fallback message; Spotify-not-running state. 242 tests.
 - Deferred until the build is finished: DEV post draft + demo script, Windows controller.
 - Still blocked on Presage credits: calm-working e2e rerun, quit-during-capture proof, live camera test, tuning.
+- Settle fade (`bcfec93`): fade down → next song → fade back to the user's volume; always restored on abort.
+- Windows Spotify controller (`6a21108`): PowerShell/SMTC, unit-tested only; no exact-track picks or fades on Windows.
+  Needs a real Windows PC check (`docs/windows.md`).
+**All technical implementation done (257 tests).** Left: credit-blocked checks and Daniel's deliverables.

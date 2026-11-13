@@ -1,5 +1,4 @@
-import { breathDisk } from './MoonOrb'
-import { moonPixels, ringCells } from './moonPixels'
+import { breathDisk, moonPixels, ringCells } from './moonPixels'
 
 const cells = (path: string): number => (path.match(/M/g) ?? []).length
 

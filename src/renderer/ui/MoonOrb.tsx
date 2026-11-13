@@ -1,7 +1,7 @@
 // Owner: Agent E. The pixel-art moon orb. Used by the orb window and the main window (logo, greeting, calibration).
 import { useMemo, type CSSProperties } from 'react'
 import type { OrbView } from '@shared/types'
-import { moonPixels, ringCells, TONES } from './moonPixels'
+import { breathDisk, moonPixels, ringCells, TONES } from './moonPixels'
 import './moon.css'
 
 export type MoonProps = Pick<OrbView, 'mood' | 'listening' | 'away' | 'breath'> & {
@@ -21,12 +21,6 @@ function moonLabel(p: MoonProps): string {
   if (p.listening) parts.push('camera on')
   else if (p.paused) parts.push('camera paused')
   return parts.join(', ')
-}
-
-/** Breathe along: the disk grows and shrinks two art pixels at a time (5 frames). */
-export function breathDisk(disk: number, breath: number | undefined): number {
-  if (breath === undefined) return disk
-  return disk - 6 + 2 * Math.round(Math.min(1, Math.max(0, breath)) * 4)
 }
 
 export function MoonOrb(props: MoonProps): React.JSX.Element {

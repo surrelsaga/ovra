@@ -141,3 +141,9 @@ export function ringCells(grid: number, radius: number): [number, number, number
     }
   return cells
 }
+
+/** Breathe along: the disk grows and shrinks two art pixels at a time (5 frames). */
+export function breathDisk(disk: number, breath: number | undefined): number {
+  if (breath === undefined) return disk
+  return disk - 6 + 2 * Math.round(Math.min(1, Math.max(0, breath)) * 4)
+}

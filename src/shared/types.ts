@@ -243,6 +243,8 @@ export interface MusicController {
   resume(): Promise<void>
   next(): Promise<void>
   setVolume(pct: number): Promise<void>
+  /** Current player volume 0–100, or null if it can't be read. Optional: controllers without it can't fade. */
+  getVolume?(): Promise<number | null>
   current(): Promise<NowPlaying | null>
   /** Implemented by polling (~2 s). Returns an unsubscribe function. */
   onTrackChange(cb: (t: NowPlaying) => void): () => void

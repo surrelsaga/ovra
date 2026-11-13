@@ -31,3 +31,9 @@ Format:
 - Change: `'push:sdk-error': SdkError` in `IpcPush` and `IPC_PUSH_CHANNELS`.
 - Why: the calibration screen shows a calm fallback message when the SDK fails (e.g. credits exhausted).
 - Status: applied on main
+
+## 2026-11-13 — orchestrator — MusicController.getVolume (optional)
+- File: src/shared/types.ts
+- Change: `getVolume?(): Promise<number | null>` on `MusicController`.
+- Why: Settle's early switch can fade out and restore the user's volume (PLAN.md §6).
+- Status: applied on main

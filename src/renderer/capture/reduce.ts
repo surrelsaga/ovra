@@ -70,7 +70,7 @@ export function faceBox(
 
 function reduceFace(face: NonNullable<Metrics['face']>, frame: FrameSize): FaceSnapshot {
   const points = face.landmarks?.at(-1)?.value ?? []
-  const out: FaceSnapshot = { present: points.length > 0 }
+  const out: FaceSnapshot = { present: true }
   if (face.blinking?.length) out.blinking = face.blinking.some((d) => !!d.detected)
   if (face.talking?.length) out.talking = face.talking.some((d) => !!d.detected)
   const scores = face.expression?.at(-1)?.scores
@@ -126,6 +126,8 @@ export function mergeSnapshots(
   const out: MetricsSnapshot = { ...prev, ...next }
   if (prev.face || next.face) {
     const face: FaceSnapshot = { ...prev.face, ...next.face, present: !!next.face?.present }
+    for (const key of ['headRollDeg', 'center', 'size'] as const)
+      if (next.face?.[key] === undefined) delete face[key]
     if (prev.face?.blinking || next.face?.blinking) face.blinking = true
     if (prev.face?.talking || next.face?.talking) face.talking = true
     out.face = face

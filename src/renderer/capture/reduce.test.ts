@@ -85,12 +85,22 @@ describe('reduceMetrics', () => {
     )
   })
 
-  it('reports no face when landmarks are missing', () => {
-    expect(reduceMetrics({ face: {} } as never, frame, 1).face).toEqual({ present: false })
+  it('reports a face object as present without landmarks or derived geometry', () => {
+    expect(reduceMetrics({ face: {} } as never, frame, 1).face).toEqual({ present: true })
+    expect(reduceMetrics({} as never, frame, 1).face).toBeUndefined()
   })
 })
 
 describe('mergeSnapshots', () => {
+  it('drops old geometry when landmarks disappear, and presence when the face object disappears', () => {
+    const a = {
+      t: 1,
+      face: { present: true, center: { x: 0.5, y: 0.5 }, size: 0.2, headRollDeg: 10 }
+    }
+    expect(mergeSnapshots(a, { t: 2, face: { present: true } }).face).toEqual({ present: true })
+    expect(mergeSnapshots(a, { t: 2 }).face).toEqual({ present: false })
+  })
+
   it('keeps latest values and ORs blinking/talking between sends', () => {
     const a = {
       t: 1,
@@ -104,5 +114,8 @@ describe('mergeSnapshots', () => {
       face: { present: true, blinking: true, talking: false }
     })
     expect(mergeSnapshots(null, b)).toBe(b)
+    expect(
+      mergeSnapshots({ t: 1, face: { present: true, expressions: { happy: 80 } } }, b).face
+    ).toMatchObject({ expressions: { happy: 80 } })
   })
 })

@@ -12,6 +12,7 @@ import type {
   StateUpdate,
   Trend
 } from '@shared/types'
+import { ValidationCode } from '@shared/types'
 import { buildBaseline, classify, evaluateWindow, hasFace, type WindowEval } from './classifier'
 import { resolveConfig } from './config'
 
@@ -37,6 +38,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   let phaseStart = 0
   let buf: MetricsSnapshot[] = []
   let sawFace = false
+  let noFaceFound = false
   let history: WindowEval[] = []
   let situation: Situation | null = null
   let confidence = 0
@@ -81,6 +83,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     trend = 'steady'
     seatedSince = null
     lastFace = null
+    noFaceFound = false
     away = manualAway = paused = false
   }
 
@@ -127,6 +130,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     phaseStart = lastEval = Date.now()
     buf = []
     sawFace = false
+    noFaceFound = false
     lastFace = null // the camera was off before this; that gap isn't a seated gap
     if (p === 'continuous') {
       stopTimer()
@@ -134,8 +138,12 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     }
   })
 
+  bus.on('sdk:validation', (v) => {
+    if (phase) noFaceFound = v.code === ValidationCode.noFaceFound
+  })
+
   bus.on('sdk:metrics', (s) => {
-    if (!phase || !hasFace(s)) return
+    if (!phase || noFaceFound || !hasFace(s, privacy.canUseFace())) return
     onFace(s.t)
     buf.push(s)
     if (away && !manualAway) {

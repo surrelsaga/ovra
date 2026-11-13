@@ -102,7 +102,7 @@ it('leaves throttle/merge output identical while counting raw payloads and all v
         payloads: 20,
         processing: 'kRunning',
         pulse: { present: 20, stable: 10, confidenceSum: 1500, confidenceCount: 20 },
-        face: { object: 20, landmarks: 0, present: 0 },
+        face: { object: 20, landmarks: 0, present: 20 },
         validationCodes: { 7: 20 }
       })
       expect(diag.pulse).not.toHaveProperty('value')

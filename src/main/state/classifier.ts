@@ -16,10 +16,10 @@ export function median(xs: number[]): number | undefined {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** A face (or vitals, which need a face) was seen in this snapshot. */
-export function hasFace(s: MetricsSnapshot): boolean {
+/** Without face consent, vitals are the only available presence signal. */
+export function hasFace(s: MetricsSnapshot, faceEnabled: boolean): boolean {
   if (s.face) return s.face.present
-  return s.pulse !== undefined || s.breathing !== undefined || s.hrv !== undefined
+  return !faceEnabled && (s.pulse !== undefined || s.breathing !== undefined || s.hrv !== undefined)
 }
 
 const stablePulse = (snaps: MetricsSnapshot[]): MetricsSnapshot[] =>

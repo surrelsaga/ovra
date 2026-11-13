@@ -13,6 +13,7 @@ import {
 import { buildBaseline, classify, evaluateWindow, type WindowEval } from './classifier'
 import { resolveConfig, stateConfig as cfg } from './config'
 import { createStateEngine } from '.'
+import { reduceMetrics } from '../../renderer/capture/reduce'
 
 const MIN = 60_000
 const r = (
@@ -254,6 +255,7 @@ describe('config overrides', () => {
 describe('state engine', () => {
   let overrides: Record<string, number>
   const privacy = {
+    canUseFace: () => false,
     getSettings: () => ({ ...DEFAULT_SETTINGS, thresholdOverrides: overrides })
   } as unknown as PrivacyService
 
@@ -300,7 +302,10 @@ describe('state engine', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000_000)
   })
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
 
   it('builds a baseline, then classifies each check-in', () => {
     const { ready, updates, phase, wait } = setup()
@@ -384,6 +389,59 @@ describe('state engine', () => {
     phase('checkin', 90, { pulse: 60 })
     expect(engine.current().situation).toBeNull()
   })
+
+  it('stays present and seated through 40 s of framing hints and 50% landmark loss', () => {
+    const { bus, engine, updates } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    for (let sec = 0; sec < 80; sec++) {
+      const code = sec < 40 ? 0 : sec % 2 === 0 ? 7 : 17
+      bus.emit('sdk:validation', { t: Date.now(), code, hint: 'Adjust framing' })
+      const face = sec < 40 || sec % 2 === 0 ? { landmarks: [{ value: [{ x: 1, y: 1 }] }] } : {}
+      bus.emit(
+        'sdk:metrics',
+        reduceMetrics({ face } as never, { width: 100, height: 100 }, Date.now())
+      )
+      vi.advanceTimersByTime(1000)
+      expect(engine.current().away).toBe(false)
+    }
+    expect(updates.every((u) => !u.away)).toBe(true)
+    expect(engine.current().seatedMinutes).toBeCloseTo(80 / 60)
+    engine.dispose()
+  })
+
+  it.each(['validation 1', 'no face object', 'no payloads'])(
+    'goes away after 20 s with %s, returns on a face, and resets seated time after a long gap',
+    (missing) => {
+      const { bus, engine } = setup('continuous')
+      vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+      bus.emit('sdk:checkin-started', { phase: 'continuous' })
+      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
+      const start = Date.now()
+      if (missing === 'validation 1')
+        bus.emit('sdk:validation', { t: start, code: 1, hint: 'No face found' })
+      for (let sec = 0; sec < 25; sec++) {
+        if (missing !== 'no payloads')
+          bus.emit('sdk:metrics', {
+            t: Date.now(),
+            pulse: r(60),
+            ...(missing === 'validation 1' ? { face: { present: true } } : {})
+          })
+        vi.advanceTimersByTime(1000)
+        expect(engine.current().away).toBe(sec >= 19)
+      }
+      bus.emit('sdk:validation', { t: Date.now(), code: 0, hint: '' })
+      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
+      expect(engine.current().away).toBe(false)
+      expect(engine.current().seatedMinutes).toBeCloseTo(25 / 60)
+      bus.emit('sdk:validation', { t: Date.now(), code: 1, hint: 'No face found' })
+      vi.advanceTimersByTime(65_000)
+      bus.emit('sdk:validation', { t: Date.now(), code: 17, hint: 'Face the camera' })
+      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
+      expect(engine.current()).toMatchObject({ away: false, seatedMinutes: 0 })
+      engine.dispose()
+    }
+  )
 
   it('continuous: periodic updates, away after 20 s without face, seated reset after 60 s', () => {
     const { bus, engine, updates, phase } = setup('continuous')

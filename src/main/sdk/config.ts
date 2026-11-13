@@ -1,6 +1,8 @@
 // Owner: Agent A. Tunable sensing numbers.
 export const sensingConfig = {
   calibrationMs: 90_000,
+  /** Hard cap including time spent positioning and waiting for steady readings. */
+  calibrationMaxMs: 180_000,
   checkinMs: 90_000,
   returnCheckMs: 30_000,
   /** A validation code must hold this long before it's emitted / shown as a hint (codes flap 0 ↔ 17). */

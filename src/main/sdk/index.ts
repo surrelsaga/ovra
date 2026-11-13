@@ -7,11 +7,15 @@ import type {
   Bus,
   CaptureDiagnostics,
   CameraMode,
+  MetricsSnapshot,
   CaptureStartRequest,
   PrivacyService,
   SensingPhase,
   SensingService
 } from '@shared/types'
+import { ValidationCode } from '@shared/types'
+import { buildBaseline, hasFace } from '../state/classifier'
+import { resolveConfig } from '../state/config'
 import { onCapture, push } from '../ipc'
 import { loadPage, preloadPath } from '../paths'
 import { sensingConfig, type SensingConfig } from './config'
@@ -51,6 +55,9 @@ export function createSensing(deps: SensingDeps): SensingService {
   let stopWaiter: ((stopped: boolean) => void) | null = null
   let listening = false
   let phaseDeadline: number | undefined
+  let validationCode: number | null = null
+  let noFaceFound = false
+  let calibration: { measurableAt: number | null; pulses: MetricsSnapshot[] } | null = null
   let faceEnabled = privacy.canUseFace()
   let telemetryEnabled = privacy.get().telemetry
 
@@ -72,7 +79,10 @@ export function createSensing(deps: SensingDeps): SensingService {
   function flushValidation(): void {
     if (!current) return
     const ev = smoother.poll(Date.now())
-    if (ev) bus.emit('sdk:validation', ev)
+    if (ev) {
+      noFaceFound = ev.code === ValidationCode.noFaceFound
+      bus.emit('sdk:validation', ev)
+    }
   }
 
   function listen(): void {
@@ -80,12 +90,19 @@ export function createSensing(deps: SensingDeps): SensingService {
     listening = true
     onCapture('capture:metrics', (m, e) => {
       if (!fromCapture(e) || !current || !privacy.canUseCamera()) return
-      if (privacy.canUseFace()) bus.emit('sdk:metrics', m)
-      else {
-        const vitals = { ...m }
-        delete vitals.face
-        bus.emit('sdk:metrics', vitals)
+      const face = privacy.canUseFace()
+      if (!face) {
+        m = { ...m }
+        delete m.face
       }
+      // Raw no-face overrides presence immediately; only the displayed hint is debounced.
+      if (validationCode === ValidationCode.noFaceFound)
+        m = face ? { ...m, face: { ...m.face, present: false } } : { t: m.t }
+      if (calibration && !noFaceFound && hasFace(m, face) && m.pulse?.stable) {
+        calibration.measurableAt ??= Date.now()
+        calibration.pulses.push({ t: m.t, pulse: m.pulse })
+      }
+      bus.emit('sdk:metrics', m)
     })
     onCapture('capture:diag', (diag: CaptureDiagnostics, e) => {
       if (
@@ -99,6 +116,8 @@ export function createSensing(deps: SensingDeps): SensingService {
     })
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
+      validationCode = v.code
+      if (calibration && v.code === ValidationCode.ok) calibration.measurableAt ??= Date.now()
       smoother.push(v, Date.now())
       setTimeout(flushValidation, cfg.hintPersistMs)
     })
@@ -194,6 +213,7 @@ export function createSensing(deps: SensingDeps): SensingService {
   /** Keep the camera indicator on until tracks have ended or the capture context is destroyed. */
   async function stopCapture(): Promise<void> {
     clearPhaseTimers()
+    calibration = null
     if (stopping) return stopping
     const phase = current
     if (!phase) return
@@ -231,8 +251,11 @@ export function createSensing(deps: SensingDeps): SensingService {
     }
   }
 
-  function emitProgress(startedAt: number, durationMs: number): void {
-    const progress = Math.min(1, (Date.now() - startedAt) / durationMs)
+  function emitProgress(): void {
+    const progress =
+      calibration?.measurableAt == null
+        ? 0
+        : Math.min(1, (Date.now() - calibration.measurableAt) / cfg.calibrationMs)
     bus.emit('sdk:calibration-progress', { progress, hint: smoother.hint() })
   }
 
@@ -281,24 +304,40 @@ export function createSensing(deps: SensingDeps): SensingService {
         face: privacy.canUseFace(),
         telemetry: privacy.get().telemetry === true,
         diagnostics: !app.isPackaged && process.env.OVRA_MONITOR === '1',
-        durationMs
+        durationMs: phase === 'calibration' ? (durationMs ?? cfg.calibrationMaxMs) : durationMs
       }
       current = phase
       started = true
       smoother.reset()
+      validationCode = null
+      noFaceFound = false
+      calibration = phase === 'calibration' ? { measurableAt: null, pulses: [] } : null
       bus.emit('sdk:checkin-started', { phase })
       push(w, 'push:capture-start', req)
 
-      if (durationMs === undefined) return
-      const startedAt = Date.now()
-      phaseDeadline = startedAt + durationMs
+      if (req.durationMs === undefined) return
+      phaseDeadline = Date.now() + req.durationMs
       phaseTimer = setTimeout(() => {
-        if (phase === 'calibration') emitProgress(startedAt, durationMs)
+        if (phase === 'calibration') emitProgress()
         endTimed(g).catch(report)
-      }, durationMs)
+      }, req.durationMs)
       if (phase === 'calibration') {
-        emitProgress(startedAt, durationMs)
-        progressTimer = setInterval(() => emitProgress(startedAt, durationMs), cfg.progressEveryMs)
+        emitProgress()
+        progressTimer = setInterval(() => {
+          emitProgress()
+          if (
+            calibration?.measurableAt == null ||
+            Date.now() - calibration.measurableAt < cfg.calibrationMs
+          )
+            return
+          // Reuse the state's readiness rules so insufficient readings get until the hard cap.
+          const result = buildBaseline(
+            calibration.pulses,
+            resolveConfig(privacy.getSettings().thresholdOverrides),
+            Date.now()
+          )
+          if ('baseline' in result) endTimed(g).catch(report)
+        }, cfg.progressEveryMs)
       }
     } catch (err) {
       if (started) await stopCapture()
@@ -327,7 +366,7 @@ export function createSensing(deps: SensingDeps): SensingService {
   })
 
   const service: SensingService = {
-    startCalibration: () => runCapture('calibration', cfg.calibrationMs),
+    startCalibration: () => runCapture('calibration'),
 
     startCheckins(intervalMin) {
       privacy.assertCameraConsent()

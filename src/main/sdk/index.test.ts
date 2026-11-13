@@ -2,10 +2,13 @@ import {
   DEFAULT_PRIVACY,
   DEFAULT_SETTINGS,
   type BusEventName,
+  type MetricsSnapshot,
   type PrivacyService
 } from '@shared/types'
 import { createBus } from '../bus'
 import { createSensing } from '.'
+import { createStateEngine } from '../state'
+import { sensingConfig, type SensingConfig } from './config'
 
 // Fake Electron + IPC: the capture "renderer" answers every capture-stop with status idle.
 const h = vi.hoisted(() => {
@@ -97,7 +100,9 @@ interface Setup {
   privacy: PrivacyService
 }
 
-function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
+function setup(
+  opts: { consent?: boolean; key?: string | null; config?: Partial<SensingConfig> } = {}
+): Setup {
   const bus = createBus()
   const events: { name: BusEventName; payload: unknown }[] = []
   for (const name of [
@@ -116,7 +121,13 @@ function setup(opts: { consent?: boolean; key?: string | null } = {}): Setup {
     bus,
     privacy,
     getApiKey: () => (opts.key === undefined ? 'test-key' : opts.key),
-    config: { calibrationMs: 10_000, checkinMs: 5_000, returnCheckMs: 3_000, hintPersistMs: 1_000 }
+    config: {
+      calibrationMs: 10_000,
+      checkinMs: 5_000,
+      returnCheckMs: 3_000,
+      hintPersistMs: 1_000,
+      ...opts.config
+    }
   })
   const names = (): string[] =>
     events
@@ -261,16 +272,25 @@ describe('phases and check-in scheduler', () => {
   })
 
   it('calibration emits progress and ends on time', async () => {
-    const { sensing, events, names } = setup()
+    const { sensing, events, names } = setup({ config: { calibrationMs: 20_000 } })
     await sensing.startCalibration()
     expect(sensing.phase()).toBe('calibration')
-    await vi.advanceTimersByTimeAsync(10_000)
+    for (let i = 0; i < 20; i++) {
+      h.handlers['capture:metrics'](
+        { t: Date.now(), pulse: { value: 60, stable: true } },
+        { sender: h.wc }
+      )
+      await vi.advanceTimersByTimeAsync(1000)
+    }
     const progress = events
       .filter((e) => e.name === 'sdk:calibration-progress')
       .map((e) => e.payload)
     expect(progress.length).toBeGreaterThanOrEqual(10)
     expect(progress.at(-1)).toEqual({ progress: 1, hint: null })
-    expect(names()).toEqual(['sdk:checkin-started:calibration', 'sdk:checkin-ended:calibration'])
+    expect(names().filter((n) => n !== 'sdk:metrics')).toEqual([
+      'sdk:checkin-started:calibration',
+      'sdk:checkin-ended:calibration'
+    ])
     expect(sensing.phase()).toBe('idle')
   })
 
@@ -366,6 +386,42 @@ describe('while paused', () => {
 })
 
 describe('capture messages', () => {
+  it.each([true, false])(
+    'raw no-face overrides metrics before hint debounce (face consent %s)',
+    async (face) => {
+      const t = setup()
+      vi.spyOn(t.privacy, 'canUseFace').mockReturnValue(face)
+      const engine = createStateEngine({ bus: t.bus, privacy: t.privacy })
+      await t.sensing.startContinuous()
+      h.handlers['capture:validation'](
+        { t: Date.now(), code: 1, hint: 'No face found' },
+        { sender: h.wc }
+      )
+      const m = {
+        t: Date.now(),
+        face: { present: true },
+        pulse: { value: 60, confidence: 90, stable: true }
+      }
+      h.handlers['capture:metrics'](m, { sender: h.wc })
+      expect(engine.diagnostics().lastFace).toBeNull()
+      expect(t.events.filter((e) => e.name === 'sdk:metrics').at(-1)?.payload).toEqual(
+        face ? { ...m, face: { present: false } } : { t: m.t }
+      )
+      expect(t.events.filter((e) => e.name === 'sdk:validation')).toHaveLength(0)
+      for (let sec = 0; sec < 25; sec++) {
+        h.handlers['capture:metrics']({ ...m, t: Date.now() }, { sender: h.wc })
+        await vi.advanceTimersByTimeAsync(1000)
+      }
+      expect(engine.current().away).toBe(true)
+      h.handlers['capture:validation']({ t: Date.now(), code: 0, hint: '' }, { sender: h.wc })
+      await vi.advanceTimersByTimeAsync(1000)
+      h.handlers['capture:metrics']({ ...m, t: Date.now() }, { sender: h.wc })
+      expect(engine.current().away).toBe(false)
+      await t.sensing.stop()
+      engine.dispose()
+    }
+  )
+
   it('forwards metrics and only emits validation codes that persist', async () => {
     const { sensing, events } = setup()
     await sensing.startContinuous()
@@ -443,4 +499,139 @@ it('denies a late media permission request after camera consent is revoked', asy
   h.permissionRequest!(h.wc, 'media', answer, { mediaTypes: ['video'] })
   expect(answer).toHaveBeenCalledWith(false)
   expect(h.permissionCheck!(h.wc, 'media')).toBe(false)
+})
+
+describe('calibration live-pattern replay (mock capture only)', () => {
+  function replay(): Setup & {
+    ready: { ok: boolean; reason?: string }[]
+    engine: ReturnType<typeof createStateEngine>
+  } {
+    const t = setup({ config: sensingConfig })
+    const engine = createStateEngine({ bus: t.bus, privacy: t.privacy })
+    const ready: { ok: boolean; reason?: string }[] = []
+    t.bus.on('state:baseline-ready', (r) => ready.push(r))
+    return { ...t, ready, engine }
+  }
+
+  function validation(code: number, hint: string): void {
+    h.handlers['capture:validation']({ t: Date.now(), code, hint }, { sender: h.wc })
+  }
+
+  function pulse(): void {
+    h.handlers['capture:metrics'](
+      { t: Date.now(), pulse: { value: 60, stable: true, confidence: 90 } },
+      { sender: h.wc }
+    )
+  }
+
+  it('keeps progress at zero through 45 s of hints, then builds after 90 measurable seconds', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    for (const code of [16, 7, 17, 15, 12]) {
+      validation(code, `position ${code}`)
+      await vi.advanceTimersByTimeAsync(9000)
+      expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual(
+        { progress: 0, hint: `position ${code}` }
+      )
+    }
+    expect(t.ready).toEqual([])
+    validation(0, '')
+    for (let sec = 0; sec < 90; sec++) {
+      // 30 face payloads/s, with pulse in only one payload/s after a 10 s warmup.
+      for (let frame = 0; frame < 30; frame++) {
+        const m: MetricsSnapshot = { t: Date.now(), face: { present: true } }
+        if (sec >= 10 && frame === 0) m.pulse = { value: 60, confidence: 90, stable: true }
+        h.handlers['capture:metrics'](m, { sender: h.wc })
+      }
+      await vi.advanceTimersByTimeAsync(1000)
+      if (sec === 44) {
+        expect(t.sensing.phase()).toBe('calibration') // total elapsed 90 s
+        expect(t.ready).toEqual([])
+        expect(
+          t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload
+        ).toEqual({ progress: 0.5, hint: null })
+      }
+    }
+    expect(t.sensing.phase()).toBe('idle')
+    expect(t.ready).toEqual([{ ok: true }])
+    expect(t.engine.diagnostics()).toMatchObject({
+      baseline: true,
+      pulseCount: 80,
+      pulseSpanSec: 79
+    })
+    expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toHaveLength(1)
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('fails hints-only calibration at the 180 s cap, never at 90 s', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    validation(7, 'Place more of the chest in view.')
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(t.sensing.phase()).toBe('calibration')
+    expect(t.ready).toEqual([])
+    await vi.advanceTimersByTimeAsync(89_999)
+    expect(t.ready).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.sensing.phase()).toBe('idle')
+    expect(t.ready).toEqual([
+      { ok: false, reason: expect.stringContaining('too few steady pulse readings') }
+    ])
+    expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
+      progress: 0,
+      hint: 'Place more of the chest in view.'
+    })
+    expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toHaveLength(1)
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('allows insufficient steady readings until the cap even after validation passes', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    validation(0, '')
+    pulse()
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(t.sensing.phase()).toBe('calibration')
+    expect(t.ready).toEqual([])
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(t.ready).toEqual([{ ok: false, reason: expect.stringContaining('too few') }])
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('can start the measurable clock from a steady pulse without a validation callback', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    await vi.advanceTimersByTimeAsync(45_000)
+    for (let sec = 0; sec < 90; sec++) {
+      pulse()
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(t.ready).toEqual([{ ok: true }])
+    expect(t.sensing.phase()).toBe('idle')
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('pairs calibration end on pause, cancels its clock, and respects consent revocation', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    validation(0, '')
+    await vi.advanceTimersByTimeAsync(20_000)
+    await t.sensing.pause()
+    const ended = t.events.filter((e) => e.name === 'sdk:checkin-ended')
+    const progress = t.events.filter((e) => e.name === 'sdk:calibration-progress')
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toEqual(ended)
+    expect(t.events.filter((e) => e.name === 'sdk:calibration-progress')).toEqual(progress)
+    expect(ended).toHaveLength(1)
+    vi.spyOn(t.privacy, 'canUseCamera').mockReturnValue(false)
+    t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, camera: 'not-now' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.sensing.phase()).toBe('idle')
+    expect(h.pushes.filter((p) => p.channel === 'push:capture-start')).toHaveLength(1)
+    t.engine.dispose()
+  })
 })

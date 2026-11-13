@@ -45,7 +45,9 @@ describe('orb window', () => {
 
     bridge.push('push:orb', { ...base, breath: 1 })
     expect(moon()).toHaveAttribute('data-breathing', 'true')
-    expect(moon().style.getPropertyValue('--breath')).toBe('1')
+    expect(moon()).toHaveAttribute('data-disk', '24')
+    bridge.push('push:orb', { ...base, breath: 0 })
+    expect(moon()).toHaveAttribute('data-disk', '16')
 
     bridge.push('push:orb', {
       ...base,

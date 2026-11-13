@@ -1,11 +1,15 @@
-/* Moon orb. Colours come from the --orb-* tokens; shading is mixed from them. */
+/*
+ * Pixel-art moon. Flat tones are stepped mixes of the --orb-* mood colour; every animation
+ * is stepped (step-end), so the art only ever swaps whole pixels. No blur anywhere.
+ */
 .moon {
   --core: var(--orb-calm);
   --glow: var(--orb-calm-glow);
   --period: var(--orb-calm-period);
+  /* Grey-blue ink the shading steps towards. */
+  --ink: #3b4252;
+  --orbit-period: 4.8s;
   position: relative;
-  width: var(--size);
-  height: var(--size);
   flex: none;
 }
 
@@ -13,212 +17,198 @@
   --core: var(--orb-uneasy);
   --glow: var(--orb-uneasy-glow);
   --period: var(--orb-uneasy-period);
+  --ink: #5a4232;
 }
 .moon[data-mood='stormy'] {
   --core: var(--orb-stormy);
   --glow: var(--orb-stormy-glow);
   --period: var(--orb-stormy-period);
+  --ink: #5a3028;
 }
 .moon[data-mood='dim'] {
   --core: var(--orb-dim);
   --glow: var(--orb-dim-glow);
   --period: var(--orb-dim-period);
+  --ink: #262b36;
 }
 .moon[data-mood='bright'] {
   --core: var(--orb-bright);
   --glow: var(--orb-bright-glow);
   --period: var(--orb-bright-period);
+  --ink: #6a5a48;
 }
 
-.moon__glow {
+.moon__px {
   position: absolute;
-  inset: -32%;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--glow) 0%, transparent 62%);
-  animation: moon-glow var(--period) ease-in-out infinite;
+  left: calc(var(--px) * -5);
+  top: calc(var(--px) * -5);
+  overflow: visible;
   pointer-events: none;
 }
 
-.moon__body {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  /* Craters + a soft limb so the moon reads on light desktops too. */
-  background:
-    radial-gradient(
-      circle at 62% 60%,
-      color-mix(in srgb, var(--core) 82%, var(--bg)) 0 8%,
-      transparent 12%
-    ),
-    radial-gradient(
-      circle at 38% 72%,
-      color-mix(in srgb, var(--core) 86%, var(--bg)) 0 5%,
-      transparent 8%
-    ),
-    radial-gradient(
-      circle at 70% 32%,
-      color-mix(in srgb, var(--core) 88%, var(--bg)) 0 4%,
-      transparent 7%
-    ),
-    radial-gradient(
-      circle at 36% 30%,
-      color-mix(in srgb, var(--core) 40%, var(--text)) 0%,
-      var(--core) 48%,
-      color-mix(in srgb, var(--core) 62%, var(--bg)) 100%
-    );
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 35%, transparent),
-    0 0 calc(var(--size) * 0.25) var(--glow);
-  animation: moon-pulse var(--period) ease-in-out infinite;
-  transition:
-    opacity var(--duration) var(--ease),
-    filter var(--duration) var(--ease);
+/* Palette: 5 flat tones + outline. */
+.px--rim {
+  fill: color-mix(in srgb, var(--core) 45%, #fff);
+}
+.px--light {
+  fill: var(--core);
+}
+.px--base {
+  fill: color-mix(in srgb, var(--core) 74%, var(--ink));
+}
+.px--shade {
+  fill: color-mix(in srgb, var(--core) 52%, var(--ink));
+}
+.px--crater {
+  fill: color-mix(in srgb, var(--core) 32%, var(--ink));
+}
+.px--outline {
+  fill: var(--bg);
+}
+.px--eclipse {
+  fill: color-mix(in srgb, var(--core) 16%, var(--bg));
 }
 
-.moon[data-mood='stormy'] .moon__body {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 35%, transparent),
-    inset 0 0 calc(var(--size) * 0.14) var(--orb-stormy-edge),
-    0 0 calc(var(--size) * 0.3) var(--glow);
+/* Idle pulse: the solid halo steps between two strengths, the dithered ring blinks in and out. */
+.moon__halo,
+.moon__halo-dither {
+  fill: var(--glow);
 }
-.moon[data-mood='stormy'] .moon__glow {
-  animation: moon-flicker var(--period) steps(6, end) infinite;
+.moon__halo {
+  animation: moon-halo var(--period) step-end infinite;
 }
-.moon[data-mood='dim'] .moon__body {
-  filter: brightness(0.78) saturate(0.7);
+.moon__halo-dither {
+  animation: moon-halo-dither var(--period) step-end infinite;
+}
+.moon[data-mood='dim'] .moon__halo-dither {
+  display: none;
 }
 
-/* Bright: a few soft sparkles. */
-.moon__sparkle,
-.moon__sparkle::before,
-.moon__sparkle::after {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--orb-bright);
-  box-shadow: 0 0 6px 2px var(--orb-bright-glow);
-  animation: moon-twinkle 2.4s ease-in-out infinite;
+/* Stormy: orange-red pixel edge and a flickering halo. */
+.moon__edge {
+  fill: var(--orb-stormy-edge);
+  animation: moon-flicker var(--period) step-end infinite;
 }
+.moon[data-mood='stormy'] .moon__halo,
+.moon[data-mood='stormy'] .moon__halo-dither {
+  animation-name: moon-flicker;
+}
+
+/* Bright: pixel sparkles cycle off → dot → plus → dot. */
 .moon__sparkle {
-  top: -8%;
-  right: 6%;
+  fill: var(--orb-bright);
+  stroke: var(--bg);
+  stroke-width: 0.25;
+  paint-order: stroke;
+  animation: moon-twinkle 2.4s step-end infinite;
 }
-.moon__sparkle::before {
-  content: '';
-  top: calc(var(--size) * 0.95);
-  right: calc(var(--size) * 0.9);
-  animation-delay: 0.8s;
-}
-.moon__sparkle::after {
-  content: '';
-  top: calc(var(--size) * 0.3);
-  right: calc(var(--size) * -0.1);
-  animation-delay: 1.6s;
+.moon__sparkle-arms {
+  animation: moon-twinkle-arms 2.4s step-end infinite;
 }
 
-/* Away: eclipsed crescent, very dim. The outline (after the mask) keeps it visible on light desktops. */
+/* Away: eclipsed crescent, very dim, still. The full-disk outline keeps it visible on light desktops. */
 .moon[data-away] {
-  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--bg) 70%, transparent));
-}
-.moon[data-away] .moon__body {
-  opacity: 0.4;
-  filter: saturate(0.4);
-  mask-image: radial-gradient(circle at 74% 36%, transparent 0 47%, #000 50%);
-  animation: none;
-}
-.moon[data-away] .moon__glow {
-  opacity: 0.25;
-  animation: none;
+  --core: var(--orb-dim);
+  --ink: #262b36;
+  opacity: 0.7;
 }
 
-/* Breathe along: the whole moon follows --breath (0 out, 1 in). */
-.moon[data-breathing] {
-  transform: scale(calc(0.8 + var(--breath) * 0.32));
-  transition: transform 140ms linear;
-}
-.moon[data-breathing] .moon__body,
-.moon[data-breathing] .moon__glow {
+/* Breathe along: the disk itself changes size in whole pixels (MoonOrb), so the halo holds still. */
+.moon[data-breathing] .moon__halo,
+.moon[data-breathing] .moon__halo-dither {
   animation: none;
 }
 
-/* Listening: thin ring with a dot orbiting the moon. This is the camera indicator. */
-.moon__ring {
-  position: absolute;
-  inset: -14%;
-  border-radius: 50%;
-  border: 2px solid var(--orb-listening-ring);
-  /* Dark edges on both sides keep the ring visible on light desktops. */
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent);
-  animation: moon-orbit 6s linear infinite;
+/*
+ * Listening: a solid pixel ring with a brighter head walking round. This is the camera indicator:
+ * the whole ring always shows (at least 70%), with a dark 1-px edge for light desktops. Under
+ * reduced motion it stays fully lit.
+ */
+.moon__ring-edge {
+  fill: var(--bg);
 }
-.moon__ring::after {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: calc(50% - 4px);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--orb-listening-ring);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent),
-    0 0 8px var(--orb-listening-ring);
+.moon__ring rect {
+  fill: var(--orb-listening-ring);
+  animation: moon-orbit var(--orbit-period) step-end infinite;
 }
 
-@keyframes moon-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.025);
-  }
-}
-@keyframes moon-glow {
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: scale(0.96);
-  }
-  50% {
+@keyframes moon-halo {
+  0% {
     opacity: 1;
-    transform: scale(1.04);
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+@keyframes moon-halo-dither {
+  0% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0;
+  }
+  75% {
+    opacity: 0.5;
   }
 }
 @keyframes moon-flicker {
   0% {
-    opacity: 0.8;
-  }
-  20% {
     opacity: 1;
   }
-  35% {
-    opacity: 0.65;
+  18% {
+    opacity: 0.35;
   }
-  55% {
-    opacity: 0.95;
+  30% {
+    opacity: 1;
   }
-  75% {
-    opacity: 0.7;
+  52% {
+    opacity: 0.55;
   }
-  100% {
-    opacity: 0.9;
+  60% {
+    opacity: 0.2;
+  }
+  70% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 0.5;
   }
 }
 @keyframes moon-twinkle {
-  0%,
-  100% {
-    opacity: 0.2;
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+@keyframes moon-twinkle-arms {
+  0% {
+    opacity: 0;
   }
   50% {
     opacity: 1;
   }
+  75% {
+    opacity: 0;
+  }
 }
+/* Pixels just behind the head fade back in steps. */
 @keyframes moon-orbit {
-  to {
-    transform: rotate(360deg);
+  0% {
+    opacity: 1;
+    fill: #fff;
+  }
+  6% {
+    opacity: 1;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  18% {
+    opacity: 0.7;
   }
 }

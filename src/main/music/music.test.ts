@@ -20,6 +20,8 @@ class FakeController implements MusicController {
   running = true
   calls: string[] = []
   np: NowPlaying | null = null
+  volume = 60
+  getVolume?: () => Promise<number | null>
   startedAt = 0
   cb?: (t: NowPlaying) => void
   isAvailable = async (): Promise<boolean> => this.running
@@ -27,7 +29,9 @@ class FakeController implements MusicController {
   pause = async (): Promise<void> => void this.calls.push('pause')
   resume = async (): Promise<void> => void this.calls.push('resume')
   next = async (): Promise<void> => {}
-  setVolume = async (): Promise<void> => {}
+  setVolume = async (volume: number): Promise<void> => {
+    this.volume = volume
+  }
   current = async (): Promise<NowPlaying | null> =>
     this.np && { ...this.np, positionMs: Date.now() - this.startedAt }
   onTrackChange(cb: (t: NowPlaying) => void): () => void {
@@ -221,6 +225,101 @@ describe('music service', () => {
     unsure.state('crashing')
     await vi.advanceTimersByTimeAsync(0)
     expect(unsure.controller.calls).toEqual([]) // fallback playlists are placeholders, so nothing
+  })
+
+  it('fades down, switches, and restores the starting volume for Settle', async () => {
+    const { music, controller, state } = await setup()
+    const volumes: number[] = []
+    controller.getVolume = async () => controller.volume
+    controller.setVolume = async (v) => {
+      controller.volume = v
+      volumes.push(v)
+    }
+    await music.startSession(session())
+    controller.calls = []
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    state('crashing')
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(controller.calls).toEqual(['play spotify:track:calm'])
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(volumes).toEqual([50, 39, 29, 18, 8, 18, 29, 39, 50, 60])
+    expect(controller.volume).toBe(60)
+  })
+
+  it('restores volume on session stop and leaves a user-changed volume alone', async () => {
+    const t = await setup()
+    t.controller.getVolume = async () => t.controller.volume
+    t.controller.setVolume = async (v) => {
+      t.controller.volume = v
+    }
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(500)
+    await t.music.stopSession()
+    expect(t.controller.volume).toBe(60)
+
+    const changed = await setup()
+    changed.controller.getVolume = async () => changed.controller.volume
+    changed.controller.setVolume = async (v) => {
+      changed.controller.volume = v
+    }
+    await changed.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    changed.state('crashing')
+    await vi.advanceTimersByTimeAsync(500)
+    changed.controller.volume = 44
+    await vi.advanceTimersByTimeAsync(500)
+    expect(changed.controller.volume).toBe(44)
+  })
+
+  it.each(['break', 'leave-alone', 'delete', 'privacy'] as const)(
+    'restores volume when a Settle fade is aborted by %s',
+    async (reason) => {
+      const t = await setup()
+      t.controller.getVolume = async () => t.controller.volume
+      t.controller.setVolume = async (v) => {
+        t.controller.volume = v
+      }
+      await t.music.startSession(session())
+      await vi.advanceTimersByTimeAsync(3 * MIN)
+      t.state('crashing')
+      await vi.advanceTimersByTimeAsync(500)
+      if (reason === 'break') t.bus.emit('break:away', { since: Date.now(), manual: true })
+      if (reason === 'leave-alone') t.music.setLeaveAlone(true)
+      if (reason === 'delete') t.bus.emit('data:deleted-all', {})
+      if (reason === 'privacy') t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, music: 'none' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(t.controller.volume).toBe(60)
+    }
+  )
+
+  it('switches without a fade when volume cannot be read and restores after play failure', async () => {
+    const t = await setup()
+    t.controller.getVolume = async () => null
+    await t.music.startSession(session())
+    t.controller.calls = []
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.controller.calls).toEqual(['play spotify:track:calm'])
+
+    const failed = await setup()
+    failed.controller.getVolume = async () => failed.controller.volume
+    failed.controller.setVolume = async (v) => {
+      failed.controller.volume = v
+    }
+    const originalPlay = failed.controller.play
+    let playCount = 0
+    failed.controller.play = async (uri) => {
+      if (playCount++) throw new Error('play failed')
+      await originalPlay(uri)
+    }
+    await failed.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    failed.state('crashing')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(failed.controller.volume).toBe(60)
   })
 
   it('winds down in the last 10 minutes', async () => {

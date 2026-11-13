@@ -79,6 +79,8 @@ export function createMusic(deps: MusicDeps): MusicService {
   let play: PlayRecord | null = null
   let hintShown = false
   let pausedForBreak = false
+  let settleFade: Promise<void> | null = null
+  let cancelSettleFade: (() => void) | null = null
   /** Last target the app acted on with a playlist fallback (once per target change). */
   let actedTarget: string | null = null
 
@@ -104,6 +106,95 @@ export function createMusic(deps: MusicDeps): MusicService {
       .map((u) => parsePlaylistUrl(u)?.uri)
       .filter((u): u is string => !!u)
     return list.length ? list[Math.floor(rng() * list.length)] : null
+  }
+
+  async function fadePlay(uri: string, activeSession: Session, g: number): Promise<void> {
+    if (settleFade) return
+    const getVolume = controller.getVolume
+    if (!getVolume) return controller.play(uri)
+    let cancelled = false
+    let userChanged = false
+    let initial: number | null = null
+    let lastSet = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let finishWait: (() => void) | undefined
+    cancelSettleFade = () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      finishWait?.()
+    }
+    const wait = (): Promise<void> =>
+      new Promise((resolve) => {
+        finishWait = resolve
+        timer = setTimeout(
+          resolve,
+          musicConfig.switching.settleFadeMs / musicConfig.switching.settleFadeSteps
+        )
+      })
+    const stillCurrent = (): boolean =>
+      !cancelled &&
+      g === generation &&
+      session === activeSession &&
+      privacy.get().music === 'spotify' &&
+      !leaveAlone
+    const run = async (): Promise<void> => {
+      try {
+        initial = await getVolume.call(controller).catch(() => null)
+        if (initial === null || cancelled) {
+          if (initial === null && !cancelled) await controller.play(uri)
+          return
+        }
+        lastSet = initial
+        const floor = Math.min(initial, musicConfig.switching.settleVolumeFloor)
+        const change = async (volume: number): Promise<boolean> => {
+          const actual = await getVolume.call(controller).catch(() => null)
+          if (actual !== null && actual !== lastSet) {
+            userChanged = true
+            return false
+          }
+          if (!stillCurrent()) return false
+          await controller.setVolume(volume)
+          lastSet = volume
+          return true
+        }
+        for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
+          if (!stillCurrent()) return
+          const volume =
+            initial + ((floor - initial) * step) / musicConfig.switching.settleFadeSteps
+          if (!(await change(Math.round(volume)))) return
+          await wait()
+          if (!stillCurrent()) return
+        }
+        await controller.play(uri)
+        for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
+          if (!stillCurrent()) return
+          const volume = floor + ((initial - floor) * step) / musicConfig.switching.settleFadeSteps
+          if (!(await change(Math.round(volume)))) return
+          await wait()
+          if (!stillCurrent()) return
+        }
+      } catch {
+        // Restore the user's level below even when playback or a volume command fails.
+      } finally {
+        if (initial !== null && !userChanged && lastSet !== initial) {
+          const actual = await getVolume.call(controller).catch(() => null)
+          if (actual === null || actual === lastSet)
+            await controller.setVolume(initial).catch(() => {})
+        }
+        if (settleFade === promise) {
+          settleFade = null
+          cancelSettleFade = null
+        }
+      }
+    }
+    const promise = run()
+    settleFade = promise
+    await promise
+  }
+
+  async function abortSettleFade(): Promise<void> {
+    cancelSettleFade?.()
+    await settleFade
   }
 
   /** Plays the best song for the target; else a fallback playlist once per target (or a user playlist at start). */
@@ -135,7 +226,8 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (!uri) return
     actedTarget = target
     if (play) play.endedByApp = true
-    await controller.play(uri)
+    if (target === 'settle') await fadePlay(uri, activeSession, g)
+    else await controller.play(uri)
   }
 
   function evaluate(): void {
@@ -212,7 +304,8 @@ export function createMusic(deps: MusicDeps): MusicService {
     )
   }
 
-  function stopInternal(): void {
+  async function stopInternal(): Promise<void> {
+    await abortSettleFade()
     generation++
     finishPlay()
     stopPolling?.()
@@ -237,6 +330,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     evaluate()
   })
   bus.on('break:away', () => {
+    safe(abortSettleFade())
     if (!session || nowPlaying?.state !== 'playing') return
     pausedForBreak = true
     safe(controller.pause())
@@ -248,7 +342,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   })
   bus.on('data:deleted-all', () => {
     play = null
-    stopInternal()
+    safe(stopInternal())
     nowPlaying = null
     available = false
     leaveAlone = privacy.getSettings().leaveMusicAlone
@@ -260,7 +354,7 @@ export function createMusic(deps: MusicDeps): MusicService {
 
   bus.on('privacy:changed', (p) => {
     if (p.music !== 'none') return
-    stopInternal()
+    safe(stopInternal())
     nowPlaying = null
     emitStatus()
   })
@@ -281,6 +375,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     },
     setLeaveAlone(value) {
       leaveAlone = value
+      if (value) safe(abortSettleFade())
       safe(privacy.setSettings({ leaveMusicAlone: value }))
       if (value && endTimer) clearTimeout(endTimer)
       if (!value) {
@@ -304,7 +399,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       const g = generation
       await ready
       if (g !== generation) return
-      stopInternal()
+      await stopInternal()
       if (!s.config.music || privacy.get().music !== 'spotify') return emitStatus()
       session = s
       situation = null
@@ -319,7 +414,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       emitStatus()
     },
     async stopSession() {
-      stopInternal()
+      await stopInternal()
       emitStatus()
     }
   }

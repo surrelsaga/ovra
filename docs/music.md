@@ -15,7 +15,7 @@
   user skip within 30 s = quick skip + confidence −0.1. Source becomes `learned`.
 - Selector + switching: §6 targets, activity defaults (admin → Lift, downtime → Let it ride with 3× longer change gap),
   wind-down in the last 10 min (Settle still wins), ≤1 target change per 3 min, switches at the end of the current track
-  (Settle switches right away), unsure songs never for Settle/Ease down, ~1 in 5 picks in Steady/Let it ride may be
+  (Settle fades down, switches early, then fades back to the starting volume), unsure songs never for Settle/Ease down, ~1 in 5 picks in Steady/Let it ride may be
   unsure, Leave-alone stops switching but keeps learning. "Open Spotify to let me pick music" bubble once per session.
   Pauses on `break:away`, resumes on `break:returned`. `data:deleted-all` drops songs, playlists and the queue
   without writing back. Session `config.music === false` or privacy music `none` → does nothing.
@@ -29,8 +29,10 @@
   fake song confidence 0.2.
 
 ## Simplified / stubbed
-- Settle switches early without a fade: the `MusicController` interface has no volume read, so a fade couldn't
-  restore the user's volume.
+- Settle fades to a low volume over 2.5 s, switches tracks, then returns to the starting volume over 2.5 s.
+  The fade stops and restores the starting volume when the session ends, a break starts, Leave-alone is enabled,
+  data is deleted, or playback fails. If the user changes volume during the fade, it stops and leaves their value.
+  Controllers without a volume reader, or with an unreadable volume, switch immediately without fading.
 - LLM daily cap is in memory (resets on restart).
 - Fallback mood playlists in `src/main/music/config.ts` are placeholders and are skipped until Daniel fills them.
 

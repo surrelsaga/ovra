@@ -99,6 +99,18 @@ export class SpotifyMacController implements MusicController {
     await this.tell(`set sound volume to ${v}`)
   }
 
+  async getVolume(): Promise<number | null> {
+    try {
+      const out = await this.run(
+        `${IF_RUNNING}\n  tell application "Spotify" to get sound volume\nend if\nreturn ""`
+      )
+      const volume = Number(out.trim())
+      return Number.isFinite(volume) && volume >= 0 && volume <= 100 ? volume : null
+    } catch {
+      return null
+    }
+  }
+
   async current(): Promise<NowPlaying | null> {
     try {
       return parseNowPlaying(await this.run(CURRENT_SCRIPT))

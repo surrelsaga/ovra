@@ -68,6 +68,18 @@ describe('SpotifyMacController', () => {
     expect(await make('false').c.isAvailable()).toBe(false)
   })
 
+  it('reads sound volume only while Spotify is already running and returns null on bad output', async () => {
+    const { c, scripts } = make('42')
+    expect(await c.getVolume?.()).toBe(42)
+    expect(scripts[0]).toContain('if application "Spotify" is running then')
+    expect(scripts[0]).toContain('get sound volume')
+    expect(await make('missing').c.getVolume?.()).toBeNull()
+    const failed = new SpotifyMacController(async () => {
+      throw new Error('not running')
+    })
+    expect(await failed.getVolume?.()).toBeNull()
+  })
+
   it('guards every command so a closed Spotify is never launched', async () => {
     const { c, scripts } = make()
     await c.play('spotify:track:abc', 'spotify:playlist:def')

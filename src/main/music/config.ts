@@ -15,6 +15,10 @@ export const musicConfig = {
     downtimeChangeMultiplier: 3,
     /** Start our pick this long before the current song ends. */
     endLeadMs: 1500,
+    /** Settle fades down and back up over this duration each. */
+    settleFadeMs: 2500,
+    settleFadeSteps: 5,
+    settleVolumeFloor: 8,
     /** Last minutes of a session switch the target to wind-down. */
     windDownSec: 10 * 60,
     /** A song played within this window isn't picked again. */

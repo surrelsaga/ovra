@@ -1,6 +1,6 @@
 // Owner: orchestrator / Phase 3 integration. Wires every module together through the bus.
 import { app } from 'electron'
-import type { PrivacyService } from '@shared/types'
+import type { Bus, PrivacyService, SensingService } from '@shared/types'
 import type { SensingConfig } from './sdk/config'
 import type { MovesConfig } from './moves/config'
 import { appConfig } from './config'
@@ -9,7 +9,6 @@ import { createBus } from './bus'
 import { getKey } from './env'
 import { createStorage } from './storage'
 import { createPrivacy, registerPrivacyIpc } from './privacy'
-import { createSensing } from './sdk'
 import { createStateEngine } from './state'
 import { createMusic, registerMusicIpc } from './music'
 import { createMusicController } from './music/controller'
@@ -22,6 +21,8 @@ export interface AppOptions {
   sensingConfig?: Partial<SensingConfig>
   movesConfig?: MovesConfig
   setup?: (privacy: PrivacyService) => Promise<void>
+  /** Dev simulator: replaces the SDK sensing service (the SDK is then never loaded). */
+  createSensing?: (deps: { bus: Bus; privacy: PrivacyService }) => SensingService
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- inferred services are also used by the e2e harness
@@ -37,12 +38,14 @@ export async function startApp(options: AppOptions = {}) {
     appConfig.autoDeleteEveryMs
   )
 
-  const sensing = createSensing({
-    bus,
-    privacy,
-    getApiKey: () => getKey('PRESAGE_API_KEY'),
-    config: options.sensingConfig
-  })
+  const sensing =
+    options.createSensing?.({ bus, privacy }) ??
+    (await import('./sdk')).createSensing({
+      bus,
+      privacy,
+      getApiKey: () => getKey('PRESAGE_API_KEY'),
+      config: options.sensingConfig
+    })
   const state = createStateEngine({ bus, privacy })
   const music = createMusic({ bus, storage, privacy, controller: createMusicController(), getKey })
   const moves = createMoves({ bus, privacy }, options.movesConfig)

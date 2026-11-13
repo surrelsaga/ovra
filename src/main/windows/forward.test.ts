@@ -131,8 +131,19 @@ describe('bus → push forwarding', () => {
 
     bus.emit('sdk:checkin-started', { phase: 'checkin' })
     expect(fw.orb().listening).toBe(true)
+    expect(fw.orb().calibration).toBeUndefined()
+    bus.emit('sdk:calibration-progress', { progress: 0.3, hint: null })
+    expect(fw.orb().calibration).toBeUndefined()
     bus.emit('sdk:checkin-ended', { phase: 'checkin' })
     expect(fw.orb().listening).toBe(false)
+
+    // Calibration: the moon waxes with progress, then goes back to full.
+    bus.emit('sdk:checkin-started', { phase: 'calibration' })
+    expect(fw.orb()).toMatchObject({ listening: true, calibration: 0 })
+    bus.emit('sdk:calibration-progress', { progress: 0.5, hint: null })
+    expect(fw.orb().calibration).toBe(0.5)
+    bus.emit('sdk:checkin-ended', { phase: 'calibration' })
+    expect(fw.orb()).toMatchObject({ listening: false, calibration: undefined })
 
     bus.emit('break:away', { since: 123, manual: true })
     expect(fw.orb()).toMatchObject({ away: true, awaySince: 123 })

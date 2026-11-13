@@ -99,7 +99,10 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
         endSession()
       }
     }),
-    bus.on('sdk:calibration-progress', (p) => send('push:calibration', p)),
+    bus.on('sdk:calibration-progress', (p) => {
+      send('push:calibration', p)
+      if (view.calibration !== undefined) update({ calibration: p.progress })
+    }),
     bus.on('state:updated', (s) => {
       send('push:state', s)
       if (!s.situation) return
@@ -135,19 +138,21 @@ export function bindForwarding(bus: Bus, shell: ShellControl): Forwarder {
     bus.on('move:step', (e) => (e.step.animation === 'breathe' ? startBreath() : stopBreath())),
     bus.on('move:completed', stopBreath),
     bus.on('move:skipped', stopBreath),
-    bus.on('sdk:checkin-started', () => {
-      update({ listening: true })
+    bus.on('sdk:checkin-started', ({ phase }) => {
+      update({ listening: true, calibration: phase === 'calibration' ? 0 : undefined })
       shell.showOrb()
       if (status === 'calibrating') shell.showMain()
     }),
     bus.on('sdk:checkin-ended', () => {
-      update({ listening: false })
+      update({ listening: false, calibration: undefined })
       if (status === 'ended') shell.hideOrb()
     }),
     bus.on('break:away', (b) => update({ away: true, awaySince: b.since })),
     bus.on('break:returned', () => update({ away: false, awaySince: undefined })),
-    // Pausing stops the camera, so the ring goes too. A later check-in start still shows it.
-    bus.on('privacy:camera-paused', () => update({ paused: true, listening: false })),
+    // Pausing stops the camera, so the satellite goes too. A later check-in start still shows it.
+    bus.on('privacy:camera-paused', () =>
+      update({ paused: true, listening: false, calibration: undefined })
+    ),
     bus.on('privacy:camera-resumed', () => update({ paused: false })),
     bus.on('privacy:changed', (p) => send('push:privacy', p)),
     bus.on('orb:bubble', (b) => say(b.text, b.ttlMs))

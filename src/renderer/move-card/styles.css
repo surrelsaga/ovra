@@ -269,40 +269,11 @@ body,
 
 /* --- Away and return ------------------------------------------------------ */
 
-.moon {
-  width: 72px;
-  height: 72px;
+.card-moon {
+  display: grid;
+  place-items: center;
   margin: var(--space-4) auto var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--orb-dim);
-  box-shadow: inset -18px -6px 0 0 var(--bg);
-  opacity: 0.6;
   flex-shrink: 0;
-}
-
-.moon-waking {
-  background: var(--orb-calm);
-  box-shadow: 0 0 28px var(--orb-calm-glow);
-  opacity: 1;
-  animation: moon-pulse var(--orb-calm-period) var(--ease) infinite;
-}
-
-.moon-calm {
-  background: var(--orb-calm);
-  box-shadow: 0 0 28px var(--orb-calm-glow);
-  opacity: 1;
-}
-
-.moon-uneasy {
-  background: var(--orb-uneasy);
-  box-shadow: 0 0 28px var(--orb-uneasy-glow);
-  opacity: 1;
-}
-
-@keyframes moon-pulse {
-  50% {
-    transform: scale(1.06);
-  }
 }
 
 .away-label {

@@ -1,9 +1,10 @@
 // Owner: Agent D. Move card: nudge prompt, guided move, away timer, return check.
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import type { MoveCardView, MoveId, Nudge } from '@shared/types'
+import type { MoveCardView, MoveId, Nudge, OrbMood } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { Figure } from './Figure'
+import { MoonOrb } from '../ui/MoonOrb'
 
 type MoveView = Extract<MoveCardView, { kind: 'move' }>
 type AwayView = Extract<MoveCardView, { kind: 'away' }>
@@ -189,12 +190,29 @@ function MoveCard({ view }: { view: MoveView }): React.JSX.Element {
   )
 }
 
+/** The shared pixel moon, same as the orb window. Decorative here: the card text says the state. */
+function CardMoon({
+  mood,
+  away = false,
+  listening = false
+}: {
+  mood: OrbMood
+  away?: boolean
+  listening?: boolean
+}): React.JSX.Element {
+  return (
+    <div className="card-moon" aria-hidden="true">
+      <MoonOrb mood={mood} away={away} listening={listening} size={72} />
+    </div>
+  )
+}
+
 function AwayCard({ view }: { view: AwayView }): React.JSX.Element {
   const now = useNow(1000)
   return (
     <section className="card card-away" aria-labelledby="away-title">
       <Header title="On a break" />
-      <div className="moon" aria-hidden="true" />
+      <CardMoon mood="dim" away />
       <p className="away-label" id="away-title">
         Time away
       </p>
@@ -218,7 +236,7 @@ function ReturnCheckCard({ progress }: { progress: number }): React.JSX.Element 
   return (
     <section className="card card-return" aria-labelledby="return-title">
       <Header title="Welcome back" />
-      <div className="moon moon-waking" aria-hidden="true" />
+      <CardMoon mood="calm" listening />
       <h1 id="return-title" className="return-title">
         Checking in
       </h1>
@@ -242,7 +260,7 @@ function ResultCard({ view }: { view: ResultView }): React.JSX.Element {
   return (
     <section className="card card-return" aria-labelledby="result-msg">
       <Header title="Welcome back" />
-      <div className={`moon ${tense ? 'moon-uneasy' : 'moon-calm'}`} aria-hidden="true" />
+      <CardMoon mood={tense ? 'uneasy' : 'calm'} />
       <p id="result-msg" className="return-title" role="status">
         {view.message}
       </p>

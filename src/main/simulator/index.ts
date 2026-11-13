@@ -17,7 +17,8 @@ import { handle, push } from '../ipc'
 import { preloadPath } from '../paths'
 import { installQuitHandler } from '../quit'
 import { MOVES_CONFIG, type MovesConfig } from '../moves/config'
-import { desiredTarget } from '../music/selector'
+import { musicConfig } from '../music/config'
+import { desiredTarget, type TargetGap } from '../music/selector'
 import { fastMovesConfig, simConfig as cfg } from './config'
 import { createSimulatedSensing, type SimulatedSensing } from './sensing'
 
@@ -30,10 +31,12 @@ export async function startSimulator() {
   let sim: SimulatedSensing | null = null
   // createMoves keeps this object; fast mode swaps its contents.
   const moves: MovesConfig = { ...fastMovesConfig }
+  const musicGap: TargetGap = { ...cfg.fast.musicTargetGap }
   let mine: Restorable | null = null
 
   const services = await startApp({
     movesConfig: moves,
+    musicTargetGap: musicGap,
     createSensing: ({ bus, privacy }) =>
       (sim = createSimulatedSensing(bus, privacy, () =>
         fastMode ? cfg.fast.timing : cfg.normalTiming
@@ -58,6 +61,9 @@ export async function startSimulator() {
   async function applyFast(p: typeof privacy, on: boolean): Promise<void> {
     fastMode = on
     Object.assign(moves, on ? fastMovesConfig : MOVES_CONFIG)
+    const gap = on ? cfg.fast.musicTargetGap : musicConfig.switching
+    musicGap.minTargetChangeMs = gap.minTargetChangeMs
+    musicGap.downtimeChangeMultiplier = gap.downtimeChangeMultiplier
     await p.setSettings({
       devVideoSource: cfg.noCameraVideo,
       nudgeMinIntervalMin: on ? cfg.fast.nudgeMinIntervalMin : mine!.nudgeMinIntervalMin,

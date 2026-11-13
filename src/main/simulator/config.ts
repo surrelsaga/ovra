@@ -68,6 +68,8 @@ export const simConfig = {
       returnCheckMs: 10_000
     } satisfies SimTiming,
     nudgeMinIntervalMin: 0.5,
+    /** Music target changes: 15 s apart (18 s in Downtime) instead of 3 min (9 min). */
+    musicTargetGap: { minTargetChangeMs: 15_000, downtimeChangeMultiplier: 1.2 },
     /** Merged over the user's own overrides while fast mode is on. */
     thresholds: {
       ...e2eConfig.thresholds,

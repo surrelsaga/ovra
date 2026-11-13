@@ -43,11 +43,14 @@ On by default. The numbers below are **fast-mode test values, not the real thres
 | Tense counts as "early" (breathe) for | 1 min                           | 5 min                                      |
 | Step outside after upset for          | 4 min                           | 15 min                                     |
 | Move steps                            | at most 15 s each               | 10 s to 10 min                             |
+| Music target changes at most every    | 15 s (18 s in Downtime)         | 3 min (9 min in Downtime)                  |
 
-It works through your settings (`nudgeMinIntervalMin`, `thresholdOverrides`) and a fast moves
-config. Shipped defaults are not changed. Turning fast mode off puts your own nudge interval and
-threshold overrides back straight away; the new sensing timing applies from the next phase or
-session. Music's own rule of at most one target change every ~3 min is **not** shortened.
+It works through your settings (`nudgeMinIntervalMin`, `thresholdOverrides`), a fast moves config and
+a shorter music target-change gap passed in only when simulating. Shipped defaults are not changed.
+Turning fast mode off puts your own nudge interval, threshold overrides and the 3 min music gap back
+straight away; the new sensing timing applies from the next phase or session. The music still only
+changes songs between tracks (except Settle's early fade), so the target word moves within the same
+minute as the orb, and the song follows when the current one ends.
 
 While the simulator runs, Settings shows the dev video source `/ovra-simulator-no-camera`. That keeps
 the calibration screen from opening the camera for its preview (you'll see "Camera preview isn't
@@ -95,8 +98,8 @@ Change the scenario, then wait for the next check-in to end (up to ~45 s).
 | **Calm**     | `focused`, calm                                                           | "Nice and steady."                       | **Focus**                                                                | seated nudges at 3 / 6 / 10 min (neck / stand / walk)                                                             |
 | **Away**     | no change in check-in mode (the check-in sees nobody, seated time resets) | —                                        | —                                                                        | —                                                                                                                 |
 
-Music switches respect the ~3 min target-change limit, so going straight from Tense to Crashing may
-hold the old target for a bit (Settle still fades early once it's allowed). Nudges answer with
+In fast mode the music target can change every 15 s, so it follows each scenario change (Crashing
+fades straight into a calm song). Nudges answer with
 **Let's go / 5 more min / Skip**; a new nudge can come 30 s after the last one.
 
 ### 5. Guided moves with feedback

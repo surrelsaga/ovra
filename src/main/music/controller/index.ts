@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { MusicController, NowPlaying } from '@shared/types'
 import { musicConfig } from '../config'
+import { SpotifyWindowsController } from './windows'
 
 const exec = promisify(execFile)
 
@@ -137,5 +138,9 @@ const noopController: MusicController = {
 
 /** Returns the controller for this platform (Mac: SpotifyMacController). */
 export function createMusicController(): MusicController {
-  return process.platform === 'darwin' ? new SpotifyMacController() : noopController
+  return process.platform === 'win32'
+    ? new SpotifyWindowsController()
+    : process.platform === 'darwin'
+      ? new SpotifyMacController()
+      : noopController
 }

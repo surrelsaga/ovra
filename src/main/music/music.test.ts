@@ -192,6 +192,27 @@ describe('music service', () => {
     expect(music.status().available).toBe(false)
   })
 
+  it('starts the music once Spotify is opened after the session started', async () => {
+    const { music, controller, bus } = await setup()
+    controller.running = false
+    await music.startSession(session())
+    const tick = (): void =>
+      bus.emit('session:tick', { sessionId: 's1', elapsedSec: 0, remainingSec: 3600 })
+    tick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.calls).toEqual([])
+    controller.running = true // the user follows the "Open Spotify" hint
+    await vi.advanceTimersByTimeAsync(10_000)
+    tick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.calls).toEqual(['play spotify:track:steady'])
+    controller.start('spotify:track:steady')
+    await vi.advanceTimersByTimeAsync(10_000)
+    tick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.calls).toHaveLength(1)
+  })
+
   it('changes the target at most once per 3 min', async () => {
     const { music, state, targets, bus } = await setup()
     await music.startSession(session())

@@ -131,6 +131,9 @@ describe('session', () => {
     const s = await t.svc.start(cfg)
     expect(s).toMatchObject({ status: 'running', sensingEnabled: false })
     expect(t.seen['orb:bubble']?.[0].text).toBe(sessionConfig.cameraFailedBubble)
+    // Music starts at session start whatever the camera does, and is never stopped by it.
+    expect(t.music.startSession).toHaveBeenCalledBefore(t.sensing.startCalibration)
+    expect(t.music.stopSession).not.toHaveBeenCalled()
   })
 
   it('rejects a second start and normalises bad config', async () => {

@@ -86,6 +86,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   let cancelSettleFade: (() => void) | null = null
   /** Last target the app acted on with a playlist fallback (once per target change). */
   let actedTarget: string | null = null
+  let lastRetry = 0
 
   const status = (): MusicStatus => ({
     available,
@@ -331,6 +332,11 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (!session || tick.sessionId !== session.id) return
     remainingSec = tick.remainingSec
     evaluate()
+    // Spotify wasn't running at start (the orb said "Open Spotify"): start once it's open.
+    if (available || nowPlaying || leaveAlone) return
+    if (now() - lastRetry < musicConfig.controller.unavailableRetryMs) return
+    lastRetry = now()
+    safe(playNext(true))
   })
   bus.on('break:away', () => {
     safe(abortSettleFade())
@@ -410,6 +416,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       hintShown = false
       actedTarget = null
       nowPlaying = null
+      lastRetry = now()
       stopPolling = controller.onTrackChange(onTrack)
       evaluate()
       if (leaveAlone) available = await controller.isAvailable()

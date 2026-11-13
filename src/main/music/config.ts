@@ -6,7 +6,9 @@ export const musicConfig = {
     /** How often onTrackChange polls Spotify. */
     pollMs: 2000,
     /** osascript timeout. */
-    osascriptTimeoutMs: 5000
+    osascriptTimeoutMs: 5000,
+    /** Spotify wasn't running at session start: check again this often and start once it is. */
+    unavailableRetryMs: 10_000
   },
   switching: {
     /** At most one target change per this long. */

@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -83,6 +83,32 @@ describe('privacy settings', () => {
     await writeFile(join(dir, 'privacy.json'), JSON.stringify({ camera: 'not-now' }))
     const { privacy } = await setup()
     expect(privacy.get()).toEqual({ ...DEFAULT_PRIVACY, camera: 'not-now' })
+  })
+
+  it('keeps a settings overlay (dev simulator) in memory only', async () => {
+    const bus = createBus()
+    const storage = createStorage(dir)
+    const overlay = { devVideoSource: '/ovra-simulator-no-camera', nudgeMinIntervalMin: 0.5 }
+    const privacy = await createPrivacy({ storage, bus, settingsOverlay: overlay })
+    expect(privacy.getSettings()).toMatchObject(overlay)
+    expect(await privacy.setSettings({ checkinIntervalMin: 10 })).toMatchObject(overlay)
+    const stored = (await setup()).privacy.getSettings()
+    expect(stored).toEqual({ ...DEFAULT_SETTINGS, checkinIntervalMin: 10 })
+  })
+
+  it('clears values an older simulator run left in settings.json', async () => {
+    const leftover = {
+      ...DEFAULT_SETTINGS,
+      checkinIntervalMin: 10,
+      devVideoSource: '/ovra-simulator-no-camera',
+      nudgeMinIntervalMin: 0.5,
+      thresholdOverrides: { tenseHoldCheckins: 1 }
+    }
+    await writeFile(join(dir, 'settings.json'), JSON.stringify(leftover))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const expected = { ...DEFAULT_SETTINGS, checkinIntervalMin: 10 }
+    expect((await setup()).privacy.getSettings()).toEqual(expected)
+    expect(JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8'))).toEqual(expected)
   })
 
   it('rejects invalid or unknown fields', async () => {

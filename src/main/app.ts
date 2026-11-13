@@ -1,6 +1,6 @@
 // Owner: orchestrator / Phase 3 integration. Wires every module together through the bus.
 import { app } from 'electron'
-import type { Bus, PrivacyService, SensingService } from '@shared/types'
+import type { AppSettings, Bus, PrivacyService, SensingService } from '@shared/types'
 import type { SensingConfig } from './sdk/config'
 import type { MovesConfig } from './moves/config'
 import type { TargetGap } from './music/selector'
@@ -23,6 +23,8 @@ export interface AppOptions {
   movesConfig?: MovesConfig
   /** Dev simulator: shorter music target-change gap. */
   musicTargetGap?: TargetGap
+  /** Dev simulator: settings read over the stored ones, never written (see createPrivacy). */
+  settingsOverlay?: Partial<AppSettings>
   setup?: (privacy: PrivacyService) => Promise<void>
   /** Dev simulator: replaces the SDK sensing service (the SDK is then never loaded). */
   createSensing?: (deps: { bus: Bus; privacy: PrivacyService }) => SensingService
@@ -32,7 +34,7 @@ export interface AppOptions {
 export async function startApp(options: AppOptions = {}) {
   const bus = createBus()
   const storage = createStorage(app.getPath('userData'))
-  const privacy = await createPrivacy({ storage, bus })
+  const privacy = await createPrivacy({ storage, bus, settingsOverlay: options.settingsOverlay })
   await options.setup?.(privacy)
   registerPrivacyIpc(privacy)
   await privacy.runAutoDelete()

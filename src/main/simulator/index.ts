@@ -4,7 +4,6 @@ import { app, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 import {
-  DEFAULT_SETTINGS,
   ORB_MOOD,
   TARGET_WORD,
   type Activity,
@@ -15,14 +14,11 @@ import {
 import { startApp } from '../app'
 import { handle, push } from '../ipc'
 import { preloadPath } from '../paths'
-import { installQuitHandler } from '../quit'
 import { MOVES_CONFIG, type MovesConfig } from '../moves/config'
 import { musicConfig } from '../music/config'
 import { desiredTarget, type TargetGap } from '../music/selector'
 import { fastMovesConfig, simConfig as cfg } from './config'
 import { createSimulatedSensing, type SimulatedSensing } from './sensing'
-
-type Restorable = Pick<AppSettings, 'nudgeMinIntervalMin' | 'thresholdOverrides' | 'devVideoSource'>
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- same services as startApp
 export async function startSimulator() {
@@ -32,50 +28,35 @@ export async function startSimulator() {
   // createMoves keeps this object; fast mode swaps its contents.
   const moves: MovesConfig = { ...fastMovesConfig }
   const musicGap: TargetGap = { ...cfg.fast.musicTargetGap }
-  let mine: Restorable | null = null
+  // Simulator settings live in memory only, so nothing is left behind in settings.json. The dev
+  // video keeps the calibration screen from opening the live camera for its preview.
+  const overlay: Partial<AppSettings> = { devVideoSource: cfg.noCameraVideo }
 
   const services = await startApp({
     movesConfig: moves,
     musicTargetGap: musicGap,
+    settingsOverlay: overlay,
     createSensing: ({ bus, privacy }) =>
       (sim = createSimulatedSensing(bus, privacy, () =>
         fastMode ? cfg.fast.timing : cfg.normalTiming
       )),
-    setup: async (privacy) => {
-      const s = privacy.getSettings()
-      // A crashed run left our values behind; the user's own can't be known, so fall back to defaults.
-      const leftover = s.devVideoSource === cfg.noCameraVideo
-      if (leftover) console.warn('[sim] previous run did not restore settings; using defaults')
-      const from = leftover ? DEFAULT_SETTINGS : s
-      mine = {
-        nudgeMinIntervalMin: from.nudgeMinIntervalMin,
-        thresholdOverrides: from.thresholdOverrides,
-        devVideoSource: from.devVideoSource
-      }
-      await applyFast(privacy, true)
-    }
+    setup: async (privacy) => applyFast(privacy, true)
   })
   const { bus, privacy } = services
   const sensing = sim as unknown as SimulatedSensing
 
-  async function applyFast(p: typeof privacy, on: boolean): Promise<void> {
+  function applyFast(p: typeof privacy, on: boolean): void {
     fastMode = on
     Object.assign(moves, on ? fastMovesConfig : MOVES_CONFIG)
     const gap = on ? cfg.fast.musicTargetGap : musicConfig.switching
     musicGap.minTargetChangeMs = gap.minTargetChangeMs
     musicGap.downtimeChangeMultiplier = gap.downtimeChangeMultiplier
-    await p.setSettings({
-      devVideoSource: cfg.noCameraVideo,
-      nudgeMinIntervalMin: on ? cfg.fast.nudgeMinIntervalMin : mine!.nudgeMinIntervalMin,
-      thresholdOverrides: on
-        ? { ...mine!.thresholdOverrides, ...cfg.fast.thresholds }
-        : mine!.thresholdOverrides
-    })
+    delete overlay.nudgeMinIntervalMin
+    delete overlay.thresholdOverrides
+    if (!on) return
+    overlay.nudgeMinIntervalMin = cfg.fast.nudgeMinIntervalMin
+    overlay.thresholdOverrides = { ...p.getSettings().thresholdOverrides, ...cfg.fast.thresholds }
   }
-  // Put the user's own settings back on quit (runs alongside the app's own shutdown).
-  installQuitHandler(async () => {
-    if (mine) await privacy.setSettings(mine)
-  })
 
   let state: SimulatorStatus['state'] = null
   let musicWord: TargetWord | null = null
@@ -133,7 +114,8 @@ export async function startSimulator() {
     console.log(`[sim] action ${action}`)
   })
   handle('simulator:set-fast-mode', async ({ value }) => {
-    await applyFast(privacy, value)
+    applyFast(privacy, value)
+    await privacy.setSettings({}) // writes nothing new; pushes the changed values to the windows
     announce()
     return status()
   })

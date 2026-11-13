@@ -10,11 +10,14 @@ import {
 } from '@shared/types'
 import { broadcast, handle } from '../ipc'
 import { STORAGE_FILES } from '../storage'
+import { simConfig } from '../simulator/config'
 import { privacySchema, sessionRecordSchema, settingsSchema } from './schemas'
 
 export interface PrivacyDeps {
   storage: Storage
   bus: Bus
+  /** Dev simulator: read over the stored settings, never written. Callers may change it in place. */
+  settingsOverlay?: Partial<AppSettings>
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -38,6 +41,20 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
   const { storage, bus } = deps
   let privacy = await load(storage, 'privacy', DEFAULT_PRIVACY, privacySchema)
   let settings = await load(storage, 'settings', DEFAULT_SETTINGS, settingsSchema)
+  // Older simulator builds wrote their values here and only put them back on Cmd+Q.
+  if (settings.devVideoSource === simConfig.noCameraVideo) {
+    console.warn(
+      '[ovra] clearing settings a simulator run left behind (dev video, nudge, thresholds)'
+    )
+    settings = {
+      ...settings,
+      devVideoSource: DEFAULT_SETTINGS.devVideoSource,
+      nudgeMinIntervalMin: DEFAULT_SETTINGS.nudgeMinIntervalMin,
+      thresholdOverrides: DEFAULT_SETTINGS.thresholdOverrides
+    }
+    await storage.write('settings', settings)
+  }
+  const view = (): AppSettings => structuredClone({ ...settings, ...deps.settingsOverlay })
 
   // Sessions are read-modify-write; run those one at a time so none is lost.
   let sessionsLock: Promise<unknown> = Promise.resolve()
@@ -77,14 +94,14 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
 
     canUseFace: () => canUseCamera() && privacy.face === 'vitals-and-face',
 
-    getSettings: () => structuredClone(settings),
+    getSettings: view,
 
     async setSettings(patch) {
       const next: AppSettings = settingsSchema.parse({ ...settings, ...patch })
       settings = next
       await storage.write('settings', next)
-      broadcast('push:settings', structuredClone(next))
-      return structuredClone(next)
+      broadcast('push:settings', view())
+      return view()
     },
 
     listSessions: () =>
@@ -110,7 +127,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       await withSessions(() => Promise.all(STORAGE_FILES.map((f) => storage.remove(f))))
       privacy = { ...DEFAULT_PRIVACY }
       settings = structuredClone(DEFAULT_SETTINGS)
-      broadcast('push:settings', structuredClone(settings))
+      broadcast('push:settings', view())
       bus.emit('privacy:changed', { ...privacy })
       bus.emit('data:deleted-all', {})
     },

@@ -45,18 +45,20 @@ On by default. The numbers below are **fast-mode test values, not the real thres
 | Move steps                            | at most 15 s each               | 10 s to 10 min                             |
 | Music target changes at most every    | 15 s (18 s in Downtime)         | 3 min (9 min in Downtime)                  |
 
-It works through your settings (`nudgeMinIntervalMin`, `thresholdOverrides`), a fast moves config and
-a shorter music target-change gap passed in only when simulating. Shipped defaults are not changed.
-Turning fast mode off puts your own nudge interval, threshold overrides and the 3 min music gap back
-straight away; the new sensing timing applies from the next phase or session. The music still only
-changes songs between tracks (except Settle's early fade), so the target word moves within the same
-minute as the orb, and the song follows when the current one ends.
+It works through in-memory overrides of `nudgeMinIntervalMin` and `thresholdOverrides` (your own
+overrides plus the fast ones), a fast moves config and a shorter music target-change gap, all passed in
+only when simulating. Nothing is written to `settings.json`; shipped defaults are not changed. Turning
+fast mode off puts your own nudge interval, threshold overrides and the 3 min music gap back straight
+away; the new sensing timing applies from the next phase or session. The music still only changes
+songs between tracks (except Settle's early fade), so the target word moves within the same minute as
+the orb, and the song follows when the current one ends.
 
-While the simulator runs, Settings shows the dev video source `/ovra-simulator-no-camera`. That keeps
-the calibration screen from opening the camera for its preview (you'll see "Camera preview isn't
-available. Calibration can continue." — expected). Your settings are put back when you quit with
-**Cmd+Q**. If the app is killed instead, the next simulator start notices and resets the nudge
-interval, threshold overrides and dev video source to the defaults (20 min, none, none).
+While the simulator runs, Settings shows the dev video source `/ovra-simulator-no-camera` (in memory
+only). That keeps the calibration screen from opening the camera for its preview (you'll see "Camera
+preview isn't available. Calibration can continue." — expected). Quitting any way leaves your stored
+settings untouched. Older simulator builds wrote these values to `settings.json`; any normal or
+simulator start now notices the sentinel video path and resets the dev video source, nudge interval
+and threshold overrides to the defaults (none, 20 min, none).
 
 ## Manual test script
 
@@ -145,4 +147,4 @@ camera**: continuous restarts immediately; check-ins resume at the next 30 s tic
 
 Orb → **End session**. The camera ring goes away, the main window shows the summary: mood timeline
 (your scenarios), moves done and snoozed, songs it learned about, longest seated stretch, with a
-delete button. Quit with **Cmd+Q** so your settings are restored.
+delete button.

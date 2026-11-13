@@ -345,79 +345,606 @@ body,
   animation: spin 24s linear infinite;
 }
 
-/* Joints: head pivots at the neck, arms at the shoulder, body at the hip. */
-.fig-seated .fig-head {
-  transform-origin: 60px 37px;
+/* Joint angles and offsets, driven per animation below. Registered so keyframes interpolate them. */
+@property --x {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
 }
-.fig-seated .fig-arm {
-  transform-origin: 60px 44px;
+@property --y {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
 }
-.fig-seated .fig-body {
-  transform-origin: 60px 72px;
+@property --sh-x {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
 }
-.fig-standing .fig-arm {
-  transform-origin: 60px 40px;
+@property --sh-y {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
 }
-.fig-standing .fig-body {
-  transform-origin: 60px 68px;
+@property --lean {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
 }
-.fig-walking .fig-leg {
-  transform-origin: 58px 68px;
+@property --chest {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
 }
-.fig-walking .fig-shin {
-  transform-origin: 58px 87px;
+@property --neck {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
 }
-.fig-walking .fig-arm {
-  transform-origin: 58px 40px;
+@property --hip-a {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --hip-b {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --knee-a {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --knee-b {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --ankle-a {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --ankle-b {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --arm-a {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --arm-b {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --elb-a {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --elb-b {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
 }
 
-.fig--sit .fig-body {
-  animation: settle 4s var(--ease) infinite;
+/* Pivots are set inline in Figure.tsx: body at the hip, upper back at mid-spine, head at the neck,
+   arms at the shoulder and elbow, legs at the hip, knee and ankle. Positive angles turn clockwise. */
+.fig-bob {
+  transform: translate(var(--x), var(--y));
+}
+.fig-torso {
+  transform: rotate(var(--lean));
+}
+.fig-chest {
+  transform: rotate(var(--chest));
+}
+.fig-head {
+  transform: rotate(var(--neck));
+}
+.fig-clav {
+  transform: translate(var(--sh-x), var(--sh-y));
+}
+.fig-arm-a {
+  transform: translate(var(--sh-x), var(--sh-y)) rotate(var(--arm-a));
+}
+.fig-arm-b {
+  transform: translate(var(--sh-x), var(--sh-y)) rotate(var(--arm-b));
+}
+.fig-arm-a .fig-fore {
+  transform: rotate(var(--elb-a));
+}
+.fig-arm-b .fig-fore {
+  transform: rotate(var(--elb-b));
+}
+.fig-leg-a {
+  transform: rotate(var(--hip-a));
+}
+.fig-leg-b {
+  transform: rotate(var(--hip-b));
+}
+.fig-leg-a .fig-shin {
+  transform: rotate(var(--knee-a));
+}
+.fig-leg-b .fig-shin {
+  transform: rotate(var(--knee-b));
+}
+.fig-leg-a .fig-foot {
+  transform: rotate(var(--ankle-a));
+}
+.fig-leg-b .fig-foot {
+  transform: rotate(var(--ankle-b));
+}
+.fig-face {
+  stroke-width: 2.5;
 }
 
+/* Base poses. Side view faces right; leg b and arm a are the far side. */
+.fig--sit,
+.fig--breathe,
+.fig--shoulder-roll,
+.fig--look-up,
+.fig--stand-up {
+  /* Seated: thighs level on the seat, shins down, far foot tucked back, hands resting on the thighs. */
+  --y: 19px;
+  --hip-a: -90deg;
+  --knee-a: 90deg;
+  --hip-b: -88.6deg;
+  --knee-b: 101.5deg;
+  --ankle-b: -12.8deg;
+  --arm-a: -10deg;
+  --elb-a: -10deg;
+  --arm-b: -15deg;
+}
+.fig--neck-left,
+.fig--neck-right {
+  /* Seated, seen from the front: knees apart, hands on the thighs. */
+  --y: 13.4px;
+  --hip-a: 62deg;
+  --knee-a: -62deg;
+  --hip-b: -62deg;
+  --knee-b: 62deg;
+  --arm-a: 16deg;
+  --elb-a: -20deg;
+  --arm-b: -16deg;
+  --elb-b: 20deg;
+}
+.fig--reach-up,
+.fig--side-bend {
+  /* Standing, seen from the front: feet under the hips, arms relaxed. */
+  --hip-a: 3deg;
+  --hip-b: -3deg;
+  --arm-a: 10deg;
+  --elb-a: -6deg;
+  --arm-b: -10deg;
+  --elb-b: 6deg;
+}
+.fig--fold {
+  /* Standing side on, feet a little apart. */
+  --hip-a: -3.1deg;
+  --ankle-a: 3.1deg;
+  --hip-b: 3.1deg;
+  --ankle-b: -3.1deg;
+}
+.fig-walking {
+  /* Slight forward lean from the hip. */
+  --lean: 7deg;
+}
+
+.fig--sit {
+  animation: settle 6s ease-in-out infinite;
+}
 /* Inhale on the first half of the period, like the orb. */
-.fig--breathe .fig-body {
+.fig--breathe {
   animation: breathe var(--orb-breath-period) ease-in-out infinite;
 }
-
-.fig--neck-left .fig-head {
-  animation: tilt-left 5s var(--ease) infinite;
+.fig--neck-left {
+  animation: tilt-left 6s ease-in-out infinite;
 }
-.fig--neck-right .fig-head {
-  animation: tilt-right 5s var(--ease) infinite;
+.fig--neck-right {
+  animation: tilt-right 6s ease-in-out infinite;
 }
-
-.fig--shoulder-roll .fig-arm {
-  animation: shoulder-roll 2.4s ease-in-out infinite;
+/* One slow roll every 5 s: five in the 25 s step. */
+.fig--shoulder-roll {
+  animation: shoulder-roll 5s linear infinite;
 }
-
-.fig--look-up .fig-head {
-  animation: look-up 4s var(--ease) infinite;
+.fig--look-up {
+  animation: look-up 5s ease-in-out infinite;
 }
 .fig--look-up .fig-cue {
-  animation: cue 4s var(--ease) infinite;
+  animation: cue 5s ease-in-out infinite;
+}
+.fig--stand-up {
+  animation: stand-up 6s ease-in-out infinite;
+}
+.fig--reach-up {
+  animation: reach-up 6s ease-in-out infinite;
+}
+.fig--side-bend {
+  animation: side-bend 9s ease-in-out infinite;
+}
+.fig--fold {
+  animation: fold 7s ease-in-out infinite;
 }
 
-.fig--stand-up .fig-swap-a {
-  animation: swap-a 4s var(--ease) infinite;
+/* Settle in: shoulders drop and the back eases into the chair. */
+@keyframes settle {
+  0%,
+  100% {
+    --lean: 3deg;
+    --sh-y: -2.5px;
+    --arm-a: -18deg;
+    --arm-b: -22deg;
+  }
+  40%,
+  80% {
+    --lean: -4deg;
+    --sh-y: 0.5px;
+    --arm-a: -10deg;
+    --arm-b: -15deg;
+  }
 }
-.fig--stand-up .fig-swap-b {
-  animation: swap-b 4s var(--ease) infinite;
+/* Chest lifts and opens, shoulders rise a little; the head stays level. */
+@keyframes breathe {
+  50% {
+    --chest: -7deg;
+    --neck: 7deg;
+    --sh-y: -3px;
+  }
+}
+/* The card is a mirror: "tilt left" leans toward the screen's left. Shoulders stay down. */
+@keyframes tilt-left {
+  0%,
+  12%,
+  92%,
+  100% {
+    --neck: 0deg;
+    --sh-y: 0px;
+  }
+  35%,
+  75% {
+    --neck: -32deg;
+    --sh-y: 0.5px;
+  }
+}
+@keyframes tilt-right {
+  0%,
+  12%,
+  92%,
+  100% {
+    --neck: 0deg;
+    --sh-y: 0px;
+  }
+  35%,
+  75% {
+    --neck: 32deg;
+    --sh-y: 0.5px;
+  }
+}
+/* Shoulders circle forward → up → back → down; arms hang relaxed and ride along. */
+@keyframes shoulder-roll {
+  0%,
+  100% {
+    --sh-x: 2.5px;
+    --sh-y: -1.5px;
+  }
+  12.5% {
+    --sh-x: 1.5px;
+    --sh-y: -4px;
+  }
+  25% {
+    --sh-x: -1px;
+    --sh-y: -5px;
+  }
+  37.5% {
+    --sh-x: -3.5px;
+    --sh-y: -4px;
+  }
+  50% {
+    --sh-x: -4.5px;
+    --sh-y: -1.5px;
+  }
+  62.5% {
+    --sh-x: -3.5px;
+    --sh-y: 1px;
+  }
+  75% {
+    --sh-x: -1px;
+    --sh-y: 2px;
+  }
+  87.5% {
+    --sh-x: 1.5px;
+    --sh-y: 1px;
+  }
+}
+/* Chin lifts from the neck, back stays straight, hold, back to centre. */
+@keyframes look-up {
+  0%,
+  15%,
+  92%,
+  100% {
+    --neck: 0deg;
+  }
+  40%,
+  75% {
+    --neck: -32deg;
+  }
+}
+@keyframes cue {
+  0%,
+  25%,
+  85%,
+  100% {
+    opacity: 0;
+  }
+  40%,
+  75% {
+    opacity: 1;
+  }
+}
+/* Sit → lean forward → push through the legs → stand tall (feet stay planted), then sit back down. */
+@keyframes stand-up {
+  0%,
+  12%,
+  100% {
+    --x: 0px;
+    --y: 19px;
+    --lean: 0deg;
+    --neck: 0deg;
+    --hip-a: -90deg;
+    --knee-a: 90deg;
+    --ankle-a: 0deg;
+    --hip-b: -88.6deg;
+    --knee-b: 101.5deg;
+    --ankle-b: -12.8deg;
+    --arm-a: -10deg;
+    --arm-b: -15deg;
+  }
+  30% {
+    --x: 0px;
+    --y: 19px;
+    --lean: 35deg;
+    --neck: -15deg;
+    --hip-a: -90deg;
+    --knee-a: 90deg;
+    --ankle-a: 0deg;
+    --hip-b: -88.6deg;
+    --knee-b: 101.5deg;
+    --ankle-b: -12.8deg;
+    --arm-a: -40deg;
+    --arm-b: -45deg;
+  }
+  44%,
+  93% {
+    --x: 12px;
+    --y: 12px;
+    --lean: 30deg;
+    --neck: -10deg;
+    --hip-a: -59.5deg;
+    --knee-a: 90.9deg;
+    --ankle-a: -31.4deg;
+    --hip-b: -56.1deg;
+    --knee-b: 92.9deg;
+    --ankle-b: -36.8deg;
+    --arm-a: -35deg;
+    --arm-b: -40deg;
+  }
+  58% {
+    --x: 17px;
+    --y: 5px;
+    --lean: 14deg;
+    --neck: -4deg;
+    --hip-a: -32.6deg;
+    --knee-a: 59.9deg;
+    --ankle-a: -27.3deg;
+    --hip-b: -29.2deg;
+    --knee-b: 60.3deg;
+    --ankle-b: -31deg;
+    --arm-a: -12deg;
+    --arm-b: -14deg;
+  }
+  70%,
+  85% {
+    --x: 19px;
+    --y: 0px;
+    --lean: 0deg;
+    --neck: 0deg;
+    --hip-a: -3.1deg;
+    --knee-a: 0deg;
+    --ankle-a: 3.1deg;
+    --hip-b: 3.1deg;
+    --knee-b: 0deg;
+    --ankle-b: -3.1deg;
+    --arm-a: 4deg;
+    --arm-b: -2deg;
+  }
+}
+/* Both arms sweep up overhead, rise onto the toes, hold the stretch, come back down. */
+@keyframes reach-up {
+  0%,
+  10%,
+  90%,
+  100% {
+    --y: 0px;
+    --arm-a: 10deg;
+    --elb-a: -6deg;
+    --arm-b: -10deg;
+    --elb-b: 6deg;
+    --ankle-a: 0deg;
+    --ankle-b: 0deg;
+  }
+  40%,
+  72% {
+    --y: -2.5px;
+    --arm-a: 158deg;
+    --elb-a: 0deg;
+    --arm-b: -158deg;
+    --elb-b: 0deg;
+    --ankle-a: -38.7deg;
+    --ankle-b: 38.7deg;
+  }
+}
+/* One arm arcs overhead as the torso curves to the other side (hip, then upper back, then head). */
+@keyframes side-bend {
+  0%,
+  6%,
+  50%,
+  100% {
+    --lean: 0deg;
+    --chest: 0deg;
+    --neck: 0deg;
+    --arm-a: 10deg;
+    --elb-a: -6deg;
+    --arm-b: -10deg;
+    --elb-b: 6deg;
+  }
+  20%,
+  38% {
+    --lean: -10deg;
+    --chest: -18deg;
+    --neck: -6deg;
+    --arm-a: 22deg;
+    --elb-a: -40deg;
+    --arm-b: -140deg;
+    --elb-b: -45deg;
+  }
+  64%,
+  82% {
+    --lean: 10deg;
+    --chest: 18deg;
+    --neck: 6deg;
+    --arm-a: 140deg;
+    --elb-a: 45deg;
+    --arm-b: -22deg;
+    --elb-b: 40deg;
+  }
+}
+/* Hinge at the hips as they sit back, knees soft, back rounds, head and arms hang toward the floor. */
+@keyframes fold {
+  0%,
+  12%,
+  92%,
+  100% {
+    --x: 0px;
+    --y: 0px;
+    --lean: 0deg;
+    --chest: 0deg;
+    --neck: 0deg;
+    --hip-a: -3.1deg;
+    --knee-a: 0deg;
+    --ankle-a: 3.1deg;
+    --hip-b: 3.1deg;
+    --knee-b: 0deg;
+    --ankle-b: -3.1deg;
+    --arm-a: 0deg;
+    --elb-a: 0deg;
+    --arm-b: 0deg;
+    --elb-b: 0deg;
+  }
+  42%,
+  76% {
+    --x: -5px;
+    --y: 4px;
+    --lean: 75deg;
+    --chest: 15deg;
+    --neck: 15deg;
+    --hip-a: -35.5deg;
+    --knee-a: 48.5deg;
+    --ankle-a: -13deg;
+    --hip-b: -30.9deg;
+    --knee-b: 52.9deg;
+    --ankle-b: -22deg;
+    --arm-a: -86deg;
+    --elb-a: 8deg;
+    --arm-b: -92deg;
+    --elb-b: 8deg;
+  }
 }
 
-.fig--reach-up .fig-arm-l {
-  animation: reach-l 4s var(--ease) infinite;
-}
-.fig--reach-up .fig-arm-r {
-  animation: reach-r 4s var(--ease) infinite;
-}
-
-.fig--side-bend .fig-body {
-  animation: side-bend 6s ease-in-out infinite;
-}
-
-.fig--fold .fig-body {
-  animation: fold 5s var(--ease) infinite;
+/* Reduced motion: one still key pose per step instead of the theme's frozen first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .figure {
+    animation: none;
+  }
+  .fig--sit {
+    --lean: -4deg;
+    --sh-y: 0.5px;
+  }
+  .fig--breathe {
+    --chest: -7deg;
+    --neck: 7deg;
+    --sh-y: -3px;
+  }
+  .fig--neck-left {
+    --neck: -32deg;
+  }
+  .fig--neck-right {
+    --neck: 32deg;
+  }
+  .fig--shoulder-roll {
+    --sh-x: -1px;
+    --sh-y: -5px;
+  }
+  .fig--look-up {
+    --neck: -32deg;
+  }
+  .fig--look-up .fig-cue {
+    animation: none;
+    opacity: 1;
+  }
+  .fig--stand-up {
+    --x: 17px;
+    --y: 5px;
+    --lean: 14deg;
+    --neck: -4deg;
+    --hip-a: -32.6deg;
+    --knee-a: 59.9deg;
+    --ankle-a: -27.3deg;
+    --hip-b: -29.2deg;
+    --knee-b: 60.3deg;
+    --ankle-b: -31deg;
+    --arm-a: -12deg;
+    --arm-b: -14deg;
+  }
+  .fig--reach-up {
+    --y: -2.5px;
+    --arm-a: 158deg;
+    --elb-a: 0deg;
+    --arm-b: -158deg;
+    --elb-b: 0deg;
+    --ankle-a: -38.7deg;
+    --ankle-b: 38.7deg;
+  }
+  .fig--side-bend {
+    --lean: -10deg;
+    --chest: -18deg;
+    --neck: -6deg;
+    --arm-a: 22deg;
+    --elb-a: -40deg;
+    --arm-b: -140deg;
+    --elb-b: -45deg;
+  }
+  .fig--fold {
+    --x: -5px;
+    --y: 4px;
+    --lean: 75deg;
+    --chest: 15deg;
+    --neck: 15deg;
+    --hip-a: -35.5deg;
+    --knee-a: 48.5deg;
+    --ankle-a: -13deg;
+    --hip-b: -30.9deg;
+    --knee-b: 52.9deg;
+    --ankle-b: -22deg;
+    --arm-a: -86deg;
+    --elb-a: 8deg;
+    --arm-b: -92deg;
+    --elb-b: 8deg;
+  }
 }
 
 /* Walk cycle, 1.2s per stride. Leg a with arm b; leg b and arm a start half a stride later. */
@@ -471,119 +998,6 @@ body,
   }
 }
 
-@keyframes settle {
-  50% {
-    transform: translateY(1.5px);
-  }
-}
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.07);
-  }
-}
-/* The card is a mirror: "tilt left" leans toward the screen's left. */
-@keyframes tilt-left {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  30%,
-  75% {
-    transform: rotate(-24deg);
-  }
-}
-@keyframes tilt-right {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  30%,
-  75% {
-    transform: rotate(24deg);
-  }
-}
-@keyframes shoulder-roll {
-  25% {
-    transform: translateY(-5px);
-  }
-  50% {
-    transform: translateY(-3px) scaleX(0.96);
-  }
-  75% {
-    transform: translateY(1px);
-  }
-}
-@keyframes look-up {
-  30%,
-  70% {
-    transform: translateY(-4px) scaleY(0.92);
-  }
-}
-@keyframes cue {
-  30%,
-  70% {
-    opacity: 1;
-  }
-}
-@keyframes swap-a {
-  0%,
-  35% {
-    opacity: 1;
-  }
-  50%,
-  90% {
-    opacity: 0;
-  }
-}
-@keyframes swap-b {
-  0%,
-  35% {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  50%,
-  90% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes reach-l {
-  35%,
-  75% {
-    transform: rotate(120deg);
-  }
-}
-@keyframes reach-r {
-  35%,
-  75% {
-    transform: rotate(-120deg);
-  }
-}
-@keyframes side-bend {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  25% {
-    transform: rotate(-16deg);
-  }
-  75% {
-    transform: rotate(16deg);
-  }
-}
-@keyframes fold {
-  35%,
-  75% {
-    transform: scaleY(0.6);
-  }
-}
 /* Facing right: negative angles swing a limb forward. 0% = heel strike, ~60% = toe off. */
 @keyframes walk-hip {
   0%,

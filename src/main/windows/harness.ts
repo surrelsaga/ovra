@@ -368,6 +368,95 @@ function click(win: BrowserWindow, text: string): Promise<unknown> {
 const nav = (win: BrowserWindow, page: string): Promise<unknown> =>
   win.webContents.executeJavaScript(`document.querySelector('[data-nav=${page}]')?.click()`)
 
+/** Camera indicator frames: moonrise, satellite per mood and backdrop, waxing, fade, paused, reduced motion. */
+async function indicatorTour(orb: BrowserWindow, bus: Bus, dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true })
+  const grab = async (name: string): Promise<void> => {
+    const img = await orb.webContents.capturePage()
+    await writeFile(join(dir, `${name}.png`), img.toPNG())
+  }
+  const frames = async (name: string, n: number, everyMs: number): Promise<void> => {
+    for (let f = 0; f < n; f++) {
+      const t0 = Date.now()
+      await grab(`${name}-${String(f).padStart(2, '0')}`)
+      await wait(Math.max(0, everyMs - (Date.now() - t0)))
+    }
+  }
+  const backdrop = (bg: string): Promise<unknown> =>
+    orb.webContents.executeJavaScript(`document.body.style.background = '${bg}'`)
+  const off = (): void => bus.emit('sdk:checkin-ended', { phase: 'checkin' })
+  bus.emit('break:returned', { awayMs: 0 })
+  bus.emit('privacy:camera-resumed', {})
+  off()
+  await wait(1000)
+
+  // Moonrise during calibration, then waxing at 0 / 0.5 / 1.
+  await backdrop('#1e1f24')
+  bus.emit('sdk:checkin-started', { phase: 'calibration' })
+  await frames('rise', 14, 80)
+  for (const p of [0, 0.5, 1]) {
+    bus.emit('sdk:calibration-progress', { progress: p, hint: null })
+    await wait(300)
+    await grab(`wax-${p}`)
+  }
+  bus.emit('sdk:checkin-ended', { phase: 'calibration' })
+  await frames('fade', 10, 80)
+
+  // Satellite in each mood on a dark and a light desktop, plus away (continuous mode).
+  bus.emit('sdk:checkin-started', { phase: 'checkin' })
+  await wait(1200)
+  const moods = [
+    ['calm', 'focused'],
+    ['uneasy', 'tense'],
+    ['stormy', 'crashing'],
+    ['dim', 'low'],
+    ['bright', 'good']
+  ] as const
+  for (const [name, situation] of moods) {
+    bus.emit('state:updated', state(situation))
+    for (const [bg, colour] of [
+      ['dark', '#1e1f24'],
+      ['light', '#f2f2f2']
+    ]) {
+      await backdrop(colour)
+      await wait(200)
+      await frames(`sat-${name}-${bg}`, 4, 110)
+    }
+  }
+  bus.emit('break:away', { since: Date.now() - 3 * MIN, manual: false })
+  await frames('sat-away-light', 2, 110)
+  bus.emit('break:returned', { awayMs: 3 * MIN })
+  bus.emit('state:updated', state('focused'))
+  await backdrop('#1e1f24')
+  await frames('orbit', 34, 110)
+
+  // Paused: camera stops, satellite fades and stays gone.
+  bus.emit('privacy:camera-paused', {})
+  await wait(900)
+  await grab('paused')
+  bus.emit('privacy:camera-resumed', {})
+
+  // Reduced motion: reload with the media feature emulated, then turn the camera on.
+  off()
+  orb.webContents.debugger.attach()
+  await orb.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+  })
+  orb.webContents.reload()
+  await wait(1500)
+  await backdrop('#f2f2f2')
+  bus.emit('sdk:checkin-started', { phase: 'checkin' })
+  await frames('reduced', 3, 400)
+  off()
+  await wait(300)
+  await grab('reduced-off')
+  await orb.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] })
+  orb.webContents.debugger.detach()
+  orb.webContents.reload()
+  await wait(1500)
+  await backdrop('')
+}
+
 async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await mkdir(dir, { recursive: true })
   const { main, orb } = shell.windows()!
@@ -412,6 +501,8 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
     if (['stormy', 'bright', 'listening', 'breathing'].includes(step.name))
       for (const f of [1, 2, 3]) await shot(orb, dir, `${20 + i}-orb-${step.name}-f${f}`)
   }
+  await indicatorTour(orb, bus, join(dir, 'indicator'))
+
   // Click-through: real mouse moves over empty space, then over the moon (the window logs each switch).
   const mouse = (x: number, y: number): void =>
     orb.webContents.sendInputEvent({ type: 'mouseMove', x, y })

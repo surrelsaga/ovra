@@ -40,10 +40,14 @@ function useCameraMotion(listening: boolean, still: boolean): { ms: number; step
   const ticking = !still && (listening || s.ms < FADE.length * moonMotion.fadeStepMs)
   useEffect(() => {
     if (!ticking) return
-    const id = setInterval(
-      () => setS((p) => ({ ...p, ms: p.ms + moonMotion.satStepMs, step: p.step + 1 })),
-      moonMotion.satStepMs
-    )
+    // Wall-clock ms, so a late tick catches up instead of stretching the rise or fade.
+    let last = performance.now()
+    const id = setInterval(() => {
+      const now = performance.now()
+      const dt = now - last
+      last = now
+      setS((p) => ({ ...p, ms: p.ms + dt, step: p.step + 1 }))
+    }, moonMotion.satStepMs)
     return () => clearInterval(id)
   }, [ticking])
   return s

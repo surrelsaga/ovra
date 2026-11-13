@@ -97,6 +97,10 @@ body {
   cursor: grab;
   touch-action: none;
 }
+/* The camera satellite's 6 o'clock step dips into the tucked chip; keep the art on top (no hit area). */
+.orb-app__moon .moon__px {
+  z-index: 1;
+}
 .orb-app__moon:active {
   cursor: grabbing;
 }

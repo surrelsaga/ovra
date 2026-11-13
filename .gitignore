@@ -10,3 +10,4 @@ test-media/
 spike/*.json
 spike/*.log
 spike/electron/renderer.bundle.js
+*.tsbuildinfo

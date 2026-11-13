@@ -514,6 +514,8 @@ export interface OrbView {
   breath?: number
   bubble?: string
   nowPlaying?: { name: string; artist: string; word: TargetWord | null }
+  /** Check-in mode, camera off: when the next check-in should start (estimate). Unset when unknown. */
+  nextCheckAt?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -558,6 +560,8 @@ export interface AppSettings {
   orbPosition: { x: number; y: number } | null
   /** Advanced: overrides for state engine thresholds, keyed by config name. */
   thresholdOverrides: Record<string, number>
+  /** How many times the orb has explained the camera light (first few turn-ons only). */
+  cameraTeachCount: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -567,7 +571,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   devVideoSource: null,
   devFramingPad: 0.4,
   orbPosition: null,
-  thresholdOverrides: {}
+  thresholdOverrides: {},
+  cameraTeachCount: 0
 }
 
 // ---------------------------------------------------------------------------

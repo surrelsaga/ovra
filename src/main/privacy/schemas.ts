@@ -22,7 +22,8 @@ export const settingsSchema = z.strictObject({
   devVideoSource: z.string().nullable(),
   devFramingPad: z.number().min(0).max(0.6),
   orbPosition: z.strictObject({ x: z.number(), y: z.number() }).nullable(),
-  thresholdOverrides: z.record(z.string(), z.number())
+  thresholdOverrides: z.record(z.string(), z.number()),
+  cameraTeachCount: z.number().int().nonnegative()
 }) satisfies z.ZodType<AppSettings>
 
 const situation = z.enum(['focused', 'tense', 'crashing', 'low', 'good'])

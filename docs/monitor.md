@@ -40,7 +40,7 @@ Extra `[monitor]` lines announce phase changes, the app's existing debounced val
 ## What to look for
 
 - **Pulse is present but rarely stable:** check camera framing, light and stillness, and compare validation codes with the stability percentage. This is an observation guide, not a classifier fix.
-- **Face object is common but landmarks and Ovra present are rare:** compare this with the engine's last-face timer. A face object alone currently does not make `face.present` true. This can explain a failed baseline or away detection while someone is still sitting in view.
+- **Face object is common but Ovra present is rare:** since 2026-11-14 any face object counts as present, even when landmarks are empty, and only SDK code 2 (no face found) clears it. If Ovra present still lags the face object count, compare validation code 2 counts and the engine's last-face timer.
 - **Raw payloads arrive but snapshots/s is near zero:** inspect capture status and the throttle/merge path. The normal send cap is configured in `src/renderer/capture/config.ts`.
 - **Raw stable pulse is common but accepted calibration count stays low:** compare Ovra present, last face, the configured count/span requirements and the baseline failure reason.
 - **No payloads and repeated validation 7:** follow the chest-in-view hint. The SDK can withhold metrics until framing passes its check.
@@ -59,3 +59,12 @@ OVRA_MONITOR=1 OVRA_HARNESS=monitor OVRA_ENV_PATH=/tmp/ovra-monitor-no-env npm r
 It uses synthetic metrics and the real state/session engines, with mock sensing, music and moves. It never imports the SmartSpectra SDK or constructs a Spotify controller. It isolates Electron userData/sessionData in a temporary directory, keeps session data in memory, and uses music `none`. It exercises failed calibration, raw face object versus reduced presence, continuous away/returned, rates, phase totals and terminal records. It saves two screenshots outside the repo, prints their paths, and quits its own app.
 
 Unit tests cover counter aggregation/expiry, raw-field counting, session end sources, unchanged capture throttle/merge output and unchanged state output with the diagnostic getter in use. A live camera session and SDK-specific timing still need Daniel.
+
+## Live check after the calibration and pill fixes (2026-11-14)
+
+Run for about 5 minutes with the live camera, music on, check-in mode first:
+
+1. **Calibration:** while the SDK asks you to reposition, the moon should not wax and big hints should show. The 90 s window starts once readings are good; it may finish later but stops at 180 s. Expect `baseline` to be set afterwards.
+2. **Presence:** sit still, look away or down for a while. `away` should stay off. Leave the frame for 20 s+ in continuous mode; `away` should turn on, then off when you return.
+3. **Orb pill:** the song stays visible, with a camera dot (lit on, dim off, paused badge when you pause). A short "camera on / off" note shows for 3 s at each switch. The first three camera turn-ons show a satellite lesson; the fourth stays quiet.
+4. Note anything odd with the terminal `[monitor]` line next to it.

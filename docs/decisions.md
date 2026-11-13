@@ -46,3 +46,6 @@ Decisions the orchestrator made without asking, with the reason. Newest at the b
 22. **Tests restore Spotify's original state** (volume, track, play state, shuffle, repeat) after touching the real app. Added to AGENTS.md.
 23. **Strong Claude agents allowed again** (2026-11-13): Daniel asked to stop the Codex simulator worker and use a Claude Opus 5.5 agent instead; use Claude when tasks need judgment, Codex for well-specified work.
 24. **Agent choice (2026-11-14):** Codex by default; Claude agents only for hard, open-ended tasks that need judgment or clarification (saves Claude usage).
+25. **Calibration clock (2026-11-14):** the 90 s calibration window starts at the first good reading (validation ok or steady pulse with a face), not at camera start, with a 180 s hard cap (`src/main/sdk/config.ts`). It ends early once the state engine's baseline rules pass.
+26. **Face presence (2026-11-14):** any SDK face object counts as present, even with empty landmarks; only SDK "no face found" clears it. Without face consent, vitals stand in for presence. Fixes seated users being marked away.
+27. **Orb pill (2026-11-14):** the song always shows; camera status is a dot plus a 3 s note on each switch and a paused badge. The satellite explains the camera on the first three turn-ons only (`AppSettings.cameraTeachCount`).

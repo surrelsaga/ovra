@@ -28,11 +28,8 @@ Read this, then `AGENTS.md`, `PLAN.md`, `docs/progress.md` and `docs/decisions.m
   1. calibration is a fixed 90 s even while the SDK is still asking the user to reposition;
   2. "away" is based on face landmarks, which flap, so a seated user can be marked away;
   3. the orb pill shows "Camera on" whenever the camera is on, so the song never shows in continuous mode.
-- **Running agents:**
-  - `ctx_cf7f0f0f28de` (Codex): calibration clock + face presence. Branch `fix/calibration-presence`.
-  - `ctx_81acde06b736` (Codex): orb pill showing song + camera dot + 3 s camera on/off note + paused badge, plus
-    teaching the satellite (onboarding, first 3 bubbles, tooltips) and big calibration hints. Branch `feat/orb-pill`.
-- **After both merge:** Daniel does a 5-minute live check with `npm run dev:monitor`.
+- Fixed and merged (`3a9cd73`, `180632b`): calibration clock, face presence, orb pill with song + camera dot + satellite lessons.
+- **No agents running.** Next: Daniel's 5-minute live check with `npm run dev:monitor` (steps at the end of `docs/monitor.md`).
 
 ## Still to do
 - **Deferred deliverables, until Daniel says go:**

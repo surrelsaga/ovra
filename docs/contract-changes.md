@@ -65,3 +65,27 @@ Format:
   between `sdk:checkin-started` and `sdk:checkin-ended` with phase `calibration`; undefined otherwise.
 - Why: the moon waxes from crescent to full with calibration progress (camera indicator redesign).
 - Status: applied in feat/orb-indicator (requested by the coordinator)
+
+## 2026-11-14 — sensing monitor — diagnostic counters and read-only state
+
+- File: src/shared/types.ts
+- Change: add `MonitorCounts`, `CaptureDiagnostics`, `MonitorMetricSummary`, `StateDiagnostics`,
+  `SessionEndSource`, `SessionStatusChange`, and `MonitorSnapshot`. These carry counters, confidence
+  summaries, flags, timing and text only; no raw vital values, expression scores, landmarks or baseline.
+- Change: add optional `CaptureStartRequest.diagnostics`; add read-only `StateEngine.diagnostics()`;
+  add optional `SessionService.end(source?: SessionEndSource)` to label end causes. Existing no-argument
+  end calls retain their behavior; the source is diagnostic metadata only.
+- Change: add bus events `monitor:diag: CaptureDiagnostics`,
+  `monitor:capture-status: { status: CaptureStatus }`, and `monitor:session-change: SessionStatusChange`.
+- Change: add `IpcCaptureSend['capture:diag']: CaptureDiagnostics` and `IpcPush['push:monitor']: MonitorSnapshot`,
+  plus their `IPC_CAPTURE_CHANNELS` and `IPC_PUSH_CHANNELS` whitelist entries.
+- Why: inspect SDK payload presence/stability before throttling and compare it with Ovra's existing decisions.
+  Capture diagnostics are requested only when `OVRA_MONITOR=1` and the app is not packaged.
+- Status: applied in 4e6cf91
+
+## 2026-11-14 — sensing monitor — dev launch script
+
+- File: package.json
+- Change: add `dev:monitor`: `OVRA_MONITOR=1 electron-vite dev`. No dependency changes.
+- Why: open the normal consent-controlled app alongside the dev-only sensing monitor window.
+- Status: applied in 25ba7a9

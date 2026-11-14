@@ -681,6 +681,8 @@ export interface IpcInvoke {
   'history:list': { req: void; res: SessionRecord[] }
   'history:delete': { req: { id: string }; res: void }
   'data:delete-all': { req: void; res: void }
+  /** Opens Ovra's data folder (userData) in Finder / Explorer. */
+  'data:show-folder': { req: void; res: void }
 
   'window:open-main': { req: void; res: void }
   'window:orb-moved': { req: { x: number; y: number }; res: void }
@@ -766,6 +768,7 @@ export const IPC_INVOKE_CHANNELS = [
   'history:list',
   'history:delete',
   'data:delete-all',
+  'data:show-folder',
   'window:open-main',
   'window:orb-moved',
   'window:orb-ignore-mouse',

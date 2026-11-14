@@ -18,6 +18,8 @@ export interface PrivacyDeps {
   bus: Bus
   /** Dev simulator: read over the stored settings, never written. Callers may change it in place. */
   settingsOverlay?: Partial<AppSettings>
+  /** Clears Chromium's browser storage and cache for the app (Delete everything). */
+  clearBrowserData?: () => Promise<void>
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -130,6 +132,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       broadcast('push:settings', view())
       bus.emit('privacy:changed', { ...privacy })
       bus.emit('data:deleted-all', {})
+      await deps.clearBrowserData?.()
     },
 
     runAutoDelete(now = Date.now()) {
@@ -146,8 +149,14 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
   }
 }
 
-/** Registers privacy:*, settings:*, history:*, data:* IPC handlers. */
-export function registerPrivacyIpc(privacy: PrivacyService): void {
+/**
+ * Registers privacy:*, settings:*, history:*, data:* IPC handlers. `openDataFolder` opens userData
+ * in the file manager and resolves to an error message, or '' on success (Electron's shell.openPath).
+ */
+export function registerPrivacyIpc(
+  privacy: PrivacyService,
+  openDataFolder?: () => Promise<string>
+): void {
   handle('privacy:get', () => privacy.get())
   handle('privacy:set', (patch) => privacy.set(patch))
   handle('settings:get', () => privacy.getSettings())
@@ -158,4 +167,9 @@ export function registerPrivacyIpc(privacy: PrivacyService): void {
     return privacy.deleteSession(req.id)
   })
   handle('data:delete-all', () => privacy.deleteEverything())
+  if (openDataFolder)
+    handle('data:show-folder', async () => {
+      const error = await openDataFolder()
+      if (error) throw new Error(`data:show-folder: ${error}`)
+    })
 }

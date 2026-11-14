@@ -245,6 +245,19 @@ describe('delete everything', () => {
     expect(await privacy.listSessions()).toEqual([])
     expect((await setup()).privacy.get()).toEqual(DEFAULT_PRIVACY)
   })
+
+  it('also clears the browser storage and cache', async () => {
+    const bus = createBus()
+    const clearBrowserData = vi.fn(async () => {
+      expect(await readdir(dir)).toEqual([]) // after Ovra's own files are gone
+    })
+    const storage = createStorage(dir)
+    const privacy = await createPrivacy({ storage, bus, clearBrowserData })
+    await privacy.setSettings({ leaveMusicAlone: true })
+    await privacy.deleteEverything()
+    expect(clearBrowserData).toHaveBeenCalledOnce()
+    expect(privacy.getSettings()).toEqual(DEFAULT_SETTINGS)
+  })
 })
 
 describe('ipc', () => {
@@ -266,5 +279,15 @@ describe('ipc', () => {
     await handlers.get('history:delete')!({ id: 'a' })
     expect(await handlers.get('history:list')!(undefined)).toEqual([])
     expect(() => handlers.get('history:delete')!({})).toThrow()
+  })
+
+  it('opens the data folder and reports a failure', async () => {
+    const { privacy } = await setup()
+    const open = vi.fn(async () => '')
+    registerPrivacyIpc(privacy, open)
+    await handlers.get('data:show-folder')!(undefined)
+    expect(open).toHaveBeenCalledOnce()
+    open.mockResolvedValueOnce('Failed to open path')
+    await expect(handlers.get('data:show-folder')!(undefined)).rejects.toThrow(/Failed to open/)
   })
 })

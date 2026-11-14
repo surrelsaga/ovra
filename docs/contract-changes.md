@@ -96,3 +96,12 @@ Format:
 - Change: additive `AppSettings.cameraTeachCount: number`, default `0`; additive `OrbView.nextCheckAt?: number` (estimated next check-in timestamp, omitted when unknown).
 - Why: persist the first three camera indicator lessons and describe camera-off gaps without hiding the song. Existing settings merge over defaults; the privacy settings schema validates the inherited additive field.
 - Status: applied in 0fedda5
+
+## 2026-11-14 — privacy honesty — show data folder
+
+- File: src/shared/types.ts
+- Change: add invoke channel `'data:show-folder': { req: void; res: void }` and its `IPC_INVOKE_CHANNELS`
+  whitelist entry. The main process opens `app.getPath('userData')` with `shell.openPath` and rejects with
+  the error text if the folder can't be opened.
+- Why: the upcoming Privacy screen lets the user see exactly what Ovra keeps on disk.
+- Status: applied in surrelsaga/ovra-privacy (requested by the coordinator)

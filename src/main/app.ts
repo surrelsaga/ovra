@@ -1,5 +1,5 @@
 // Owner: orchestrator / Phase 3 integration. Wires every module together through the bus.
-import { app } from 'electron'
+import { app, session as electronSession, shell } from 'electron'
 import type { AppSettings, Bus, PrivacyService, SensingService } from '@shared/types'
 import type { SensingConfig } from './sdk/config'
 import type { MovesConfig } from './moves/config'
@@ -8,7 +8,7 @@ import { appConfig } from './config'
 import { installQuitHandler } from './quit'
 import { createBus } from './bus'
 import { getKey } from './env'
-import { createStorage } from './storage'
+import { createStorage, restrictPermissions } from './storage'
 import { createPrivacy, registerPrivacyIpc } from './privacy'
 import { createStateEngine } from './state'
 import { createMusic, registerMusicIpc } from './music'
@@ -34,10 +34,22 @@ export interface AppOptions {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- inferred services are also used by the e2e harness
 export async function startApp(options: AppOptions = {}) {
   const bus = createBus()
-  const storage = createStorage(app.getPath('userData'))
-  const privacy = await createPrivacy({ storage, bus, settingsOverlay: options.settingsOverlay })
+  const dataDir = app.getPath('userData')
+  await restrictPermissions(dataDir).catch(console.error)
+  const storage = createStorage(dataDir)
+  const privacy = await createPrivacy({
+    storage,
+    bus,
+    settingsOverlay: options.settingsOverlay,
+    // Chromium's own files in userData (cookies, local/session storage, caches). The capture window's
+    // session is in-memory only, so it leaves nothing on disk.
+    clearBrowserData: async () => {
+      const ses = electronSession.defaultSession
+      await Promise.all([ses.clearStorageData(), ses.clearCache()])
+    }
+  })
   await options.setup?.(privacy)
-  registerPrivacyIpc(privacy)
+  registerPrivacyIpc(privacy, () => shell.openPath(dataDir))
   await privacy.runAutoDelete()
   const autoDelete = setInterval(
     () => void privacy.runAutoDelete().catch(console.error),

@@ -50,7 +50,6 @@ export async function startSimulator() {
     Object.assign(moves, on ? fastMovesConfig : MOVES_CONFIG)
     const gap = on ? cfg.fast.musicTargetGap : musicConfig.switching
     musicGap.minTargetChangeMs = gap.minTargetChangeMs
-    musicGap.downtimeChangeMultiplier = gap.downtimeChangeMultiplier
     delete overlay.nudgeMinIntervalMin
     delete overlay.thresholdOverrides
     if (!on) return
@@ -60,7 +59,7 @@ export async function startSimulator() {
 
   let state: SimulatorStatus['state'] = null
   let musicWord: TargetWord | null = null
-  let activity: Activity = 'deep-work'
+  let activity: Activity = 'focus'
   let remainingSec: number | undefined
   let lastNudge: SimulatorStatus['lastNudge'] = null
   const status = (): SimulatorStatus => ({

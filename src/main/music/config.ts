@@ -14,8 +14,6 @@ export const musicConfig = {
   switching: {
     /** At most one target change per this long. */
     minTargetChangeMs: 3 * 60_000,
-    /** Downtime "barely switches": the gap above is multiplied by this. */
-    downtimeChangeMultiplier: 3,
     /** Start our pick this long before the current song ends. */
     endLeadMs: 1500,
     /** Settle fades down and back up over this duration each. */
@@ -47,6 +45,13 @@ export const musicConfig = {
     topK: 5,
     fallbackMinDistance: 1.5,
     fallbackEvery: 10
+  },
+  activityLean: {
+    focus: { min: 2, max: 3, bright: false, vocals: { instrumental: 0, light: 0.75, heavy: 1.5 } },
+    reading: { min: 1, max: 2, bright: false, vocals: { instrumental: 0, light: 1, heavy: 2 } },
+    creative: { min: 3, max: 3, bright: false, vocals: { instrumental: 0, light: 0, heavy: 0 } },
+    everyday: { min: 3, max: 4, bright: true, vocals: { instrumental: 0, light: 0, heavy: 0 } },
+    unwind: { min: 1, max: 5, bright: true, vocals: { instrumental: 0, light: 0, heavy: 0 } }
   },
   songs: {
     /** Effective confidence below this = "Not sure yet". */
@@ -115,11 +120,11 @@ export const musicConfig = {
 
 /** Activity defaults when the situation is unknown or Focused. */
 export const ACTIVITY_DEFAULT_TARGET: Record<Activity, MusicTarget> = {
-  'deep-work': 'steady',
-  debugging: 'steady',
-  writing: 'steady',
-  admin: 'lift',
-  downtime: 'let-it-ride'
+  focus: 'steady',
+  reading: 'steady',
+  creative: 'steady',
+  everyday: 'lift',
+  unwind: 'let-it-ride'
 }
 
 /** Spotify editorial lists, each verified with one public embed read on 2026-11-14. */

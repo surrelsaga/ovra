@@ -108,7 +108,7 @@ function fakeRecord(id: string, startedAt: number, lengthMin: number): SessionRe
   const step = (lengthMin * MIN) / kinds.length
   return {
     id,
-    activity: 'deep-work',
+    activity: 'focus',
     startedAt,
     endedAt: startedAt + lengthMin * MIN,
     lengthMin,
@@ -642,11 +642,11 @@ export async function runHarness(): Promise<void> {
   await privacy.saveSession(fakeRecord('past-1', now - 26 * 60 * MIN, 120))
   await privacy.saveSession({
     ...fakeRecord('past-2', now - 50 * 60 * MIN, 60),
-    activity: 'writing'
+    activity: 'focus'
   })
   await privacy.saveSession({
     ...fakeRecord('past-3', now - 74 * 60 * MIN, 180),
-    activity: 'debugging'
+    activity: 'focus'
   })
   fakeServices(bus, privacy)
 

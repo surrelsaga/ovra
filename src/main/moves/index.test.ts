@@ -53,7 +53,7 @@ function setup(opts: SetupOpts = {}) {
   const session: Session = {
     id: 's1',
     config: {
-      activity: 'deep-work',
+      activity: 'focus',
       lengthMin: 180,
       cameraMode: opts.mode ?? 'checkins',
       checkinIntervalMin: 5,

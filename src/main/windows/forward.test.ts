@@ -25,7 +25,7 @@ function fakeShell(): ShellControl & {
 const session = (status: Session['status']): Session => ({
   id: 's1',
   config: {
-    activity: 'deep-work',
+    activity: 'focus',
     lengthMin: 60,
     cameraMode: 'checkins',
     checkinIntervalMin: 5,
@@ -99,7 +99,7 @@ describe('bus → push forwarding', () => {
     expect(shell.calls).toEqual(['showOrb'])
     bus.emit('session:ended', {
       id: 's1',
-      activity: 'deep-work',
+      activity: 'focus',
       startedAt: 0,
       endedAt: 1,
       lengthMin: 60,

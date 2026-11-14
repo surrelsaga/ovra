@@ -30,6 +30,7 @@ export interface Option<T extends string | number> {
   value: T
   label: string
   hint?: string
+  examples?: string
 }
 
 /** Radio group shown as cards. Native radios keep keyboard and screen reader support. */
@@ -70,6 +71,7 @@ export function ChoiceGroup<T extends string | number>(props: {
               required={required}
             />
             <span className="choice__label">{o.label}</span>
+            {o.examples && <span className="choice__hint">{o.examples}</span>}
             {o.hint && <span className="choice__hint">{o.hint}</span>}
           </label>
         ))}

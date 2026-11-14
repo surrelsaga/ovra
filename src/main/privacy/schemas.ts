@@ -23,7 +23,9 @@ export const settingsSchema = z.strictObject({
   devFramingPad: z.number().min(0).max(0.6),
   orbPosition: z.strictObject({ x: z.number(), y: z.number() }).nullable(),
   thresholdOverrides: z.record(z.string(), z.number()),
-  cameraTeachCount: z.number().int().nonnegative()
+  cameraTeachCount: z.number().int().nonnegative(),
+  musicHelpShown: z.boolean(),
+  musicStartHelpShown: z.boolean()
 }) satisfies z.ZodType<AppSettings>
 
 const situation = z.enum(['focused', 'tense', 'crashing', 'low', 'good'])
@@ -32,7 +34,23 @@ const moveId = z.enum(['breathe', 'neck-stretch', 'stand-stretch', 'walk', 'step
 /** History record: labels and counts only. A record carrying any extra field is rejected. */
 export const sessionRecordSchema = z.strictObject({
   id: z.string().min(1),
-  activity: z.enum(['deep-work', 'debugging', 'writing', 'admin', 'downtime']),
+  activity: z.preprocess(
+    (value) => {
+      switch (value) {
+        case 'deep-work':
+        case 'debugging':
+        case 'writing':
+          return 'focus'
+        case 'admin':
+          return 'everyday'
+        case 'downtime':
+          return 'unwind'
+        default:
+          return value
+      }
+    },
+    z.enum(['focus', 'reading', 'creative', 'everyday', 'unwind'])
+  ),
   startedAt: z.number(),
   endedAt: z.number(),
   lengthMin: z.number().nonnegative(),

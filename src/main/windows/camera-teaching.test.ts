@@ -91,7 +91,7 @@ it('supplies the next scheduled check only between check-ins, never while paused
     status: 'calibrating',
     sensingEnabled: true,
     config: {
-      activity: 'deep-work',
+      activity: 'focus',
       lengthMin: 60,
       cameraMode: 'checkins',
       checkinIntervalMin: 5,

@@ -102,7 +102,7 @@ const LIBRARY = [
 const session = (patch: Partial<Session['config']> = {}): Session => ({
   id: 's1',
   config: {
-    activity: 'deep-work',
+    activity: 'focus',
     lengthMin: 60,
     cameraMode: 'checkins',
     checkinIntervalMin: 5,
@@ -120,7 +120,7 @@ async function setup(
     fetch?: typeof fetch
     songs?: Song[]
     privacy?: Partial<PrivacySettings>
-    targetGap?: { minTargetChangeMs: number; downtimeChangeMultiplier: number }
+    targetGap?: { minTargetChangeMs: number }
   } = {}
 ) {
   const bus = createBus()
@@ -197,9 +197,26 @@ describe('music service', () => {
     expect(music.status()).toMatchObject({ available: true, target: 'steady', scoredCount: 4 })
   })
 
-  it('admin starts on Lift', async () => {
+  it('passes Reading’s energy and vocals lean into picks, but keeps the calm targets unchanged', async () => {
+    const { music, controller, state } = await setup({
+      songs: [
+        song('vocal', { energy: 2, vocals: 'heavy' }),
+        song('instrumental', { energy: 2, vocals: 'instrumental' }),
+        song('settle', { energy: 1, mood: 'bright', vocals: 'heavy' })
+      ]
+    })
+    await music.startSession(session({ activity: 'reading' }))
+    expect(controller.calls).toEqual(['play spotify:track:instrumental'])
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    state('crashing')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(music.status().target).toBe('settle')
+    expect(controller.calls.at(-1)).toBe('play spotify:track:vocal')
+  })
+
+  it('Everyday tasks starts on Lift', async () => {
     const { music, targets } = await setup()
-    await music.startSession(session({ activity: 'admin' }))
+    await music.startSession(session({ activity: 'everyday' }))
     expect(targets()).toEqual(['lift'])
   })
 
@@ -254,7 +271,7 @@ describe('music service', () => {
 
   it('uses an overridden target-change gap (dev simulator fast mode)', async () => {
     const { music, state, targets } = await setup({
-      targetGap: { minTargetChangeMs: 15_000, downtimeChangeMultiplier: 1.2 }
+      targetGap: { minTargetChangeMs: 15_000 }
     })
     await music.startSession(session())
     await vi.advanceTimersByTimeAsync(10_000)

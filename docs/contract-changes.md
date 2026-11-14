@@ -119,3 +119,12 @@ Format:
 - Change: optional `SessionConfig.demo?: boolean`; optional `OrbView.why?: { text: string; progress?: number; moving: boolean }` (`moving` false = show on hover only) and `OrbView.demo?: boolean`.
 - Why: demo mode (decision 28) and the why line (decision 34). Coarse words only, never vitals values.
 - Status: applied on main by the coordinator
+
+## 2026-11-14 — activities and playlist help
+
+- File: src/shared/types.ts
+- Change: replace `Activity` with `'focus' | 'reading' | 'creative' | 'everyday' | 'unwind'`; the privacy history schema migrates all five legacy activity values on read.
+- Change: additive `AppSettings.musicHelpShown` and `musicStartHelpShown`, both default `false`, to remember the onboarding help and first-session reminder independently.
+- Change: additive invoke `'data:folder': { req: void; res: { path: string; platform: string } }` and whitelist entry; returns the actual Electron user-data folder and platform for Privacy.
+- Why: coordinator-approved decision 33 activity picker, one-time playlist help, and decision 32 local storage section (Job C); no dependency or package changes.
+- Status: applied in surrelsaga/ovra-ui (requested by the coordinator)

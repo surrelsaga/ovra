@@ -7,17 +7,50 @@ export const mainConfig = {
   checkinIntervals: [3, 5, 10] as const,
   nudgeIntervalsMin: [15, 20, 30, 45],
   calibrationSec: 90,
+  demoLengthMin: 15,
+  activityLengthMin: {
+    focus: 60,
+    reading: 60,
+    creative: 60,
+    everyday: 45,
+    unwind: 45
+  } satisfies Record<Activity, number>,
   /** Songs below this confidence go under "Not sure yet". */
   unsureBelow: 0.5,
   framingPad: { min: 0, max: 0.6, step: 0.05 }
 }
 
-export const ACTIVITIES: { value: Activity; label: string; hint: string }[] = [
-  { value: 'deep-work', label: 'Deep work', hint: 'Steady music, few interruptions' },
-  { value: 'debugging', label: 'Debugging', hint: 'Steady music, calm when it gets tense' },
-  { value: 'writing', label: 'Writing', hint: 'Steady, lighter on lyrics' },
-  { value: 'admin', label: 'Admin', hint: 'A bit more lift' },
-  { value: 'downtime', label: 'Downtime', hint: 'Anything bright, rarely switches' }
+export const ACTIVITIES: { value: Activity; label: string; examples: string; hint: string }[] = [
+  {
+    value: 'focus',
+    label: 'Focus',
+    examples: 'Studying, work, coding, writing',
+    hint: 'Steady, few lyrics'
+  },
+  {
+    value: 'reading',
+    label: 'Reading',
+    examples: 'Articles, books, comics',
+    hint: 'Soft and mostly instrumental'
+  },
+  {
+    value: 'creative',
+    label: 'Creative',
+    examples: 'Design, drawing, editing',
+    hint: 'Warm, a bit more energy'
+  },
+  {
+    value: 'everyday',
+    label: 'Everyday tasks',
+    examples: 'Email, planning, shopping',
+    hint: 'Upbeat, lyrics welcome'
+  },
+  {
+    value: 'unwind',
+    label: 'Unwind',
+    examples: 'Browsing, social, chatting',
+    hint: 'Bright and feel-good'
+  }
 ]
 
 export const ACTIVITY_LABEL = Object.fromEntries(
@@ -30,7 +63,7 @@ export const SOURCE_LABEL: Record<ScoreSource, string> = {
   llm: 'AI estimate from title and tags',
   web: 'Web search',
   learned: 'Learned from your sessions',
-  rules: 'Matched from public tags'
+  rules: 'Estimated from playlist hints or defaults'
 }
 
 export type SongTab = 'Calm' | 'Focus' | 'Boost' | 'Not sure yet'

@@ -26,13 +26,15 @@ export function NewSession(props: {
   privacy: PrivacySettings
   settings: AppSettings
   onStarted: (s: Session) => void
+  beforeStart?: () => Promise<void>
 }): React.JSX.Element {
   const { privacy, settings } = props
   const cameraOn = privacy.camera === 'yes'
-  const [activity, setActivity] = useState<Activity>('deep-work')
+  const [activity, setActivity] = useState<Activity>('focus')
   const [length, setLength] = useState<number | 'custom'>(60)
   const [custom, setCustom] = useState(mainConfig.customMin.default)
   const [cameraMode, setCameraMode] = useState<CameraMode>(privacy.cameraMode)
+  const [demo, setDemo] = useState(false)
   const [music, setMusic] = useState(privacy.music === 'spotify')
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
@@ -45,11 +47,13 @@ export function NewSession(props: {
     setStarting(true)
     setError(null)
     try {
+      await props.beforeStart?.()
       props.onStarted(
         await ovra().invoke('session:start', {
           activity,
           lengthMin,
-          cameraMode,
+          cameraMode: demo ? 'continuous' : cameraMode,
+          ...(demo ? { demo: true } : {}),
           checkinIntervalMin: settings.checkinIntervalMin,
           music
         })
@@ -69,15 +73,18 @@ export function NewSession(props: {
       </header>
       <div className="panel stack">
         <ChoiceGroup
-          legend="Activity"
+          legend="What are you doing?"
           name="activity"
-          columns={5}
+          columns={3}
           options={ACTIVITIES}
           value={activity}
-          onChange={setActivity}
+          onChange={(value) => {
+            setActivity(value)
+            if (!demo) setLength(mainConfig.activityLengthMin[value])
+          }}
         />
         <ChoiceGroup
-          legend="Length"
+          legend="How long?"
           name="length"
           columns={5}
           options={[
@@ -106,7 +113,7 @@ export function NewSession(props: {
         <ChoiceGroup
           legend="Camera"
           name="camera-mode"
-          disabled={!cameraOn}
+          disabled={!cameraOn || demo}
           description={
             cameraOn
               ? undefined
@@ -124,8 +131,20 @@ export function NewSession(props: {
               hint: 'Camera stays on until you end'
             }
           ]}
-          value={cameraOn ? cameraMode : null}
+          value={cameraOn ? (demo ? 'continuous' : cameraMode) : null}
           onChange={setCameraMode}
+        />
+        <Toggle
+          label="Demo mode"
+          hint="See every state in about 15 minutes. Ovra still reads your real pulse and breathing with the same rules, it just waits seconds instead of minutes, and guides you through steps that change them."
+          checked={demo}
+          onChange={(enabled) => {
+            setDemo(enabled)
+            if (enabled) {
+              setLength('custom')
+              setCustom(mainConfig.demoLengthMin)
+            }
+          }}
         />
         <Toggle
           label="Music"

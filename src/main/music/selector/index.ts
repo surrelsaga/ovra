@@ -88,6 +88,8 @@ export interface PickContext {
   played?: ReadonlyMap<string, number>
   picks?: number
   fallbackPicks?: number
+  /** Only set when focused, good or unknown; overrides the target’s usual energy/vocals lean. */
+  activity?: Activity
   playlistNames?: ReadonlyMap<string, string>
 }
 
@@ -95,6 +97,9 @@ export interface PickContext {
 export function fits(song: Song, target: MusicTarget, ctx: PickContext): boolean {
   const e = effective(song)
   if (!e) return false
+  const lean = ctx.activity ? cfg.activityLean[ctx.activity] : undefined
+  if (lean)
+    return e.energy >= lean.min && e.energy <= lean.max && (!lean.bright || e.mood === 'bright')
   const stepDown =
     ctx.currentEnergy !== undefined
       ? Math.max(1, Math.round(ctx.currentEnergy) - 1)
@@ -146,8 +151,10 @@ export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): nu
       : cfg.songs.easeDownDefaultMax
   const steady = ctx.steadyEnergy ?? cfg.songs.steadyDefaultEnergy
   const ride = ctx.currentEnergy ?? steady
-  const [min, max] =
-    target === 'settle'
+  const lean = ctx.activity ? cfg.activityLean[ctx.activity] : undefined
+  const [min, max] = lean
+    ? [lean.min, lean.max]
+    : target === 'settle'
       ? [1, 2]
       : target === 'ease-down' || target === 'wind-down'
         ? [1, stepDown]
@@ -159,8 +166,9 @@ export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): nu
   let distance = Math.max(min - energy, energy - max, 0)
   const calm = target === 'settle' || target === 'ease-down'
   if (calm && e?.mood === 'dark') distance += c.darkPenalty
-  if ((target === 'lift' || target === 'let-it-ride') && e?.mood !== 'bright')
+  if ((lean ? lean.bright : target === 'lift' || target === 'let-it-ride') && e?.mood !== 'bright')
     distance += c.moodPenalty
+  if (lean && e) distance += lean.vocals[e.vocals]
   if (isUnsure(s)) distance += calm ? c.unsurePenaltyCalm : c.unsurePenalty
   if (s.lastPlayedAt !== undefined && ctx.now - s.lastPlayedAt < c.cooldownMs)
     distance += c.cooldownPenalty
@@ -213,11 +221,10 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
 
 export interface TargetGap {
   minTargetChangeMs: number
-  downtimeChangeMultiplier: number
 }
 
 /**
- * At most one target change per ~3 min (longer in downtime). `gap` is read on every update, so the
+ * At most one target change per ~3 min for every activity. `gap` is read on every update, so the
  * dev simulator can swap its values; the app uses the defaults.
  */
 export function createTargetTracker(gap: TargetGap = cfg.switching): {
@@ -234,10 +241,9 @@ export function createTargetTracker(gap: TargetGap = cfg.switching): {
       target = null
       changedAt = -Infinity
     },
-    update(desired, activity, now) {
+    update(desired, _activity, now) {
       if (desired === target) return null
-      const minMs =
-        gap.minTargetChangeMs * (activity === 'downtime' ? gap.downtimeChangeMultiplier : 1)
+      const minMs = gap.minTargetChangeMs
       if (target !== null && now - changedAt < minMs) return null
       target = desired
       changedAt = now

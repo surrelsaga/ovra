@@ -246,7 +246,7 @@ export interface StateUpdate {
 // Session
 // ---------------------------------------------------------------------------
 
-export type Activity = 'deep-work' | 'debugging' | 'writing' | 'admin' | 'downtime'
+export type Activity = 'focus' | 'reading' | 'creative' | 'everyday' | 'unwind'
 
 export type CheckinIntervalMin = 3 | 5 | 10
 
@@ -577,6 +577,8 @@ export interface AppSettings {
   thresholdOverrides: Record<string, number>
   /** How many times the orb has explained the camera light (first few turn-ons only). */
   cameraTeachCount: number
+  musicHelpShown: boolean
+  musicStartHelpShown: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -587,7 +589,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   devFramingPad: 0.4,
   orbPosition: null,
   thresholdOverrides: {},
-  cameraTeachCount: 0
+  cameraTeachCount: 0,
+  musicHelpShown: false,
+  musicStartHelpShown: false
 }
 
 // ---------------------------------------------------------------------------
@@ -698,6 +702,7 @@ export interface IpcInvoke {
   'data:delete-all': { req: void; res: void }
   /** Opens Ovra's data folder (userData) in Finder / Explorer. */
   'data:show-folder': { req: void; res: void }
+  'data:folder': { req: void; res: { path: string; platform: string } }
 
   'window:open-main': { req: void; res: void }
   'window:orb-moved': { req: { x: number; y: number }; res: void }
@@ -784,6 +789,7 @@ export const IPC_INVOKE_CHANNELS = [
   'history:delete',
   'data:delete-all',
   'data:show-folder',
+  'data:folder',
   'window:open-main',
   'window:orb-moved',
   'window:orb-ignore-mouse',

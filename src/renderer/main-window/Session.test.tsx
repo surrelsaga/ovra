@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react'
-import type { AppSettings, Session } from '@shared/types'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { DEFAULT_PRIVACY, DEFAULT_SETTINGS, type AppSettings, type Session } from '@shared/types'
 import { installFakeBridge } from '../ui/fake-bridge'
-import { Calibration, Running } from './Session'
+import { Calibration, NewSession, Running } from './Session'
 
 const session = (status: Session['status']): Session => ({
   id: 's1',
   config: {
-    activity: 'deep-work',
+    activity: 'focus',
     lengthMin: 60,
     cameraMode: 'checkins',
     checkinIntervalMin: 5,
@@ -25,7 +25,9 @@ const settings: AppSettings = {
   devFramingPad: 0.4,
   orbPosition: null,
   thresholdOverrides: {},
-  cameraTeachCount: 0
+  cameraTeachCount: 0,
+  musicHelpShown: false,
+  musicStartHelpShown: false
 }
 
 describe('calibration preview', () => {
@@ -122,5 +124,60 @@ describe('calibration preview', () => {
     )
     expect(getUserMedia).not.toHaveBeenCalled()
     expect(screen.queryByText('Not recorded')).toBeNull()
+  })
+})
+
+describe('new session', () => {
+  it('passes the demo flag, continuous camera and custom 15 minutes through IPC, without saving a setting', async () => {
+    const bridge = installFakeBridge({ 'session:start': session('running') })
+    const view = render(
+      <NewSession
+        privacy={{ ...DEFAULT_PRIVACY, camera: 'yes' }}
+        settings={DEFAULT_SETTINGS}
+        onStarted={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('switch', { name: 'Demo mode' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    )
+    fireEvent.click(screen.getByRole('switch', { name: 'Demo mode' }))
+    expect(screen.getByRole('spinbutton')).toHaveValue(15)
+    expect(screen.getByRole('radio', { name: /The whole session/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(bridge.invokes).toEqual([
+      {
+        channel: 'session:start',
+        req: {
+          activity: 'focus',
+          lengthMin: 15,
+          cameraMode: 'continuous',
+          checkinIntervalMin: 5,
+          music: true,
+          demo: true
+        }
+      }
+    ])
+    view.unmount()
+    render(<NewSession privacy={DEFAULT_PRIVACY} settings={DEFAULT_SETTINGS} onStarted={vi.fn()} />)
+    expect(screen.getByRole('switch', { name: 'Demo mode' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    )
+  })
+
+  it('shows all activity examples and music hints and uses simple default lengths', () => {
+    installFakeBridge()
+    render(<NewSession privacy={DEFAULT_PRIVACY} settings={DEFAULT_SETTINGS} onStarted={vi.fn()} />)
+    expect(screen.getByText('Studying, work, coding, writing')).toBeInTheDocument()
+    expect(screen.getByText('Soft and mostly instrumental')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /Everyday tasks/ }))
+    expect(screen.getByRole('radio', { name: '45 min' })).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: /Reading/ }))
+    expect(screen.getByRole('radio', { name: '1 h' })).toBeChecked()
+    expect(screen.queryByRole('radio', { name: '10 min' })).toBeNull()
   })
 })

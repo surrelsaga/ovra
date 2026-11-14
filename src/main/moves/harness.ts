@@ -138,7 +138,7 @@ export async function runHarness(): Promise<void> {
   const session: Session = {
     id: 'harness',
     config: {
-      activity: 'deep-work',
+      activity: 'focus',
       lengthMin: 60,
       cameraMode: 'continuous',
       checkinIntervalMin: 5,

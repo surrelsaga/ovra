@@ -108,7 +108,7 @@ export async function runHarness(): Promise<void> {
   let timer: ReturnType<typeof setInterval> | undefined
   try {
     await session.start({
-      activity: 'deep-work',
+      activity: 'focus',
       lengthMin: cfg.sessionLengthMin,
       cameraMode: 'continuous',
       checkinIntervalMin: 5,

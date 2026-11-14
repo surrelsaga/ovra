@@ -30,7 +30,7 @@ function record(id: string, daysAgo = 0): SessionRecord {
   const endedAt = NOW - daysAgo * DAY
   return {
     id,
-    activity: 'deep-work',
+    activity: 'focus',
     startedAt: endedAt - 60 * 60 * 1000,
     endedAt,
     lengthMin: 60,
@@ -83,6 +83,18 @@ describe('privacy settings', () => {
     await writeFile(join(dir, 'privacy.json'), JSON.stringify({ camera: 'not-now' }))
     const { privacy } = await setup()
     expect(privacy.get()).toEqual({ ...DEFAULT_PRIVACY, camera: 'not-now' })
+  })
+
+  it('adds playlist-help defaults to older settings without resetting existing choices', async () => {
+    const old = { ...DEFAULT_SETTINGS, leaveMusicAlone: true }
+    Reflect.deleteProperty(old, 'musicHelpShown')
+    Reflect.deleteProperty(old, 'musicStartHelpShown')
+    await writeFile(join(dir, 'settings.json'), JSON.stringify(old))
+    expect((await setup()).privacy.getSettings()).toMatchObject({
+      leaveMusicAlone: true,
+      musicHelpShown: false,
+      musicStartHelpShown: false
+    })
   })
 
   it('keeps a settings overlay (dev simulator) in memory only', async () => {
@@ -151,6 +163,23 @@ describe('history', () => {
 
     await privacy.deleteSession('old')
     expect((await privacy.listSessions()).map((s) => s.id)).toEqual(['new'])
+  })
+
+  it('loads old activities as current activities and retains every record', async () => {
+    const old = ['deep-work', 'debugging', 'writing', 'admin', 'downtime']
+    await writeFile(
+      join(dir, 'sessions.json'),
+      JSON.stringify(old.map((activity) => ({ ...record(activity), activity })))
+    )
+    const { privacy } = await setup()
+    const list = await privacy.listSessions()
+    expect(list.map((s) => s.activity)).toEqual(['focus', 'focus', 'focus', 'everyday', 'unwind'])
+    await privacy.saveSession(record('new'))
+    expect(
+      JSON.parse(await readFile(join(dir, 'sessions.json'), 'utf8')).map(
+        (s: SessionRecord) => s.activity
+      )
+    ).toEqual(['focus', 'focus', 'focus', 'everyday', 'unwind', 'focus'])
   })
 
   it('does not lose records saved concurrently', async () => {
@@ -248,14 +277,16 @@ describe('delete everything', () => {
 
   it('also clears the browser storage and cache', async () => {
     const bus = createBus()
+    const clearSdkCache = vi.fn(async () => undefined)
     const clearBrowserData = vi.fn(async () => {
       expect(await readdir(dir)).toEqual([]) // after Ovra's own files are gone
     })
     const storage = createStorage(dir)
-    const privacy = await createPrivacy({ storage, bus, clearBrowserData })
+    const privacy = await createPrivacy({ storage, bus, clearBrowserData, clearSdkCache })
     await privacy.setSettings({ leaveMusicAlone: true })
     await privacy.deleteEverything()
     expect(clearBrowserData).toHaveBeenCalledOnce()
+    expect(clearSdkCache).toHaveBeenCalledOnce()
     expect(privacy.getSettings()).toEqual(DEFAULT_SETTINGS)
   })
 })
@@ -290,4 +321,10 @@ describe('ipc', () => {
     open.mockResolvedValueOnce('Failed to open path')
     await expect(handlers.get('data:show-folder')!(undefined)).rejects.toThrow(/Failed to open/)
   })
+})
+
+it('returns the actual data folder and platform through IPC', async () => {
+  const { privacy } = await setup()
+  registerPrivacyIpc(privacy, undefined, { path: dir, platform: 'darwin' })
+  expect(await handlers.get('data:folder')!(undefined)).toEqual({ path: dir, platform: 'darwin' })
 })

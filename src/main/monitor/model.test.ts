@@ -37,7 +37,7 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
       status: 'running',
       sensingEnabled: true,
       config: {
-        activity: 'deep-work',
+        activity: 'focus',
         lengthMin: 1,
         cameraMode: 'continuous',
         checkinIntervalMin: 5,

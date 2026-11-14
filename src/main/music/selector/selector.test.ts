@@ -1,4 +1,4 @@
-import type { Song, SongScores } from '@shared/types'
+import type { Activity, Song, SongScores } from '@shared/types'
 import {
   baseTarget,
   createTargetTracker,
@@ -34,30 +34,30 @@ const ctx = { now: 10 * 3600_000, rng: () => 0.99 }
 
 describe('targets', () => {
   it('maps situations to targets', () => {
-    expect(baseTarget('crashing', 'deep-work')).toBe('settle')
-    expect(baseTarget('tense', 'deep-work')).toBe('ease-down')
-    expect(baseTarget('focused', 'deep-work')).toBe('steady')
-    expect(baseTarget('low', 'deep-work')).toBe('lift')
-    expect(baseTarget('good', 'deep-work')).toBe('let-it-ride')
+    expect(baseTarget('crashing', 'focus')).toBe('settle')
+    expect(baseTarget('tense', 'focus')).toBe('ease-down')
+    expect(baseTarget('focused', 'focus')).toBe('steady')
+    expect(baseTarget('low', 'focus')).toBe('lift')
+    expect(baseTarget('good', 'focus')).toBe('let-it-ride')
   })
   it('uses activity defaults when focused or unknown', () => {
-    expect(baseTarget(null, 'debugging')).toBe('steady')
-    expect(baseTarget(null, 'writing')).toBe('steady')
-    expect(baseTarget('focused', 'admin')).toBe('lift')
-    expect(baseTarget(null, 'downtime')).toBe('let-it-ride')
-    expect(baseTarget('tense', 'admin')).toBe('ease-down')
+    expect(baseTarget(null, 'reading')).toBe('steady')
+    expect(baseTarget(null, 'creative')).toBe('steady')
+    expect(baseTarget('focused', 'everyday')).toBe('lift')
+    expect(baseTarget(null, 'unwind')).toBe('let-it-ride')
+    expect(baseTarget('tense', 'everyday')).toBe('ease-down')
   })
   it('winds down in the last ~10 min, except when settling', () => {
-    expect(desiredTarget({ situation: 'focused', activity: 'deep-work', remainingSec: 601 })).toBe(
+    expect(desiredTarget({ situation: 'focused', activity: 'focus', remainingSec: 601 })).toBe(
       'steady'
     )
-    expect(desiredTarget({ situation: 'focused', activity: 'deep-work', remainingSec: 600 })).toBe(
+    expect(desiredTarget({ situation: 'focused', activity: 'focus', remainingSec: 600 })).toBe(
       'wind-down'
     )
-    expect(desiredTarget({ situation: 'low', activity: 'admin', remainingSec: 60 })).toBe(
+    expect(desiredTarget({ situation: 'low', activity: 'everyday', remainingSec: 60 })).toBe(
       'wind-down'
     )
-    expect(desiredTarget({ situation: 'crashing', activity: 'deep-work', remainingSec: 60 })).toBe(
+    expect(desiredTarget({ situation: 'crashing', activity: 'focus', remainingSec: 60 })).toBe(
       'settle'
     )
   })
@@ -203,30 +203,65 @@ describe('pickSong', () => {
 })
 
 describe('target tracker', () => {
-  it('allows at most one change per 3 min, longer in downtime', () => {
+  it('uses the same 3 minute gap for all activities', () => {
     const t = createTargetTracker()
-    expect(t.update('steady', 'deep-work', 0)).toBe('steady')
-    expect(t.update('steady', 'deep-work', 1)).toBeNull()
-    expect(t.update('ease-down', 'deep-work', 60_000)).toBeNull()
+    expect(t.update('steady', 'focus', 0)).toBe('steady')
+    expect(t.update('steady', 'focus', 1)).toBeNull()
+    expect(t.update('ease-down', 'focus', 60_000)).toBeNull()
     expect(t.current()).toBe('steady')
-    expect(t.update('ease-down', 'deep-work', 180_000)).toBe('ease-down')
+    expect(t.update('ease-down', 'focus', 180_000)).toBe('ease-down')
     const d = createTargetTracker()
-    d.update('let-it-ride', 'downtime', 0)
-    expect(d.update('lift', 'downtime', 180_000)).toBeNull()
-    expect(d.update('lift', 'downtime', 540_000)).toBe('lift')
+    d.update('let-it-ride', 'unwind', 0)
+    expect(d.update('lift', 'unwind', 179_999)).toBeNull()
+    expect(d.update('lift', 'unwind', 180_000)).toBe('lift')
   })
 
   it('reads an overridden gap on every update (dev simulator fast mode)', () => {
-    const gap = { minTargetChangeMs: 15_000, downtimeChangeMultiplier: 1.2 }
+    const gap = { minTargetChangeMs: 15_000 }
     const t = createTargetTracker(gap)
-    t.update('steady', 'deep-work', 0)
-    expect(t.update('ease-down', 'deep-work', 14_000)).toBeNull()
-    expect(t.update('ease-down', 'deep-work', 15_000)).toBe('ease-down')
+    t.update('steady', 'focus', 0)
+    expect(t.update('ease-down', 'focus', 14_000)).toBeNull()
+    expect(t.update('ease-down', 'focus', 15_000)).toBe('ease-down')
     const d = createTargetTracker(gap)
-    d.update('let-it-ride', 'downtime', 0)
-    expect(d.update('lift', 'downtime', 15_000)).toBeNull()
-    expect(d.update('lift', 'downtime', 18_000)).toBe('lift')
+    d.update('let-it-ride', 'unwind', 0)
+    expect(d.update('lift', 'unwind', 14_999)).toBeNull()
+    expect(d.update('lift', 'unwind', 15_000)).toBe('lift')
     gap.minTargetChangeMs = 180_000 // fast mode off
-    expect(t.update('settle', 'deep-work', 30_000)).toBeNull()
+    expect(t.update('settle', 'focus', 30_000)).toBeNull()
   })
+})
+
+describe('activity music lean', () => {
+  it.each(['focused', 'good', null] as const)(
+    'Reading prefers instrumental, then light vocals for %s, with no vocal filter',
+    (situation) => {
+      const heavy = song('heavy', { energy: 2, vocals: 'heavy' })
+      const light = song('light', { energy: 2, vocals: 'light' })
+      const instrumental = song('instrumental', { energy: 2, vocals: 'instrumental' })
+      const context = { ...ctx, activity: 'reading' as const }
+      const target = baseTarget(situation, 'reading')
+      expect(pickSong([heavy, light, instrumental], target, context)?.id).toBe(instrumental.id)
+      expect(pickSong([heavy, light], target, context)?.id).toBe(light.id)
+      expect(pickSong([heavy], target, context)?.id).toBe(heavy.id)
+      expect(fits(heavy, target, context)).toBe(true)
+    }
+  )
+
+  it.each([
+    ['focus', { energy: 3, vocals: 'instrumental' }, { energy: 5, vocals: 'heavy' }],
+    ['reading', { energy: 1, vocals: 'instrumental' }, { energy: 3, vocals: 'instrumental' }],
+    ['creative', { energy: 3, vocals: 'heavy' }, { energy: 1, vocals: 'instrumental' }],
+    ['everyday', { energy: 4, mood: 'bright' }, { energy: 1, mood: 'neutral' }],
+    ['unwind', { energy: 5, mood: 'bright', vocals: 'heavy' }, { energy: 2, mood: 'neutral' }]
+  ] as [Activity, Partial<SongScores>, Partial<SongScores>][])(
+    '%s has its own energy and mood lean',
+    (activity, preferred, other) => {
+      const a = song('preferred', preferred)
+      const b = song('other', other)
+      const context = { ...ctx, activity }
+      expect(pickSong([b, a], baseTarget('focused', activity), context)?.id).toBe(a.id)
+      expect(fits(a, 'steady', context)).toBe(true)
+      expect(fits(b, 'steady', context)).toBe(false)
+    }
+  )
 })

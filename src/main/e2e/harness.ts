@@ -179,7 +179,7 @@ export async function runHarness(): Promise<void> {
     await invoke('privacy:set', { answeredAt: Date.now() })
     await attachOrb()
     await invoke('session:start', {
-      activity: 'deep-work',
+      activity: 'focus',
       lengthMin: cfg.sessionLengthMin,
       cameraMode: continuous ? 'continuous' : 'checkins',
       checkinIntervalMin: 3,
@@ -281,7 +281,7 @@ export async function runHarness(): Promise<void> {
     await music.addPlaylist('https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO')
     // Delete during an active timer-only session: nothing may resurrect after deletion.
     await invoke('session:start', {
-      activity: 'admin',
+      activity: 'everyday',
       lengthMin: cfg.sessionLengthMin,
       cameraMode: 'checkins',
       checkinIntervalMin: 3,
@@ -305,7 +305,7 @@ export async function runHarness(): Promise<void> {
         answeredAt: Date.now()
       })
       await invoke('session:start', {
-        activity: 'admin',
+        activity: 'everyday',
         lengthMin: cfg.sessionLengthMin,
         cameraMode: 'checkins',
         checkinIntervalMin: 3,

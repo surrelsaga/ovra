@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   type AppSettings,
   type Bus,
+  type IpcInvoke,
   type PrivacyService,
   type SessionRecord,
   type Storage
@@ -20,6 +21,8 @@ export interface PrivacyDeps {
   settingsOverlay?: Partial<AppSettings>
   /** Clears Chromium's browser storage and cache for the app (Delete everything). */
   clearBrowserData?: () => Promise<void>
+  /** Removes only the SDK’s known cache directory, after sensing has stopped. */
+  clearSdkCache?: () => Promise<void>
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -132,7 +135,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       broadcast('push:settings', view())
       bus.emit('privacy:changed', { ...privacy })
       bus.emit('data:deleted-all', {})
-      await deps.clearBrowserData?.()
+      await Promise.all([deps.clearBrowserData?.(), deps.clearSdkCache?.()])
     },
 
     runAutoDelete(now = Date.now()) {
@@ -155,7 +158,8 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
  */
 export function registerPrivacyIpc(
   privacy: PrivacyService,
-  openDataFolder?: () => Promise<string>
+  openDataFolder?: () => Promise<string>,
+  dataFolder?: IpcInvoke['data:folder']['res']
 ): void {
   handle('privacy:get', () => privacy.get())
   handle('privacy:set', (patch) => privacy.set(patch))
@@ -167,6 +171,7 @@ export function registerPrivacyIpc(
     return privacy.deleteSession(req.id)
   })
   handle('data:delete-all', () => privacy.deleteEverything())
+  if (dataFolder) handle('data:folder', () => dataFolder)
   if (openDataFolder)
     handle('data:show-folder', async () => {
       const error = await openDataFolder()

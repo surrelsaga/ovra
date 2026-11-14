@@ -308,7 +308,7 @@ describe('state engine', () => {
       status: 'calibrating',
       sensingEnabled: true,
       config: {
-        activity: 'deep-work',
+        activity: 'focus',
         lengthMin: 60,
         cameraMode: mode,
         checkinIntervalMin: 5,

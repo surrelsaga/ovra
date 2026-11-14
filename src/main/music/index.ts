@@ -248,6 +248,11 @@ export function createMusic(deps: MusicDeps): MusicService {
       const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
       const context = {
         now: now(),
+        activity:
+          (situation === null || situation === 'focused' || situation === 'good') &&
+          (target === 'steady' || target === 'lift' || target === 'let-it-ride')
+            ? activeSession.config.activity
+            : undefined,
         rng,
         currentId: nowPlaying?.id,
         played,

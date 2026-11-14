@@ -4,15 +4,15 @@ import type { Activity, CameraMode } from '@shared/types'
 export const sessionConfig = {
   tickMs: 1000,
   maxLengthMin: 12 * 60,
-  defaultActivity: 'deep-work' as Activity,
+  defaultActivity: 'focus' as Activity,
   defaultCameraMode: 'checkins' as CameraMode,
   /** Default session length per activity, in minutes. */
   activityLengthMin: {
-    'deep-work': 60,
-    debugging: 60,
-    writing: 60,
-    admin: 45,
-    downtime: 45
+    focus: 60,
+    reading: 60,
+    creative: 60,
+    everyday: 45,
+    unwind: 45
   } satisfies Record<Activity, number>,
   bubbleTtlMs: 8000,
   baselineFailedBubble:

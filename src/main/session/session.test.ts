@@ -16,7 +16,7 @@ import { createSessionService } from './service'
 import { sessionConfig } from './config'
 
 const cfg: SessionConfig = {
-  activity: 'deep-work',
+  activity: 'focus',
   lengthMin: 60,
   cameraMode: 'checkins',
   checkinIntervalMin: 5,
@@ -143,11 +143,20 @@ describe('session', () => {
     expect(t.music.stopSession).not.toHaveBeenCalled()
   })
 
+  it('retains the demo flag and continuous camera through session normalization', async () => {
+    const t = setup()
+    const s = await t.svc.start({ ...cfg, demo: true, cameraMode: 'continuous', lengthMin: 15 })
+    expect(s.config).toMatchObject({ demo: true, cameraMode: 'continuous', lengthMin: 15 })
+    expect(t.music.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({ config: expect.objectContaining({ demo: true }) })
+    )
+  })
+
   it('rejects a second start and normalises bad config', async () => {
     const t = setup()
-    const s = await t.svc.start({ activity: 'admin', lengthMin: -5 } as SessionConfig)
+    const s = await t.svc.start({ activity: 'everyday', lengthMin: -5 } as SessionConfig)
     expect(s.config).toEqual({
-      activity: 'admin',
+      activity: 'everyday',
       lengthMin: 45,
       cameraMode: 'checkins',
       checkinIntervalMin: 5,
@@ -238,7 +247,7 @@ describe('session', () => {
     const rec = (await t.svc.end())!
     expect(rec).toEqual({
       id: s.id,
-      activity: 'deep-work',
+      activity: 'focus',
       startedAt: 1_000_000,
       endedAt: 2_000_000,
       lengthMin: 60,

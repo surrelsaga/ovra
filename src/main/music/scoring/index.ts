@@ -42,7 +42,10 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export function createScorer(d: ScorerDeps): Scorer {
   const cfg = musicConfig
   const now = d.now ?? Date.now
-  const f = d.fetch ?? fetch
+  const f: typeof fetch = (input, init) =>
+    d.aiEnabled()
+      ? (d.fetch ?? fetch)(input, init)
+      : Promise.reject(new Error('Song lookup consent is off'))
   const queue = new Map<string, Item>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let running = false
@@ -82,6 +85,10 @@ export function createScorer(d: ScorerDeps): Scorer {
   async function fetchTags(): Promise<void> {
     const key = d.getKey('LASTFM_API_KEY')
     for (const item of [...queue.values()]) {
+      if (!d.aiEnabled()) {
+        item.tags = []
+        continue
+      }
       if (item.tags || item.notBefore > now()) continue
       if (!key) {
         item.tags = []
@@ -106,6 +113,19 @@ export function createScorer(d: ScorerDeps): Scorer {
     }
   }
 
+  const rules = (item: Item): SongScores => {
+    const song = d.library.get(item.id)
+    const names = d.library
+      .playlists()
+      .filter((p) => song?.playlists?.includes(p.uri))
+      .map((p) => p.name ?? '')
+    return scoreFromTags(
+      d.aiEnabled() ? (item.tags ?? []) : [],
+      now(),
+      [item.title, ...names].join(' ')
+    )
+  }
+
   async function scoreReady(): Promise<number | null> {
     const ready = [...queue.values()].filter((i) => i.tags)
     if (!ready.length) return null
@@ -117,13 +137,13 @@ export function createScorer(d: ScorerDeps): Scorer {
       )
         await d.library.update({
           ...song,
-          scores: scoreFromTags(item.tags ?? [], now(), item.title)
+          scores: rules(item)
         })
     }
     d.onChange?.()
     const key = d.getKey('OPENROUTER_API_KEY')
     if (!d.aiEnabled() || !key) {
-      for (const i of ready) await save(i, scoreFromTags(i.tags ?? [], now(), i.title))
+      for (const i of ready) await save(i, rules(i))
       return null
     }
     const oldest = Math.min(...ready.map((i) => i.queuedAt))
@@ -142,9 +162,7 @@ export function createScorer(d: ScorerDeps): Scorer {
         const s = parsed.get(n)
         await save(
           item,
-          s
-            ? { ...s, source: 'llm', scoredAt: now(), tags: item.tags }
-            : scoreFromTags(item.tags ?? [], now(), item.title)
+          s ? { ...s, source: 'llm', scoredAt: now(), tags: item.tags } : rules(item)
         )
       }
     } catch (e) {
@@ -153,8 +171,7 @@ export function createScorer(d: ScorerDeps): Scorer {
       llmNextAt = now() + (e instanceof LlmError && e.rateLimited ? backoff * 2 : backoff)
       for (const item of batch) {
         item.llmAttempts++
-        if (item.llmAttempts >= cfg.llm.maxAttempts)
-          await save(item, scoreFromTags(item.tags ?? [], now(), item.title))
+        if (item.llmAttempts >= cfg.llm.maxAttempts) await save(item, rules(item))
       }
     }
     return queue.size ? llmNextAt : null

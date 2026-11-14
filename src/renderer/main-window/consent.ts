@@ -76,14 +76,15 @@ export const CONSENT_QUESTIONS: ConsentQuestion[] = [
   },
   {
     key: 'aiScoring',
-    legend: 'Can an AI help score your songs?',
-    description: 'Sends song titles, artists and public tags only. Never your vitals or mood.',
+    legend: 'Can Ovra look up public tags on Last.fm and use AI to score your songs?',
+    description:
+      'Looks up public tags on Last.fm, then uses AI to estimate song energy and mood. Sends only title, artist and public tags; never your vitals or moods.',
     options: [
       { value: true, label: 'Yes', hint: 'Songs get sorted faster' },
       {
         value: false,
         label: 'No',
-        hint: 'Songs are sorted from public tags, then learned as they play'
+        hint: 'Uses playlist hints and defaults, then learns as songs play'
       }
     ]
   },

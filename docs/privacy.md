@@ -27,7 +27,9 @@ starts storing, sending or doing something new, add it here in the same change.
 - **Delete everything** removes Ovra's five files (and `.corrupt` copies), resets privacy and settings to
   defaults so onboarding shows again, emits `privacy:changed` and `data:deleted-all` so modules holding data in
   memory (music) drop it, then clears Chromium's browser storage and HTTP cache for the app
-  (`session.defaultSession.clearStorageData()` + `clearCache()`).
+  (`session.defaultSession.clearStorageData()` + `clearCache()`). It also waits for sensing to stop and removes
+  the SDK cache at `app.getPath('cache')` / `app.getName()` / `SmartSpectraSDK` on macOS and Windows, matching
+  the installed SDK's directory formula. Other platforms are skipped.
 - **Auto-delete** removes sessions that ended more than 30 or 90 days ago (or none with "Never"). It runs on
   app start and daily (`src/main/app.ts`).
 - **Show the folder:** IPC `data:show-folder` opens the data folder in Finder / Explorer (for the Privacy screen).
@@ -43,16 +45,16 @@ starts storing, sending or doing something new, add it here in the same change.
 | Windows | `%APPDATA%\Ovra\` (e.g. `C:\Users\<you>\AppData\Roaming\Ovra\`). Windows isn't packaged or tested yet. |
 | Linux | `~/.config/Ovra/` (not packaged or tested) |
 
-The folder itself is owner-only (`drwx------`, created by Electron). The Privacy screen will have a button that
-opens it.
+The folder itself is owner-only (`drwx------`, created by Electron). The Privacy screen shows its real path and a button that
+opens it in Finder or Explorer.
 
 ### Ovra's own files (in the data folder)
 
 | File | What's in it | Kept until |
 | --- | --- | --- |
 | `privacy.json` | Your consent answers: `camera` (yes / not now), `cameraMode` (check-ins / whole session), `face` (vitals and face / vitals only), `music` (Spotify / none), `aiScoring` (yes/no), `telemetry` (share/don't), `autoDelete` (30 / 90 / never), `answeredAt` (when you answered). | You change it or delete everything |
-| `settings.json` | `checkinIntervalMin`, `nudgeMinIntervalMin`, `leaveMusicAlone`, `orbPosition` (x, y on screen), `thresholdOverrides` (advanced tuning numbers), `cameraTeachCount` (how many camera tips you've seen). Dev builds only: `devVideoSource` (a test video file path) and `devFramingPad`. | You change it or delete everything |
-| `sessions.json` | One record per finished session: `id`, `activity` (deep work, debugging…), `startedAt`, `endedAt`, `lengthMin`, `cameraMode`, `moodTimeline` (time + label such as "focused", "tense", "away"), `moves` (time + move + done/snoozed/skipped), `snoozes`, `longestSeatedMin`, `learnedSongIds`. | Auto-delete (30 days by default), deleting the session, or delete everything |
+| `settings.json` | `checkinIntervalMin`, `nudgeMinIntervalMin`, `leaveMusicAlone`, `orbPosition` (x, y on screen), `thresholdOverrides` (advanced tuning numbers), `cameraTeachCount` (how many camera tips you've seen), `musicHelpShown` and `musicStartHelpShown` (playlist help dismissed after onboarding / offered before the first session). Dev builds only: `devVideoSource` (a test video file path) and `devFramingPad`. | You change it or delete everything |
+| `sessions.json` | One record per finished session: `id`, `activity` (focus, reading, creative, everyday, unwind; old activity values migrate on read), `startedAt`, `endedAt`, `lengthMin`, `cameraMode`, `moodTimeline` (time + label such as "focused", "tense", "away"), `moves` (time + move + done/snoozed/skipped), `snoozes`, `longestSeatedMin`, `learnedSongIds`. | Auto-delete (30 days by default), deleting the session, or delete everything |
 | `songs.json` | Every song Ovra has heard play during a session: Spotify id, `title`, `artist`, `album`, `durationMs`, `firstSeenAt`, `lastPlayedAt`, `playCount`; its scores (`energy`, `mood`, `vocals`, `confidence`, `source`, `scoredAt`, public Last.fm `tags`); and small learned adjustments (`energyDelta`, `confidenceDelta`, `settleVotes`, `steadyVotes`, `quickSkips`, `plays`, `updatedAt`). | "Clear music library" or delete everything |
 | `playlists.json` | Playlist links you pasted: `uri`, `url`, `name`, `addedAt`. | Removing the playlist or delete everything (clearing the library keeps playlists) |
 
@@ -88,7 +90,7 @@ the data folder, Chromium files included, for raw vitals. Delete everything clea
 
 | What | Where | Who writes it | How to remove |
 | --- | --- | --- | --- |
-| SmartSpectra SDK folder | macOS: `~/Library/Caches/Ovra/SmartSpectraSDK/` (created `0700`). Windows: inside Electron's cache path (probably `%APPDATA%\Ovra\SmartSpectraSDK\`; not checked on Windows). | The SDK, on its first camera start. Location set by the SDK (`app.getPath('cache')` + app name), not Ovra. | Delete the folder while Ovra is closed. Delete everything doesn't touch it. |
+| SmartSpectra SDK folder | macOS: `~/Library/Caches/Ovra/SmartSpectraSDK/` (created `0700`). Windows: `app.getPath('cache')` / `app.getName()` / `SmartSpectraSDK`, matching the SDK's source; not checked on a real PC. | The SDK, on its first camera start. Location set by the SDK (`app.getPath('cache')` + app name), not Ovra. | Privacy → Delete everything removes this directory (including its contents); or delete it while Ovra is closed. |
 | macOS privacy permissions | macOS's own database | macOS, when you allow Camera or Automation (Spotify) | System Settings → Privacy & Security → Camera / Automation |
 | App preferences | `~/Library/Preferences/com.ovra.app.plist` (may exist) | macOS / Electron (standard app defaults; Ovra's code writes nothing there) | Delete the file |
 | Spotify listening history | Your Spotify account | Spotify, as with any song you play | In Spotify |
@@ -108,8 +110,8 @@ Every request goes over HTTPS. Every service you contact sees your IP address, a
 | Service | When | What it receives | Never receives |
 | --- | --- | --- | --- |
 | **Presage** (SmartSpectra SDK: `cont-api.physiology.presagetech.com`, Amazon Cognito `cognito-idp.us-east-1.amazonaws.com` for sign-in) | Each time the camera starts (calibration, check-in, return check), only after camera consent | Your Presage API key and sign-in, the list of metrics requested (`/metrics/authorize`), a usage count for measurement credits (`/available-usage`, `/v2/sync-usage`), and device pairing/keys if the SDK needs them (`/device/pair`, `/device_keys`). Telemetry (`/v2/telemetry`) only if you chose "Share". | Video or frames (processed on your computer per Presage; we can't fully verify it). Moods, history, songs. Ovra never calls `/insights` (Presage LLM Insights). |
-| **Last.fm** (`ws.audioscrobbler.com`) | When a song Ovra hasn't scored yet needs tags. Not behind a consent question today; skipped if no Last.fm key is set or music is off. | Artist and song title (plus Ovra's Last.fm API key) | Vitals, moods, anything about you |
-| **OpenRouter** (`openrouter.ai`) and the free AI model it routes to | Only if you said yes to "Can an AI help score your songs?" Batches of up to 50 songs, at most about 20 requests a day. | Song titles, artists and public Last.fm tags (plus Ovra's OpenRouter key) | Vitals, moods, history, anything about you |
+| **Last.fm** (`ws.audioscrobbler.com`) | Only when you allow Last.fm lookups and AI song scoring, and a song needs public tags; skipped if no Last.fm key is set or music is off. With consent off, rules use local playlist-name hints and defaults without network calls. | Artist and song title (plus Ovra's Last.fm API key) | Vitals, moods, anything about you |
+| **OpenRouter** (`openrouter.ai`) and the free AI model it routes to | Only if you allowed Last.fm lookups and AI song scoring Batches of up to 50 songs, at most about 20 requests a day. | Song titles, artists and public Last.fm tags (plus Ovra's OpenRouter key) | Vitals, moods, history, anything about you |
 | **Spotify embed page** (`open.spotify.com/embed/playlist/<id>`), being added by the music job | When you paste a playlist link, and at session start if that playlist was read over 24 hours ago | The playlist id, with a generic browser User-Agent | Anything about you; Ovra doesn't sign in to Spotify |
 | **Spotify app** | Ovra sends it local commands only (see below). Spotify itself talks to its servers as usual. | Songs Ovra plays show up in your Spotify listening history and may shape your recommendations, like any song you play | Vitals, moods |
 
@@ -158,7 +160,7 @@ video", not "nothing leaves your laptop".
 | A playlist link | Music → remove |
 | Everything Ovra stored + browser files | Privacy → Delete everything |
 | API keys file | Delete `.env` in the data folder |
-| SDK folder | Delete `~/Library/Caches/Ovra/` with Ovra closed |
+| SDK folder | Privacy → Delete everything, or delete `~/Library/Caches/Ovra/SmartSpectraSDK/` with Ovra closed |
 | Camera / Spotify permissions | System Settings → Privacy & Security |
 | The app | Quit, move Ovra to the Trash, then delete the data folder and the SDK folder |
 
@@ -178,7 +180,7 @@ Ovra asks before the camera ever turns on. On first launch you answer each quest
 | How often can it look? | Check-ins every few minutes / The whole session | Check-ins |
 | Can it read your face too? | Vitals and face / Vitals only | You must pick |
 | Where's your music? | Spotify desktop app / No music | Spotify |
-| Can an AI help score your songs? (sends song titles, artists and public tags, never vitals) | Yes / No | No |
+| Can Ovra look up public tags on Last.fm and use AI to score your songs? (title, artist and public tags only; never vitals or moods) | Yes / No | No |
 | Share anonymous diagnostics with Presage? | Share / Don't share | Don't share |
 | Auto-delete old session history? | 30 days / 90 days / Never | 30 days |
 
@@ -217,8 +219,9 @@ browser cache files in that folder; Ovra puts nothing personal there. The Presag
 empty) folder in `~/Library/Caches/Ovra/`.
 
 **What leaves your computer.** Ovra never sends vitals, moods or history anywhere.
+
 - *Presage:* the SDK checks your API key and counts usage with Presage's servers each time the camera starts.
-- *Last.fm:* artist and song title, to look up public genre tags.
+- *Last.fm (only if you opt in to song lookups and AI scoring):* artist and song title, to look up public genre tags. With consent off, scoring uses local playlist hints and defaults.
 - *OpenRouter (only if you opt in):* song titles, artists and those public tags, so an AI model can guess each
   song's energy and mood. Presage's LLM Insights feature is not used.
 - *Spotify:* when you paste a playlist (and at most once a day after that, at session start), Ovra reads its
@@ -239,7 +242,7 @@ never). This runs when the app starts and once a day. Songs, playlists and setti
 
 **Deletion.** Delete one session from History, clear the music library from the Music screen, or press Delete
 everything on the Privacy screen. Delete everything removes every file Ovra stored, clears Electron's browser
-files, and resets the app, so you see the consent questions again.
+files, removes the SDK cache on macOS and Windows, and resets the app, so you see the consent questions again.
 
 **Not a medical device.** Ovra offers wellness suggestions ("you seem tense, want to stretch?"). It doesn't
 diagnose or treat anything, it doesn't show numbers as medical readings, and it only looks at the person who

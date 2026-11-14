@@ -155,15 +155,15 @@ describe('scorer', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('AI off: scores from Last.fm tags with rules, once, cached', async () => {
+  it('AI off: skips Last.fm and AI, scores locally once, cached', async () => {
     const { lib, scorer, calls, add } = await setup({ ai: false })
     await add('spotify:track:a')
     await vi.advanceTimersByTimeAsync(5000)
-    expect(lib.get('spotify:track:a')?.scores).toMatchObject({ source: 'lastfm', energy: 2 })
-    expect(calls).toEqual(['lastfm'])
+    expect(lib.get('spotify:track:a')?.scores).toMatchObject({ source: 'rules', energy: 3 })
+    expect(calls).toEqual([])
     scorer.enqueue(lib.get('spotify:track:a')!) // already scored: ignored
     await vi.advanceTimersByTimeAsync(5000)
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(0)
     expect(scorer.pending()).toBe(0)
   })
 
@@ -393,6 +393,77 @@ it('keeps the per-run daily request cap even across explicit rescores', async ()
     }
     expect(requests).toBe(20)
     scorer.reset()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('uses playlist name hints for local rules with consent off, even when a Last.fm key exists', async () => {
+  vi.useFakeTimers()
+  try {
+    const storage = memoryStorage()
+    const playlist = 'spotify:playlist:local'
+    await storage.write('playlists', [{ uri: playlist, url: '', name: 'Calm Piano', addedAt: 0 }])
+    await storage.write('songs', [
+      {
+        id: 'spotify:track:local',
+        title: 'A song',
+        artist: 'An artist',
+        firstSeenAt: 0,
+        playCount: 0,
+        playlists: [playlist]
+      }
+    ])
+    const lib = createLibrary(storage)
+    await lib.load()
+    const f = vi.fn()
+    const scorer = createScorer({
+      library: lib,
+      aiEnabled: () => false,
+      getKey: () => 'mock',
+      fetch: f
+    })
+    scorer.enqueue(lib.songs()[0])
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(f).not.toHaveBeenCalled()
+    expect(lib.songs()[0].scores).toMatchObject({
+      source: 'rules',
+      energy: 2,
+      vocals: 'instrumental',
+      tags: []
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('rechecks consent after waiting between Last.fm requests', async () => {
+  vi.useFakeTimers()
+  try {
+    const songs: Song[] = ['First', 'Second'].map((artist) => ({
+      id: `spotify:track:${artist}`,
+      title: 'Song',
+      artist,
+      firstSeenAt: 0,
+      playCount: 0
+    }))
+    const storage = memoryStorage()
+    await storage.write('songs', songs)
+    const library = createLibrary(storage)
+    await library.load()
+    let consent = true
+    const fetch = vi.fn(
+      async () => new Response(JSON.stringify({ toptags: { tag: [{ name: 'piano' }] } }))
+    )
+    const scorer = createScorer({ library, aiEnabled: () => consent, getKey: () => 'mock', fetch })
+    songs.forEach(scorer.enqueue)
+    await vi.advanceTimersByTimeAsync(1100)
+    expect(fetch).toHaveBeenCalledOnce()
+    consent = false
+    await vi.advanceTimersByTimeAsync(65_000)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(scorer.pending()).toBe(0)
+    expect(library.songs().every((song) => song.scores?.source === 'rules')).toBe(true)
   } finally {
     vi.useRealTimers()
   }

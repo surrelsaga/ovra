@@ -12,6 +12,7 @@ import { ovra } from '../shared/bridge'
 import { MoonOrb } from '../ui'
 import { History, SessionSummaryView } from './History'
 import { Music } from './Music'
+import { MusicHelp } from './MusicHelp'
 import { Onboarding } from './Onboarding'
 import { Privacy } from './Privacy'
 import { Calibration, NewSession, Running } from './Session'
@@ -40,6 +41,8 @@ export default function App(): React.JSX.Element {
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [sdkFailed, setSdkFailed] = useState(false)
   const [page, setPage] = useState<Page>('session')
+  const [musicHelp, setMusicHelp] = useState(false)
+  const helpDone = useRef<(() => void) | null>(null)
   const activeSessionId = useRef<string | null>(null)
 
   const load = (): void => {
@@ -54,6 +57,27 @@ export default function App(): React.JSX.Element {
     })
   }
   useEffect(load, [])
+  const musicHelpOpen = musicHelp || (!!data?.privacy.answeredAt && !data.settings.musicHelpShown)
+
+  const closeMusicHelp = async (): Promise<void> => {
+    const settings = await ovra().invoke('settings:set', { musicHelpShown: true })
+    setData((d) => d && { ...d, settings })
+    setMusicHelp(false)
+    helpDone.current?.()
+    helpDone.current = null
+  }
+  const beforeStart = async (): Promise<void> => {
+    if (data?.settings.musicStartHelpShown) return
+    const library = await ovra().invoke('music:library')
+    const settings = await ovra().invoke('settings:set', { musicStartHelpShown: true })
+    setData((d) => d && { ...d, settings })
+    if (!library.playlists.length) {
+      await new Promise<void>((resolve) => {
+        helpDone.current = resolve
+        setMusicHelp(true)
+      })
+    }
+  }
   useEffect(() => {
     const offs = [
       ovra().on('push:privacy', (privacy) => {
@@ -98,7 +122,14 @@ export default function App(): React.JSX.Element {
           onDeleted={() => setSummary(null)}
         />
       )
-    return <NewSession privacy={data.privacy} settings={data.settings} onStarted={setSession} />
+    return (
+      <NewSession
+        privacy={data.privacy}
+        settings={data.settings}
+        onStarted={setSession}
+        beforeStart={beforeStart}
+      />
+    )
   }
 
   return (
@@ -131,7 +162,13 @@ export default function App(): React.JSX.Element {
       <main className="content">
         <div className="content__drag" />
         {page === 'session' && sessionPage()}
-        {page === 'music' && <Music initialStatus={data.music} />}
+        {page === 'music' && (
+          <Music
+            initialStatus={data.music}
+            helpOpen={musicHelpOpen}
+            onHelp={() => setMusicHelp(true)}
+          />
+        )}
         {page === 'history' && <History />}
         {page === 'privacy' && (
           <Privacy
@@ -147,6 +184,7 @@ export default function App(): React.JSX.Element {
           />
         )}
       </main>
+      {musicHelpOpen && <MusicHelp onDone={closeMusicHelp} />}
     </div>
   )
 }

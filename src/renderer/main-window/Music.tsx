@@ -4,12 +4,16 @@ import { Plus, Trash2, X } from 'lucide-react'
 import type { MusicStatus, PlaylistLink, Song } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { Button, ConfirmButton, EnergyDots, Toggle } from '../ui'
-import { musicUiConfig } from './config'
+import { mainConfig, musicUiConfig } from './config'
 import { SOURCE_LABEL, effectiveEnergy, songTab, type SongTab } from './config'
 
 const TABS: SongTab[] = ['Calm', 'Focus', 'Boost', 'Not sure yet']
 
-export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element {
+export function Music(props: {
+  initialStatus: MusicStatus
+  onHelp?: () => void
+  helpOpen?: boolean
+}): React.JSX.Element {
   const status = usePush('push:music', props.initialStatus)
   // Optimistic toggle until the next music status push arrives.
   const [override, setOverride] = useState<{ value: boolean; from: MusicStatus } | null>(null)
@@ -28,7 +32,7 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
       .then(setLibrary)
       .catch(() => undefined)
   }
-  useEffect(load, [status.scoredCount])
+  useEffect(load, [status.scoredCount, props.helpOpen])
   useEffect(() => {
     const refresh = (): void => {
       void ovra()
@@ -58,10 +62,8 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
     <section className="page" aria-labelledby="music-title">
       <header className="page__header">
         <h1 id="music-title">Music</h1>
-        <p>
-          Ovra picks songs from your playlists in Spotify and learns what works as they play.
-          {status.scoringQueue > 0 && ` Getting to know ${status.scoringQueue} more songs.`}
-        </p>
+        {status.scoringQueue > 0 && <p>Getting to know {status.scoringQueue} more songs.</p>}
+        {status.available && <p className="small">Spotify is running</p>}
         {!status.available && (
           <p className="muted">Spotify isn’t running. Open the Spotify app to play your music.</p>
         )}
@@ -85,6 +87,9 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
             Add
           </Button>
         </form>
+        <button type="button" className="text-link" onClick={props.onHelp}>
+          How do I add one?
+        </button>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -100,7 +105,7 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
                   <small>
                     {p.readError ??
                       (p.trackCount !== undefined
-                        ? `Read ${p.trackCount} songs from ${p.name ?? 'this playlist'}`
+                        ? `Read ${p.trackCount} songs · ${library.songs.filter((s) => s.playlists?.includes(p.uri) && s.scores && s.scores.confidence >= mainConfig.unsureBelow).length} scored so far`
                         : 'Songs will be learned as they play')}
                   </small>
                 </span>

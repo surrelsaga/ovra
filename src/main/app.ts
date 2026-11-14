@@ -11,6 +11,7 @@ import { createBus } from './bus'
 import { getKey } from './env'
 import { createStorage, restrictPermissions } from './storage'
 import { createPrivacy, registerPrivacyIpc } from './privacy'
+import { clearSdkCache } from './privacy/sdk-cache'
 import { createStateEngine } from './state'
 import { createMusic, registerMusicIpc } from './music'
 import { createMusicController } from './music/controller'
@@ -48,6 +49,12 @@ export async function startApp(options: AppOptions = {}) {
     storage,
     bus,
     settingsOverlay: overlay,
+    clearSdkCache: async () => {
+      await sensing.stop()
+      // @ts-expect-error Electron supports cache at runtime (the SDK uses it), but its path types omit it.
+      const cacheRoot: string = app.getPath('cache')
+      await clearSdkCache(cacheRoot, app.getName(), process.platform)
+    },
     // Chromium's own files in userData (cookies, local/session storage, caches). The capture window's
     // session is in-memory only, so it leaves nothing on disk.
     clearBrowserData: async () => {
@@ -56,7 +63,10 @@ export async function startApp(options: AppOptions = {}) {
     }
   })
   await options.setup?.(privacy)
-  registerPrivacyIpc(privacy, () => shell.openPath(dataDir))
+  registerPrivacyIpc(privacy, () => shell.openPath(dataDir), {
+    path: dataDir,
+    platform: process.platform
+  })
   await privacy.runAutoDelete()
   const autoDelete = setInterval(
     () => void privacy.runAutoDelete().catch(console.error),

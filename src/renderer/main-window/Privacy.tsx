@@ -1,8 +1,9 @@
 // Owner: Agent E. Every consent answer, editable. Delete everything.
+import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import type { PrivacySettings } from '@shared/types'
+import type { IpcInvoke, PrivacySettings } from '@shared/types'
 import { ovra } from '../shared/bridge'
-import { ConfirmButton } from '../ui'
+import { Button, ConfirmButton } from '../ui'
 import { CONSENT_QUESTIONS, isAsked } from './consent'
 import { ConsentField } from './ConsentField'
 
@@ -12,6 +13,14 @@ export function Privacy(props: {
   onDeletedAll: () => void
 }): React.JSX.Element {
   const { privacy } = props
+  const [folder, setFolder] = useState<IpcInvoke['data:folder']['res'] | null>(null)
+  const [folderError, setFolderError] = useState<string | null>(null)
+  useEffect(() => {
+    void ovra()
+      .invoke('data:folder')
+      .then(setFolder)
+      .catch(() => setFolderError('Couldn’t read the data folder path.'))
+  }, [])
   const save = async (patch: Partial<PrivacySettings>): Promise<void> => {
     props.onChange(await ovra().invoke('privacy:set', patch))
   }
@@ -30,6 +39,74 @@ export function Privacy(props: {
             onChange={(patch) => void save(patch)}
           />
         ))}
+      </div>
+      <div className="panel stack">
+        <div className="saved">
+          <h2 className="panel__title">
+            Stored on this {folder?.platform === 'darwin' ? 'Mac' : 'computer'}
+          </h2>
+          <Button
+            onClick={async () => {
+              setFolderError(null)
+              try {
+                await ovra().invoke('data:show-folder')
+              } catch {
+                setFolderError('Couldn’t open the data folder. Try again.')
+              }
+            }}
+          >
+            Show in{' '}
+            {folder?.platform === 'win32'
+              ? 'Explorer'
+              : folder?.platform === 'darwin'
+                ? 'Finder'
+                : 'file manager'}
+          </Button>
+        </div>
+        <p className="muted small">
+          <code className="stored-path">{folder?.path}</code> · plain text files you can open in any
+          text editor ·{' '}
+          {folder?.platform === 'win32'
+            ? 'stored in your user profile'
+            : 'only your user account can open them'}
+          .
+        </p>
+        {folderError && (
+          <p className="form-error" role="alert">
+            {folderError}
+          </p>
+        )}
+        <dl className="stored-files">
+          <div>
+            <dt>Songs</dt>
+            <dd>Title, artist, energy and mood guess, how each song worked for you</dd>
+          </div>
+          <div>
+            <dt>Playlists</dt>
+            <dd>Links you added</dd>
+          </div>
+          <div>
+            <dt>Sessions</dt>
+            <dd>
+              Activity, length, mood words over time, moves done.
+              {privacy.autoDelete !== 'never' && ` Deleted after ${privacy.autoDelete} days`}
+            </dd>
+          </div>
+          <div>
+            <dt>Settings and answers</dt>
+            <dd>Your privacy choices and app settings</dd>
+          </div>
+          <div>
+            <dt>App cache</dt>
+            <dd>Standard files every desktop app built on Chrome keeps. No personal data</dd>
+          </div>
+        </dl>
+        <p className="small">
+          <strong>Never stored:</strong>{' '}
+          <span className="muted">
+            video, photos, pulse, breathing, face data or your baseline.
+          </span>
+        </p>
       </div>
       <div className="panel saved">
         <div>

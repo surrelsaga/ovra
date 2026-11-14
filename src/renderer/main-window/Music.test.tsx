@@ -40,7 +40,7 @@ it('shows read results and errors and polls availability only while Music is mou
     await act(async () => {
       await Promise.resolve()
     })
-    expect(screen.getByText('Read 100 songs from Peaceful Piano')).toBeInTheDocument()
+    expect(screen.getByText('Read 100 songs · 0 scored so far')).toBeInTheDocument()
     expect(screen.getByText('This playlist is private or empty')).toBeInTheDocument()
     expect(screen.getByText(/Spotify isn’t running/)).toBeInTheDocument()
     bridge.push('push:music', { ...status, available: true })

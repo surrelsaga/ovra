@@ -87,7 +87,8 @@ export const songSchema = z.strictObject({
       confidence: z.number().min(0).max(1),
       source: z.enum(['rules', 'lastfm', 'llm', 'web', 'learned']),
       scoredAt: z.number(),
-      tags: z.array(z.string()).optional()
+      tags: z.array(z.string()).optional(),
+      scorer: z.number().int().positive().optional()
     })
     .optional(),
   learned: z

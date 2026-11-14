@@ -2,7 +2,7 @@ import type { Song } from '@shared/types'
 import { memoryStorage } from '../dev/memory-storage'
 import { createLibrary } from '../library'
 import { createScorer } from '.'
-import { parseLastfmTags } from './lastfm'
+import { baseTitle, fetchLastfmTags, parseLastfmTags } from './lastfm'
 import { buildPrompt, parseLlmScores } from './llm'
 import { scoreFromTags } from './rules'
 
@@ -64,7 +64,7 @@ describe('LLM JSON', () => {
     const p = buildPrompt([
       { title: 'Nuvole Bianche', artist: 'Ludovico Einaudi', tags: ['piano'] }
     ])
-    expect(p).toContain('0. Ludovico Einaudi - Nuvole Bianche | tags: piano')
+    expect(p).toContain('0. Ludovico Einaudi - Nuvole Bianche | track tags: piano')
   })
   it('parses valid output, also inside a code fence', () => {
     const m = parseLlmScores(
@@ -220,19 +220,19 @@ describe('scorer', () => {
   })
 })
 
-it('upgrades existing rules scores in a full batch immediately, caches artist tags, and never sends empty artists', async () => {
+it('upgrades existing rules scores in a full batch immediately, uses track tags, and never sends empty artists', async () => {
   vi.useFakeTimers()
   try {
     const lib = createLibrary(memoryStorage())
     const songs: Song[] = []
-    for (let i = 0; i < 51; i++) {
+    for (let i = 0; i < 11; i++) {
       songs.push(
         (await lib.learn(
           {
             id: `spotify:track:${i}`,
             uri: '',
             name: `Piano ${i}`,
-            artist: i === 50 ? '' : 'Tyler, The Creator,\u00a0Dalby',
+            artist: i === 10 ? '' : 'Tyler, The Creator,\u00a0Dalby',
             album: '',
             durationMs: 1,
             positionMs: 0,
@@ -246,15 +246,15 @@ it('upgrades existing rules scores in a full batch immediately, caches artist ta
     const f = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).includes('openrouter')) {
         const prompt = JSON.parse(String(init?.body)).messages[0].content
-        expect(prompt).toContain('Tyler, The Creator - Piano 0')
-        expect(prompt).not.toContain('Piano 50')
+        expect(prompt).toContain('0. Tyler, The Creator - Piano 0 | track tags: piano')
+        expect(prompt).not.toContain('Piano 10')
         return new Response(
           JSON.stringify({
             choices: [
               {
                 message: {
                   content: JSON.stringify({
-                    songs: Array.from({ length: 50 }, (_, i) => ({
+                    songs: Array.from({ length: 10 }, (_, i) => ({
                       i,
                       energy: 2,
                       mood: 'neutral',
@@ -277,10 +277,12 @@ it('upgrades existing rules scores in a full batch immediately, caches artist ta
       fetch: f
     })
     songs.forEach(scorer.enqueue)
-    expect(scorer.pending()).toBe(50)
+    expect(scorer.pending()).toBe(10)
     expect(lib.songs()[0].scores?.source).toBe('rules')
     await vi.advanceTimersByTimeAsync(5000)
-    expect(f.mock.calls.filter(([u]) => String(u).includes('audioscrobbler'))).toHaveLength(1)
+    const lastfm = f.mock.calls.map(([u]) => String(u)).filter((u) => u.includes('audioscrobbler'))
+    expect(lastfm).toHaveLength(10)
+    expect(lastfm.every((u) => u.includes('track.gettoptags'))).toBe(true)
     expect(f.mock.calls.filter(([u]) => String(u).includes('openrouter'))).toHaveLength(1)
     expect(lib.songs()[0].scores?.source).toBe('llm')
     expect(scorer.pending()).toBe(0)
@@ -467,4 +469,169 @@ it('rechecks consent after waiting between Last.fm requests', async () => {
   } finally {
     vi.useRealTimers()
   }
+})
+
+describe('job F: deliberate scoring', () => {
+  it('drops low-count noise tags from Last.fm', () => {
+    const tags = [
+      { name: 'pop', count: 100 },
+      { name: 'black metal', count: 58 },
+      { name: 'Brutal Death Metal', count: 1 }
+    ]
+    expect(parseLastfmTags({ toptags: { tag: tags } })).toEqual(['pop', 'black metal'])
+  })
+
+  it('looks up track tags by full then base title, and uses artist tags only as a cached fallback', async () => {
+    expect(baseTitle('One Time - Acoustic Version')).toBe('One Time')
+    expect(baseTitle('Lonely (with benny blanco)')).toBe('Lonely')
+    expect(baseTitle('Nuvole Bianche')).toBe('Nuvole Bianche')
+    const urls: URL[] = []
+    const f = (async (input: string | URL) => {
+      const u = new URL(String(input))
+      urls.push(u)
+      const p = u.searchParams
+      const tags =
+        p.get('method') === 'artist.gettoptags'
+          ? ['pop']
+          : p.get('track') === 'One Time'
+            ? ['acoustic', 'love']
+            : []
+      return new Response(JSON.stringify({ toptags: { tag: tags.map((name) => ({ name })) } }))
+    }) as typeof fetch
+    const cache = new Map<string, string[]>()
+    const track = (u: URL): string | null => u.searchParams.get('track')
+    expect(await fetchLastfmTags('JB', 'One Time - Acoustic Version', 'k', f, cache)).toEqual({
+      tags: ['acoustic', 'love'],
+      artistOnly: false
+    })
+    expect(urls.map(track)).toEqual(['One Time - Acoustic Version', 'One Time'])
+    urls.length = 0
+    expect(await fetchLastfmTags('JB', 'Unknown', 'k', f, cache)).toEqual({
+      tags: ['pop'],
+      artistOnly: true
+    })
+    expect(await fetchLastfmTags('JB', 'Other', 'k', f, cache)).toMatchObject({ artistOnly: true })
+    expect(urls.map((u) => u.searchParams.get('method'))).toEqual([
+      'track.gettoptags',
+      'artist.gettoptags',
+      'track.gettoptags' // artist tags cached
+    ])
+  })
+
+  it('rules: genre "pop" is not bright, title cues beat tags, artist-only tags stay unsure', () => {
+    expect(scoreFromTags(['pop', 'rnb'], 1).mood).toBe('neutral')
+    expect(scoreFromTags(['dance', 'house'], 1, 'Baby - Acoustic Version').energy).toBe(2)
+    expect(scoreFromTags(['ballad'], 1, 'Song - Sped Up').energy).toBe(4)
+    expect(scoreFromTags(['piano', 'classical', 'ambient'], 1, '', true).confidence).toBe(0.4)
+    expect(scoreFromTags(['sad'], 1).scorer).toBe(2)
+  })
+
+  it('prompt has a rubric and marks weak artist tags', () => {
+    const p = buildPrompt([
+      { title: 'One Time - Acoustic Version', artist: 'JB', tags: ['acoustic'] },
+      { title: 'Lonely', artist: 'JB', tags: ['pop'], artistOnly: true },
+      { title: 'X', artist: 'Y', tags: [] }
+    ])
+    expect(p).toMatch(/energy = .*\n1 very soft/)
+    expect(p).toContain("Don't copy the artist's usual genre")
+    expect(p).toContain('A love song is not automatically bright')
+    expect(p).toContain('0. JB - One Time - Acoustic Version | track tags: acoustic')
+    expect(p).toContain('1. JB - Lonely | artist tags only: pop')
+    expect(p).toContain('2. Y - X | tags: none')
+  })
+
+  describe('rescore by version', () => {
+    const reply = (energy: number): Response =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  songs: [{ i: 0, energy, mood: 'dark', vocals: 'light', confidence: 0.7 }]
+                })
+              }
+            }
+          ]
+        })
+      )
+    const learned = {
+      energyDelta: -0.5,
+      confidenceDelta: 0,
+      settleVotes: 2,
+      steadyVotes: 1,
+      goodVotes: 1,
+      quickSkips: 0,
+      plays: 3,
+      updatedAt: 5
+    }
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test fixture, inferred
+    async function setup(scorer: number | undefined, ai: boolean, ok: boolean) {
+      const storage = memoryStorage()
+      await storage.write('songs', [
+        {
+          id: 'spotify:track:old',
+          title: 'Song',
+          artist: 'Artist',
+          firstSeenAt: 0,
+          playCount: 3,
+          learned,
+          scores: {
+            energy: 4,
+            mood: 'bright',
+            vocals: 'light',
+            confidence: 0.9,
+            source: 'llm',
+            scoredAt: 0,
+            ...(scorer ? { scorer } : {})
+          }
+        }
+      ])
+      const lib = createLibrary(storage)
+      await lib.load()
+      const f = vi.fn(async (url: string | URL | Request) =>
+        String(url).includes('openrouter')
+          ? ok
+            ? reply(2)
+            : new Response('{}', { status: 500 })
+          : new Response(JSON.stringify({ toptags: { tag: [{ name: 'sad' }] } }))
+      )
+      const s = createScorer({ library: lib, aiEnabled: () => ai, getKey: () => 'k', fetch: f })
+      s.enqueue(lib.songs()[0])
+      return { lib, s, f }
+    }
+
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    it('redoes an old AI score once in the background and keeps learned votes', async () => {
+      const { lib, s, f } = await setup(undefined, true, true)
+      expect(s.pending()).toBe(1)
+      expect(lib.songs()[0].scores?.source).toBe('llm') // old score stays while waiting
+      await vi.advanceTimersByTimeAsync(6 * 60_000)
+      expect(lib.songs()[0].scores).toMatchObject({ energy: 2, mood: 'dark', scorer: 2 })
+      expect(lib.songs()[0].learned).toEqual(learned)
+      const calls = f.mock.calls.length
+      s.enqueue(lib.songs()[0]) // current version: not again
+      await vi.advanceTimersByTimeAsync(6 * 60_000)
+      expect(f.mock.calls.length).toBe(calls)
+    })
+
+    it('leaves current-version scores, and old ones when AI is off', async () => {
+      expect((await setup(2, true, true)).s.pending()).toBe(0)
+      const off = await setup(undefined, false, true)
+      expect(off.s.pending()).toBe(0)
+      expect(off.lib.songs()[0].scores).toMatchObject({ source: 'llm', energy: 4 })
+    })
+
+    it('never downgrades an old AI score to rules when the AI keeps failing', async () => {
+      const { lib, s } = await setup(undefined, true, false)
+      await vi.advanceTimersByTimeAsync(3 * 60 * 60_000)
+      expect(s.pending()).toBe(0)
+      expect(lib.songs()[0]).toMatchObject({
+        scores: { source: 'llm', energy: 4, mood: 'bright' },
+        learned
+      })
+    })
+  })
 })

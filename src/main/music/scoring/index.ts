@@ -32,6 +32,7 @@ interface Item {
   artist: string
   queuedAt: number
   tags?: string[]
+  artistOnly?: boolean
   tagAttempts: number
   llmAttempts: number
   notBefore: number
@@ -94,17 +95,17 @@ export function createScorer(d: ScorerDeps): Scorer {
         item.tags = []
         continue
       }
-      const cached = artistTags.get(item.artist)
-      if (cached) {
-        item.tags = cached
-        continue
+      // Up to three calls per song (title, base title, artist), each spaced out.
+      const throttled: typeof fetch = async (input, init) => {
+        const wait = lastfmAt + cfg.lastfm.minIntervalMs - now()
+        if (wait > 0) await sleep(wait)
+        lastfmAt = now()
+        return f(input, init)
       }
-      const wait = lastfmAt + cfg.lastfm.minIntervalMs - now()
-      if (wait > 0) await sleep(wait)
-      lastfmAt = now()
       try {
-        item.tags = await fetchLastfmTags(item.artist, item.title, key, f)
-        artistTags.set(item.artist, item.tags)
+        const r = await fetchLastfmTags(item.artist, item.title, key, throttled, artistTags)
+        item.tags = r.tags
+        item.artistOnly = r.artistOnly
       } catch {
         item.tagAttempts++
         if (item.tagAttempts >= cfg.scoring.maxTagAttempts) item.tags = []
@@ -122,8 +123,16 @@ export function createScorer(d: ScorerDeps): Scorer {
     return scoreFromTags(
       d.aiEnabled() ? (item.tags ?? []) : [],
       now(),
-      [item.title, ...names].join(' ')
+      [item.title, ...names].join(' '),
+      item.artistOnly
     )
+  }
+
+  /** AI failed or is off: keep an older AI score (rescore by version) rather than downgrade it. */
+  const fallback = async (item: Item): Promise<void> => {
+    if (d.library.get(item.id)?.scores?.source !== 'llm') return save(item, rules(item))
+    queue.delete(item.id)
+    d.onChange?.()
   }
 
   async function scoreReady(): Promise<number | null> {
@@ -143,7 +152,7 @@ export function createScorer(d: ScorerDeps): Scorer {
     d.onChange?.()
     const key = d.getKey('OPENROUTER_API_KEY')
     if (!d.aiEnabled() || !key) {
-      for (const i of ready) await save(i, rules(i))
+      for (const i of ready) await fallback(i)
       return null
     }
     const oldest = Math.min(...ready.map((i) => i.queuedAt))
@@ -152,7 +161,12 @@ export function createScorer(d: ScorerDeps): Scorer {
     if (now() < at) return at
     const batch = ready.slice(0, cfg.llm.batchMax)
     batch.forEach((i) => llmAttempted.add(i.id))
-    const songs = batch.map((i) => ({ title: i.title, artist: i.artist, tags: i.tags ?? [] }))
+    const songs = batch.map((i) => ({
+      title: i.title,
+      artist: i.artist,
+      tags: i.tags ?? [],
+      artistOnly: i.artistOnly
+    }))
     try {
       const text = await requestScores(buildPrompt(songs), key, takeLlm, f)
       llmFailures = 0
@@ -160,10 +174,15 @@ export function createScorer(d: ScorerDeps): Scorer {
       const parsed = parseLlmScores(text, batch.length)
       for (const [n, item] of batch.entries()) {
         const s = parsed.get(n)
-        await save(
-          item,
-          s ? { ...s, source: 'llm', scoredAt: now(), tags: item.tags } : rules(item)
-        )
+        if (!s) await fallback(item)
+        else
+          await save(item, {
+            ...s,
+            source: 'llm',
+            scoredAt: now(),
+            tags: item.tags,
+            scorer: cfg.scoring.version
+          })
       }
     } catch (e) {
       llmFailures++
@@ -171,7 +190,8 @@ export function createScorer(d: ScorerDeps): Scorer {
       llmNextAt = now() + (e instanceof LlmError && e.rateLimited ? backoff * 2 : backoff)
       for (const item of batch) {
         item.llmAttempts++
-        if (item.llmAttempts >= cfg.llm.maxAttempts) await save(item, rules(item))
+        // ponytail: an old AI score that keeps failing stays and is retried next launch.
+        if (item.llmAttempts >= cfg.llm.maxAttempts) await fallback(item)
       }
     }
     return queue.size ? llmNextAt : null
@@ -200,7 +220,11 @@ export function createScorer(d: ScorerDeps): Scorer {
       if (!song.artist.trim() || queue.has(song.id) || llmAttempted.has(song.id)) return
       const refine = d.aiEnabled() && !!d.getKey('OPENROUTER_API_KEY')
       if (attempted.has(song.id) && !refine) return
-      if (song.scores && !['rules', 'lastfm'].includes(song.scores.source)) return
+      const s = song.scores
+      // Older AI scores are redone once per run, only when AI can run; learned/web scores are kept.
+      const stale = s?.source === 'llm' && (s.scorer ?? 1) < cfg.scoring.version
+      if (stale && !refine) return
+      if (s && !stale && !['rules', 'lastfm'].includes(s.source)) return
       attempted.add(song.id)
       queue.set(song.id, {
         id: song.id,

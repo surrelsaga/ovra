@@ -358,6 +358,8 @@ export interface SongScores {
   scoredAt: number
   /** Public tags used to score (Last.fm). */
   tags?: string[]
+  /** Scoring version that produced these scores; missing = version 1. Older AI scores are redone once. */
+  scorer?: number
 }
 
 /** Small learned adjustments on top of base scores. */

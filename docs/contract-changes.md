@@ -128,3 +128,10 @@ Format:
 - Change: additive invoke `'data:folder': { req: void; res: { path: string; platform: string } }` and whitelist entry; returns the actual Electron user-data folder and platform for Privacy.
 - Why: coordinator-approved decision 33 activity picker, one-time playlist help, and decision 32 local storage section (Job C); no dependency or package changes.
 - Status: applied in surrelsaga/ovra-ui (requested by the coordinator)
+
+## 2026-11-14 — song scoring version
+
+- File: src/shared/types.ts
+- Change: optional `SongScores.scorer?: number`, the scoring version that produced the scores (missing = version 1). The privacy song schema accepts it as an optional positive integer.
+- Why: Job F made scoring per-track and rubric-based; AI scores from older versions are redone once in the background while learned adjustments and votes stay untouched.
+- Status: applied in surrelsaga/ovra-scoring (requested by the coordinator)

@@ -53,10 +53,33 @@ const BRIGHT = [
   'uplifting',
   'dance',
   'disco',
-  'funk',
-  'pop'
+  'funk'
 ]
-const DARK = ['dark', 'sad', 'melancholy', 'melancholic', 'gothic', 'doom', 'depressive', 'emo']
+// ponytail: "pop" is a genre, not a tone; it made every pop song bright.
+const DARK = [
+  'dark',
+  'sad',
+  'melancholy',
+  'melancholic',
+  'gothic',
+  'doom',
+  'depressive',
+  'emo',
+  'heartbreak',
+  'breakup',
+  'grunge'
+]
+/** Version cues in a title beat the tags: tags describe the original recording. */
+const TITLE_ENERGY: Record<string, Energy> = {
+  lullaby: 1,
+  acoustic: 2,
+  unplugged: 2,
+  stripped: 2,
+  piano: 2,
+  slowed: 2,
+  'sped up': 4,
+  remix: 4
+}
 const INSTRUMENTAL = [
   'instrumental',
   'ambient',
@@ -77,7 +100,12 @@ const has = (tag: string, kw: string): boolean => ` ${tag} `.includes(` ${kw} `)
 const anyHit = (tags: string[], kws: string[]): number =>
   tags.filter((t) => kws.some((k) => has(t, k))).length
 
-export function scoreFromTags(rawTags: string[], now: number, title = ''): SongScores {
+export function scoreFromTags(
+  rawTags: string[],
+  now: number,
+  title = '',
+  artistOnly = false
+): SongScores {
   const c = musicConfig.rules
   const tags = [...rawTags, title].filter(Boolean).map(norm)
   const energies = tags.flatMap((t) => {
@@ -92,18 +120,23 @@ export function scoreFromTags(rawTags: string[], now: number, title = ''): SongS
   const instrumental = anyHit(tags, INSTRUMENTAL)
   const heavy = anyHit(tags, HEAVY)
   const hits = energies.length + bright + dark + instrumental + heavy
-  const energy = energies.length
-    ? (Math.round(energies.reduce((a, b) => a + b, 0) / energies.length) as Energy)
-    : 3
+  const cue = Object.keys(TITLE_ENERGY).find((k) => has(norm(title), k))
+  const energy = cue
+    ? TITLE_ENERGY[cue]
+    : energies.length
+      ? (Math.round(energies.reduce((a, b) => a + b, 0) / energies.length) as Energy)
+      : 3
+  const confidence = hits
+    ? Math.min(c.maxConfidence, c.baseConfidence + c.perHitConfidence * hits)
+    : c.noMatchConfidence
   return {
     energy,
     mood: bright > dark ? 'bright' : dark > bright ? 'dark' : 'neutral',
     vocals: instrumental > heavy ? 'instrumental' : heavy > instrumental ? 'heavy' : 'light',
-    confidence: hits
-      ? Math.min(c.maxConfidence, c.baseConfidence + c.perHitConfidence * hits)
-      : c.noMatchConfidence,
+    confidence: artistOnly ? Math.min(c.artistOnlyMaxConfidence, confidence) : confidence,
     source: hits && rawTags.length ? 'lastfm' : 'rules',
     scoredAt: now,
-    tags: rawTags
+    tags: rawTags,
+    scorer: musicConfig.scoring.version
   }
 }

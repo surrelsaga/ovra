@@ -1,7 +1,7 @@
-// Owner: Agent C (music). Last.fm public tags. Track tags are often empty, so artist tags are always added.
+// Owner: Agent C (music). Last.fm public tags. Track tags first; artist tags only as a weak fallback.
 import { musicConfig } from '../config'
 
-type LastfmTag = { name?: unknown }
+type LastfmTag = { name?: unknown; count?: unknown }
 
 /** Parses a track/artist getTopTags response. Error 6 (not found) = no tags; other errors throw. */
 export function parseLastfmTags(json: unknown): string[] {
@@ -11,6 +11,7 @@ export function parseLastfmTags(json: unknown): string[] {
   const raw = j.toptags?.tag
   const list = Array.isArray(raw) ? raw : raw ? [raw] : []
   return list
+    .filter((t) => typeof t?.count !== 'number' || t.count >= musicConfig.lastfm.minTagCount)
     .map((t) => (typeof t?.name === 'string' ? t.name.trim().toLowerCase() : ''))
     .filter(Boolean)
     .slice(0, musicConfig.lastfm.tagsPerCall)
@@ -33,16 +34,37 @@ async function getTags(
   return parseLastfmTags(json)
 }
 
-/** Track tags plus artist tags, deduplicated. */
+/** "One Time - Acoustic Version" / "Lonely (with benny blanco)" → "One Time" / "Lonely". */
+export function baseTitle(title: string): string {
+  return (
+    title
+      .replace(/\s+[-–—]\s+.*$/, '')
+      .replace(/\s*[([][^)\]]*[)\]]/g, '')
+      .trim() || title
+  )
+}
+
+export interface LastfmTags {
+  tags: string[]
+  /** True when only artist tags were found: a weak hint about this song. */
+  artistOnly: boolean
+}
+
+/** Track tags (full title, then base title); artist tags only when the track has none. */
 export async function fetchLastfmTags(
   artist: string,
   title: string,
   key: string,
-  f: typeof fetch = fetch
-): Promise<string[]> {
-  const track = musicConfig.lastfm.trackTags
-    ? await getTags({ method: 'track.gettoptags', artist, track: title }, key, f)
-    : []
-  const art = await getTags({ method: 'artist.gettoptags', artist }, key, f)
-  return [...new Set([...track, ...art])]
+  f: typeof fetch = fetch,
+  artistCache?: Map<string, string[]>
+): Promise<LastfmTags> {
+  const track = (t: string): Promise<string[]> =>
+    getTags({ method: 'track.gettoptags', artist, track: t }, key, f)
+  let tags = await track(title)
+  if (!tags.length && baseTitle(title) !== title) tags = await track(baseTitle(title))
+  if (tags.length) return { tags, artistOnly: false }
+  const art =
+    artistCache?.get(artist) ?? (await getTags({ method: 'artist.gettoptags', artist }, key, f))
+  artistCache?.set(artist, art)
+  return { tags: art, artistOnly: true }
 }

@@ -73,8 +73,9 @@ export const musicConfig = {
   },
   lastfm: {
     baseUrl: 'https://ws.audioscrobbler.com/2.0/',
-    trackTags: false,
     tagsPerCall: 8,
+    /** Drop tags fewer than this share of taggers used (Last.fm count is 0–100); noise and troll tags. */
+    minTagCount: 5,
     /** Gap between Last.fm calls (their limit is ~5/s). */
     minIntervalMs: 300,
     timeoutMs: 10_000
@@ -84,7 +85,9 @@ export const musicConfig = {
     perHitConfidence: 0.1,
     maxConfidence: 0.6,
     /** Confidence when no tag matched anything. */
-    noMatchConfidence: 0.1
+    noMatchConfidence: 0.1,
+    /** Cap when only artist tags were found: they say little about this one song. */
+    artistOnlyMaxConfidence: 0.4
   },
   llm: {
     url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -94,11 +97,12 @@ export const musicConfig = {
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free'
     ],
-    batchMax: 50,
+    /** Small batches: 50 songs timed out on free models; 10 take ~45–60 s and stay accurate. */
+    batchMax: 10,
     /** Wait this long for more songs before sending a smaller batch. */
     batchWaitMs: 5 * 60_000,
-    /** Free reasoning models take ~40 s. */
-    timeoutMs: 120_000,
+    /** Free reasoning models take ~45–120 s for a batch of 10 with the rubric. */
+    timeoutMs: 180_000,
     /** Global gap between OpenRouter requests. */
     minIntervalMs: 60_000,
     /** The account has 50 free requests/day; keep headroom. */
@@ -110,6 +114,8 @@ export const musicConfig = {
   },
   devCheck: { picks: 3, listenMs: 2000, volume: 15 },
   scoring: {
+    /** Bump when scoring changes enough to redo old AI scores once (in the background). */
+    version: 2,
     /** Failed Last.fm lookups retry this many times, then score with no tags. */
     maxTagAttempts: 3,
     retryMs: 60_000,

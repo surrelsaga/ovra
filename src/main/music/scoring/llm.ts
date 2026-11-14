@@ -7,6 +7,8 @@ export interface LlmSong {
   title: string
   artist: string
   tags: string[]
+  /** Tags are the artist's, not this song's: a weak hint. */
+  artistOnly?: boolean
 }
 
 export interface LlmScore {
@@ -16,16 +18,40 @@ export interface LlmScore {
   confidence: number
 }
 
+const RUBRIC = `You label songs for a music app that picks calm, focus or upbeat music.
+Return ONLY JSON: {"songs":[{"i":number,"energy":1-5,"mood":"dark"|"neutral"|"bright","vocals":"instrumental"|"light"|"heavy","confidence":0-1}]} with one item per song.
+
+energy = how energetic THIS recording feels (tempo, loudness, drive):
+1 very soft, slow, sparse (ambient, solo piano, lullaby)
+2 gentle (acoustic or slow ballad, soft jazz)
+3 moderate, mid-tempo (relaxed pop, R&B groove, chill hip-hop)
+4 upbeat, driving (dance-pop, rock, club rap)
+5 very loud and fierce (metal, punk, hard EDM, aggressive rap)
+mood = emotional tone of THIS recording, not the genre:
+dark: sad, heartbroken, lonely, longing, angry, menacing, brooding
+neutral: calm, reflective, cool, or truly mixed
+bright: happy, joyful, playful, euphoric, warmly in love
+A love song is not automatically bright: a sad or longing one is dark. Pop is not automatically bright.
+vocals = how much the voice demands attention:
+instrumental: no vocals, or only wordless or sampled voice
+light: sung vocals that sit inside the music
+heavy: dense or forceful vocals that dominate (rap verses, shouting, belting)
+
+Judge each song on its own. Don't copy the artist's usual genre or the other songs in this list.
+Acoustic, piano, live, slowed, sped up, remix and instrumental versions differ from the original: score the version in the title.
+Track tags describe the song. Artist tags are only a weak hint.
+confidence: 0.8-1 only if you know this exact recording; 0.5-0.7 if you infer it from the artist, title and tags; below 0.4 if you are guessing.
+
+Songs:
+`
+
+const tagLine = (s: LlmSong): string =>
+  !s.tags.length
+    ? 'tags: none'
+    : `${s.artistOnly ? 'artist tags only' : 'track tags'}: ${s.tags.join(', ')}`
+
 export function buildPrompt(songs: LlmSong[]): string {
-  return (
-    'Score each song for a focus-music app. Use the tags and what you know about the song. ' +
-    'Return ONLY JSON: {"songs":[{"i":number,"energy":1-5,"mood":"dark"|"neutral"|"bright",' +
-    '"vocals":"instrumental"|"light"|"heavy","confidence":0-1}]}. ' +
-    "If you don't know a song and there are no tags, give confidence below 0.3.\n" +
-    songs
-      .map((s, i) => `${i}. ${s.artist} - ${s.title} | tags: ${s.tags.join(', ') || 'none'}`)
-      .join('\n')
-  )
+  return RUBRIC + songs.map((s, i) => `${i}. ${s.artist} - ${s.title} | ${tagLine(s)}`).join('\n')
 }
 
 const Item = z.object({
@@ -92,7 +118,9 @@ export async function requestScores(
           model,
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' },
-          temperature: 0
+          temperature: 0,
+          // Free reasoning models think long on a rubric; low effort keeps a batch under the timeout.
+          reasoning: { effort: 'low' }
         }),
         signal: AbortSignal.timeout(c.timeoutMs)
       })

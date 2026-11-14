@@ -23,11 +23,11 @@ async function main(): Promise<void> {
   const withTags: LlmSong[] = []
   for (const s of songs) {
     const t = Date.now()
-    const tags = await fetchLastfmTags(s.artist, s.title, lastfm)
-    const rules = scoreFromTags(tags, Date.now())
+    const { tags, artistOnly } = await fetchLastfmTags(s.artist, s.title, lastfm)
+    const rules = scoreFromTags(tags, Date.now(), s.title, artistOnly)
     console.log(`lastfm ${Date.now() - t}ms ${s.artist} - ${s.title}:`, tags.join(', ') || '(none)')
     console.log('  rules →', JSON.stringify({ ...rules, tags: undefined }))
-    withTags.push({ ...s, tags })
+    withTags.push({ ...s, tags, artistOnly })
   }
 
   if (!openrouter || MAX_OPENROUTER < 1) return

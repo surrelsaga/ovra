@@ -43,6 +43,12 @@ Next to the regular line, every five seconds a `[monitor] run phase=… seconds=
 
 Padding is off by default (`liveScale: 1` in `src/renderer/capture/config.ts`). For a padded run set the dev override when launching: `RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor`. The capture renderer then opens the camera itself and draws it at that scale, padded at the bottom, into the same 1280×720 canvas as the dev video source. Breathing readings are dropped from snapshots while padded.
 
+A/B steps, from the main checkout (its `.env` is found automatically; in a worktree add `OVRA_ENV_PATH=<main checkout>/.env`). Leave Settings → dev video source empty. Use the same desk, light and seat for both runs, and work normally.
+
+1. **Run A, unpadded:** `npm run dev:monitor`. Start a session in Continuous camera mode. Let calibration finish, then work for 10 min (short variant: 5 min) of the continuous phase. End the session and keep the `[monitor] run phase=continuous … (ended)` line.
+2. **Run B, padded:** quit the app (Cmd+Q), then `RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor`. Same session settings and the same length as run A. Keep its `(ended)` line.
+3. **Decide:** keep padding if B's `steadyPulse` is at least 2× A's (compare per minute if the run lengths differ) and B's `medianPulse` is within ±3 bpm of A's. If kept, set the default `liveScale` to `0.8` in `src/renderer/capture/config.ts`. Otherwise leave it at `1`.
+
 ## What to look for
 
 - **Pulse is present but rarely stable:** check camera framing, light and stillness, and compare validation codes with the stability percentage. This is an observation guide, not a classifier fix.

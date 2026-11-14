@@ -2,11 +2,16 @@
 // Every key can be overridden by AppSettings.thresholdOverrides (same name).
 export const stateConfig = {
   // Baseline (calibration). Pulse is required, everything else optional.
-  baselineMinPulseReadings: 5,
-  baselineMinPulseSpanSec: 15,
+  /** Distinct seconds with a steady pulse reading. Same bar in demo and real mode. */
+  baselineMinPulseSec: 30,
+  /** Breathing/HRV missing from calibration: filled in from this many seconds of steady values in focused windows. */
+  baselineFillSec: 60,
 
   // One evaluation window (a check-in, or the sliding window in continuous mode).
-  windowMinPulseReadings: 3,
+  /** Below this many seconds of steady pulse the window is "no read": holds pause, the situation stays. */
+  windowMinPulseSec: 10,
+  /** Good needs at least this many seconds of face frames with expressions; otherwise it's Focused. */
+  goodMinFaceSec: 10,
   /** Ignore breathing for a window when talking shows in more than this fraction of face frames. */
   talkingIgnoreBreathingFrac: 0.1,
   /** Blink rate needs at least this much face time in the window. */
@@ -14,20 +19,23 @@ export const stateConfig = {
   /** "Most of the window" for expressions. */
   faceMajorityFrac: 0.5,
 
-  // Situations, as fractions relative to baseline.
+  // Situations, as fractions relative to baseline. Pulse decides; HRV backs up or vetoes;
+  // breathing only adds confidence (docs/reliability.md §5.3).
   focusedPulsePct: 0.08,
-  focusedBreathingPct: 0.15,
   tensePulsePct: 0.1,
   /** Near misses pause a hold; they do not add qualifying time or check-ins. */
   streakBandPct: 0.03,
+  /** Backer: RMSSD this far below baseline raises tense confidence. */
   tenseRmssdDropPct: 0.15,
-  tenseBreathingPct: 0.2,
+  /** Veto: RMSSD this far above baseline (body says relaxed) blocks tense. */
+  tenseRmssdVetoPct: 0.15,
+  /** Backer (confidence only): breathing this far above baseline. Never decides, blocks or vetoes. */
+  tenseBreathingPct: 0.15,
   tenseHoldCheckins: 2,
   tenseHoldMin: 3,
   crashingTenseMin: 10,
   crashingPulsePct: 0.2,
   lowPulsePct: -0.08,
-  lowBreathingPct: -0.15,
   /** Blink rate this much above baseline counts as "well above" (face only, supports a softer pulse drop). */
   lowBlinkPct: 0.5,
   /** With high blink rate, pulse must still be at least this far below baseline. Face never triggers alone. */

@@ -1,8 +1,6 @@
 import { MOVES_CONFIG, type MovesConfig } from '../moves/config'
 
 export const e2eConfig = {
-  calibrationMs: 60_000,
-  awayCalibrationMs: 100_000,
   checkinMs: 20_000,
   checkinIntervalMs: 25_000,
   returnCheckMs: 20_000,
@@ -13,8 +11,7 @@ export const e2eConfig = {
   sessionLengthMin: 6,
   nudgeIntervalMin: 0.1,
   thresholds: {
-    baselineMinPulseSpanSec: 3,
-    baselineMinPulseReadings: 3,
+    baselineMinPulseSec: 3,
     seatedGapSec: 5,
     awayNoFaceSec: 8,
     continuousUpdateSec: 3,

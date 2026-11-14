@@ -20,6 +20,8 @@ import {
   evaluateWindow,
   hasFace,
   median,
+  seconds,
+  steadyPulseSec,
   type WindowEval
 } from './classifier'
 import { resolveConfig } from './config'
@@ -50,6 +52,10 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let baselineFailure: string | null = null
   let calibrationPulseCount = 0
   let calibrationPulseSpanSec = 0
+  /** After a failed calibration ("Start anyway"): steady-pulse snapshots until a baseline builds. */
+  let pending: MetricsSnapshot[] = []
+  /** Breathing/HRV missing from the baseline: steady values from focused windows, until baselineFillSec. */
+  let fill: MetricsSnapshot[] = []
   let phase: Exclude<SensingPhase, 'idle'> | null = null
   let lastEnded: SensingPhase | null = null
   let phaseStart = 0
@@ -97,6 +103,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     calibratedFace = undefined
     baselineFailure = null
     calibrationPulseCount = calibrationPulseSpanSec = 0
+    pending = []
+    fill = []
     phase = lastEnded = null
     buf = []
     history = []
@@ -110,14 +118,57 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     away = manualAway = paused = false
   }
 
+  /** Rolling baseline (approach 4): only after a failed calibration, from in-session steady pulse. */
+  function buildPending(c: ReturnType<typeof resolveConfig>): void {
+    if (baseline || !baselineFailure) return
+    const r = buildBaseline(pending, c, Date.now())
+    if (!('baseline' in r)) return
+    baseline = r.baseline
+    baselineFailure = null
+    pending = []
+    bus.emit('state:baseline-ready', { ok: true })
+  }
+
+  /** Fill missing breathing/HRV from the first baselineFillSec of steady values in focused windows. */
+  function fillIn(snaps: MetricsSnapshot[], c: ReturnType<typeof resolveConfig>): void {
+    if (!baseline) return
+    const b = baseline
+    const after = fill[fill.length - 1]?.t ?? -Infinity // continuous windows overlap
+    const wanted = (s: MetricsSnapshot): boolean =>
+      (b.breathing === undefined && !!s.breathing?.stable) ||
+      (b.rmssd === undefined && !!s.hrv?.stable)
+    fill.push(...snaps.filter((s) => s.t > after && wanted(s)))
+    const ready = (pick: (s: MetricsSnapshot) => boolean): MetricsSnapshot[] | null => {
+      const xs = fill.filter(pick)
+      return seconds(xs) >= c.baselineFillSec ? xs : null
+    }
+    if (b.breathing === undefined) {
+      const xs = ready((s) => !!s.breathing?.stable)
+      if (xs) b.breathing = median(xs.map((s) => s.breathing!.value))
+    }
+    if (b.rmssd === undefined) {
+      const xs = ready((s) => !!s.hrv?.stable)
+      if (xs) {
+        b.rmssd = median(xs.map((s) => s.hrv!.rmssd))
+        b.baevsky = median(xs.map((s) => s.hrv!.baevsky))
+      }
+    }
+    if (b.breathing !== undefined && b.rmssd !== undefined) fill = []
+  }
+
   function evaluate(snaps: MetricsSnapshot[]): void {
-    if (!baseline || snaps.length === 0) return
     const c = cfg()
+    buildPending(c)
+    if (!baseline) return
     const ev = evaluateWindow(snaps, baseline, c)
-    if (!ev) return
     history = [...history, ev].slice(-MAX_HISTORY)
     ;({ situation, confidence, trend } = classify(history, mode, situation, c))
     windows++
+    if (
+      ev.signal === 'steady' &&
+      (baseline.breathing === undefined || baseline.rmssd === undefined)
+    )
+      fillIn(snaps, c)
   }
 
   function onFace(t: number): void {
@@ -200,6 +251,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (!pulse && !face) return
     onFace(s.t)
     buf.push(s)
+    if (pulse && !baseline && baselineFailure && phase !== 'calibration') pending.push(s)
     const bucket = Math.floor(s.t / 1000)
     wakeBuckets = new Set([...wakeBuckets].filter((b) => b > bucket - c.wakeWindowSec))
     if (face) wakeBuckets.add(bucket)
@@ -222,7 +274,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
       const c = cfg()
       const r = buildBaseline(snaps, c, Date.now())
       const pulses = snaps.filter((s) => s.pulse?.stable)
-      calibrationPulseCount = pulses.length
+      calibrationPulseCount = steadyPulseSec(pulses)
       calibrationPulseSpanSec = pulses.length
         ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
         : 0
@@ -293,7 +345,12 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     reset,
     current,
     why() {
-      if (!baseline || paused || away) return undefined
+      if (paused || away) return undefined
+      // "Start anyway": no baseline yet, music follows the activity default meanwhile.
+      if (!baseline)
+        return baselineFailure && phase !== 'calibration'
+          ? { text: 'Getting to know you', moving: false }
+          : undefined
       const c = cfg()
       if (phase === 'continuous') {
         const gapMs = Date.now() - (lastFace ?? phaseStart)
@@ -320,14 +377,15 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
       const pulses = phase === 'calibration' ? activePulses : null
       const c = cfg()
       return {
-        pulseCount: pulses ? pulses.length : calibrationPulseCount,
+        // Seconds of steady pulse; the span can't be shorter than the bar, so it shares it.
+        pulseCount: pulses ? steadyPulseSec(pulses) : calibrationPulseCount,
         pulseSpanSec: pulses
           ? pulses.length
             ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
             : 0
           : calibrationPulseSpanSec,
-        pulseNeeded: c.baselineMinPulseReadings,
-        pulseSpanNeededSec: c.baselineMinPulseSpanSec,
+        pulseNeeded: c.baselineMinPulseSec,
+        pulseSpanNeededSec: c.baselineMinPulseSec,
         awayNoFaceSec: c.awayNoFaceSec,
         baseline: baseline !== null,
         baselineFailure,

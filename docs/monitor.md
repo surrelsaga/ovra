@@ -30,7 +30,7 @@ Session status changes include their timestamp, reason and source. Sources disti
 Every five seconds a single `[monitor]` line contains the window's data:
 
 - `last10{…}` and `phaseTotal{…}`: rates, pulse/breath/HRV triples (`present % / stable % / confidence`), six face percentages in the window's row order, and validation counts.
-- `calibration=count/needed@span/neededSeconds`, `baseline`, `fail`: engine calibration progress and result.
+- `calibration=count/needed@span/neededSeconds`, `baseline`, `fail`: engine calibration progress and result. `count` is distinct seconds with a steady pulse (the bar is 30 s, same in demo); the span can't be shorter than the bar, so both show it.
 - `lastFace`, `awayIn=countdown/threshold`, `away`, `situation`, `confidence`, `seated`, `updated`: Ovra's current state and last push time. `-` means unavailable or inactive.
 - `session`, `remaining`, `change`: current status/time and the last reason/source/timestamp.
 - `music`, `track`, `artist`, `target`, `leave`: current music status.
@@ -54,7 +54,7 @@ A/B steps, from the main checkout (its `.env` is found automatically; in a workt
 - **Pulse is present but rarely stable:** check camera framing, light and stillness, and compare validation codes with the stability percentage. This is an observation guide, not a classifier fix.
 - **Face objects are common while nobody is seated:** the SDK can emit empty face objects. Presence requires a steady pulse or a plausible face box near the calibrated position and size. Code 1 is **no face found** and clears incoming evidence immediately; code 2 is **multiple faces found** and blocks face-only evidence. Away begins after 20 s without evidence in normal continuous mode; waking needs a steady pulse or face evidence in 3 of the last 4 one-second buckets. Compare landmark/pulse counts and the engine's last-face timer; `face.present` alone does not prove presence.
 - **Raw payloads arrive but snapshots/s is near zero:** inspect capture status and the throttle/merge path. The normal send cap is configured in `src/renderer/capture/config.ts`.
-- **Raw stable pulse is common but accepted calibration count stays low:** compare Ovra present, last face, the configured count/span requirements and the baseline failure reason.
+- **Raw stable pulse is common but accepted calibration count stays low:** compare Ovra present, last face, the steady-seconds bar and the baseline failure reason. Per-window lines say `signal=noread` when a window had under 10 s of steady pulse (holds paused, situation kept).
 - **No payloads and repeated validation 7:** follow the chest-in-view hint. The SDK can withhold metrics until framing passes its check.
 - **Unknown after calibration:** inspect baseline success first. The monitor does not substitute a baseline or change the classifier.
 - **No song in the orb:** compare music available, track/artist, target and Leave-alone here. The monitor only shows what the existing music service reports.

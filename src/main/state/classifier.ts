@@ -69,6 +69,11 @@ export function hasFace(
 
 const stablePulse = (snaps: MetricsSnapshot[]): MetricsSnapshot[] =>
   snaps.filter((s) => s.pulse?.stable)
+/** Distinct seconds that have at least one reading. The SDK sends ~4 a second, so counts lie; seconds don't. */
+export const seconds = (snaps: MetricsSnapshot[]): number =>
+  new Set(snaps.map((s) => Math.floor(s.t / 1000))).size
+/** Distinct seconds with a steady pulse reading. */
+export const steadyPulseSec = (snaps: MetricsSnapshot[]): number => seconds(stablePulse(snaps))
 const stableBreathing = (snaps: MetricsSnapshot[]): number[] =>
   snaps.flatMap((s) => (s.breathing?.stable ? [s.breathing.value] : []))
 const stableHrv = (snaps: MetricsSnapshot[], k: 'rmssd' | 'baevsky'): number[] =>
@@ -92,14 +97,9 @@ export function buildBaseline(
   now: number
 ): { baseline: Baseline } | { reason: string } {
   const pulse = stablePulse(snaps)
-  const spanSec = pulse.length ? (pulse[pulse.length - 1].t - pulse[0].t) / 1000 : 0
-  if (pulse.length < cfg.baselineMinPulseReadings || spanSec < cfg.baselineMinPulseSpanSec) {
-    return {
-      reason:
-        `too few steady pulse readings: ${pulse.length} over ${Math.round(spanSec)} s ` +
-        `(need ${cfg.baselineMinPulseReadings} over ${cfg.baselineMinPulseSpanSec} s)`
-    }
-  }
+  const sec = seconds(pulse)
+  if (sec < cfg.baselineMinPulseSec)
+    return { reason: `I only got ${sec} of ${cfg.baselineMinPulseSec} s of steady pulse.` }
   return {
     baseline: {
       pulse: median(pulse.map((s) => s.pulse!.value))!,
@@ -113,7 +113,8 @@ export function buildBaseline(
   }
 }
 
-export type WindowSignal = 'tense' | 'low' | 'steady' | 'unclear'
+/** 'noread': under windowMinPulseSec of steady pulse. Pauses holds like a near miss, keeps the situation. */
+export type WindowSignal = 'tense' | 'low' | 'steady' | 'unclear' | 'noread'
 
 /** One evaluated window. Relative values only; in-memory only. */
 export interface WindowEval {
@@ -121,10 +122,8 @@ export interface WindowEval {
   t: number
   signal: WindowSignal
   pulseDelta: number
-  /** Breathing vs baseline; unset without breathing or while talking. */
-  breathingDelta?: number
-  /** No breathing or RMSSD to back up the pulse. */
-  pulseOnly: boolean
+  /** HRV (or, for tense, faster breathing) backs the pulse call: full confidence. */
+  backed: boolean
   nearTense?: boolean
   nearLow?: boolean
   happyMajority: boolean
@@ -144,14 +143,26 @@ function topExpression(scores: Partial<Record<Expression, number>>): Expression 
 const rel = (v: number | undefined, base: number | undefined): number | undefined =>
   v === undefined || !base ? undefined : (v - base) / base
 
-/** Summarise one window of snapshots against the baseline. Null without enough stable pulse. */
+/** Summarise one window of snapshots against the baseline. No read without enough steady pulse. */
 export function evaluateWindow(
   snaps: MetricsSnapshot[],
   baseline: Baseline,
-  cfg: StateConfig
-): WindowEval | null {
+  cfg: StateConfig,
+  now = Date.now()
+): WindowEval {
+  const start = snaps[0]?.t ?? now
+  const t = snaps[snaps.length - 1]?.t ?? now
   const pulse = stablePulse(snaps)
-  if (pulse.length < cfg.windowMinPulseReadings) return null
+  if (seconds(pulse) < cfg.windowMinPulseSec)
+    return {
+      start,
+      t,
+      signal: 'noread',
+      pulseDelta: 0,
+      backed: false,
+      happyMajority: false,
+      negativeMajority: false
+    }
   const pd = rel(median(pulse.map((s) => s.pulse!.value)), baseline.pulse)!
 
   const faces = snaps.filter((s) => s.face?.present)
@@ -161,44 +172,37 @@ export function evaluateWindow(
   const rd = rel(median(stableHrv(snaps, 'rmssd')), baseline.rmssd)
   const blinkD = rel(blinkRate(snaps, cfg), baseline.blinkRate)
 
-  const tops = faces.flatMap((s) => {
-    const top = s.face!.expressions && topExpression(s.face!.expressions)
-    return top ? [top] : []
-  })
+  const withExpr = faces.filter((s) => s.face!.expressions && topExpression(s.face!.expressions))
+  const tops = withExpr.map((s) => topExpression(s.face!.expressions!)!)
   const frac = (pred: (e: Expression) => boolean): number =>
     tops.length ? tops.filter(pred).length / tops.length : 0
 
-  // Vitals lead. Each rule uses the secondary signals that are present; pulse alone otherwise.
-  const tenseBackers = [
-    rd === undefined ? undefined : rd <= -cfg.tenseRmssdDropPct,
-    bd === undefined ? undefined : bd >= cfg.tenseBreathingPct
-  ].filter((x) => x !== undefined)
-  const tense = pd >= cfg.tensePulsePct && (tenseBackers.length === 0 || tenseBackers.some(Boolean))
-  const low =
-    (pd <= cfg.lowPulsePct && (bd === undefined || bd <= cfg.lowBreathingPct)) ||
-    // Face only supports: a high blink rate lowers the pulse bar, it never replaces it.
-    (blinkD !== undefined && blinkD >= cfg.lowBlinkPct && pd <= cfg.lowBlinkPulsePct)
-  const steady =
-    Math.abs(pd) <= cfg.focusedPulsePct &&
-    (bd === undefined || Math.abs(bd) <= cfg.focusedBreathingPct)
+  // Pulse decides. HRV backs up or vetoes tense; breathing can only back it up (confidence).
+  const vetoed = rd !== undefined && rd >= cfg.tenseRmssdVetoPct
+  const tense = pd >= cfg.tensePulsePct && !vetoed
+  // Face only supports: a high blink rate lowers the pulse bar, it never replaces it.
+  const blinky = blinkD !== undefined && blinkD >= cfg.lowBlinkPct
+  const low = pd <= cfg.lowPulsePct || (blinky && pd <= cfg.lowBlinkPulsePct)
+  const steady = Math.abs(pd) <= cfg.focusedPulsePct
+  const signal: WindowSignal = tense ? 'tense' : low ? 'low' : steady ? 'steady' : 'unclear'
 
   return {
-    start: snaps[0].t,
-    t: snaps[snaps.length - 1].t,
-    signal: tense ? 'tense' : low ? 'low' : steady ? 'steady' : 'unclear',
+    start,
+    t,
+    signal,
     pulseDelta: pd,
-    breathingDelta: bd,
-    nearTense:
-      pd >= cfg.tensePulsePct - cfg.streakBandPct &&
-      (tenseBackers.length === 0 || tenseBackers.some(Boolean)),
+    nearTense: pd >= cfg.tensePulsePct - cfg.streakBandPct && !vetoed,
     nearLow:
-      (pd <= cfg.lowPulsePct + cfg.streakBandPct &&
-        (bd === undefined || bd <= cfg.lowBreathingPct)) ||
-      (blinkD !== undefined &&
-        blinkD >= cfg.lowBlinkPct &&
-        pd <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
-    pulseOnly: bd === undefined && rd === undefined,
-    happyMajority: frac((e) => e === 'happy') > cfg.faceMajorityFrac,
+      pd <= cfg.lowPulsePct + cfg.streakBandPct ||
+      (blinky && pd <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
+    // ponytail: outside tense, HRV being there at all counts as backing; refine if it misleads.
+    backed:
+      signal === 'tense'
+        ? (rd !== undefined && rd <= -cfg.tenseRmssdDropPct) ||
+          (bd !== undefined && bd >= cfg.tenseBreathingPct)
+        : rd !== undefined,
+    happyMajority:
+      seconds(withExpr) >= cfg.goodMinFaceSec && frac((e) => e === 'happy') > cfg.faceMajorityFrac,
     negativeMajority: frac((e) => NEGATIVE.includes(e)) > cfg.faceMajorityFrac
   }
 }
@@ -209,7 +213,7 @@ export interface Classification {
   trend: Trend
 }
 
-/** Trailing qualifying windows; borderline windows preserve but do not advance the hold. */
+/** Trailing qualifying windows; borderline and no-read windows preserve but do not advance the hold. */
 export function streak(
   history: WindowEval[],
   signal: 'tense' | 'low'
@@ -221,10 +225,13 @@ export function streak(
     if (w.signal === signal) {
       duration += count ? w.t - history[i - 1].t : w.t - w.start
       count++
-    } else if (!(
-      (w.signal === 'unclear' || w.signal === 'steady') &&
-      (signal === 'tense' ? w.nearTense : w.nearLow)
-    )) {
+    } else if (
+      w.signal !== 'noread' &&
+      !(
+        (w.signal === 'unclear' || w.signal === 'steady') &&
+        (signal === 'tense' ? w.nearTense : w.nearLow)
+      )
+    ) {
       count = duration = 0
     }
   }
@@ -254,14 +261,16 @@ export function classify(
   previous: Situation | null,
   cfg: StateConfig
 ): Classification {
-  const last = history[history.length - 1]
+  // No-read windows pause holds (see streak) and are invisible here, so the situation stays.
+  const reads = history.filter((w) => w.signal !== 'noread')
+  const last = reads[reads.length - 1]
   if (!last) return { situation: previous, confidence: 0, trend: 'steady' }
 
-  const prev = history[history.length - 2]
+  const prev = reads[reads.length - 2]
   const step = prev ? last.pulseDelta - prev.pulseDelta : 0
   const trend: Trend =
     step >= cfg.trendPulsePct ? 'rising' : step <= -cfg.trendPulsePct ? 'falling' : 'steady'
-  const confidence = last.pulseOnly ? cfg.confidencePulseOnly : cfg.confidenceFull
+  const confidence = last.backed ? cfg.confidenceFull : cfg.confidencePulseOnly
 
   let situation: Situation | null = null
   if (held(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)) {

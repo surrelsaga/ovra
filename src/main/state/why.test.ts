@@ -54,7 +54,7 @@ describe('why line', () => {
       t: 20_000,
       signal: 'tense',
       pulseDelta: 0.15,
-      pulseOnly: true,
+      backed: false,
       happyMajority: false,
       negativeMajority: false
     }
@@ -70,15 +70,37 @@ describe('why line', () => {
     ).toBe(true)
   })
 
-  it('steady is not moving; a breathing change alone is', () => {
-    expect(run(normal, seconds(120, [60, 14])).at(-1)).toEqual({
-      text: 'Close to your usual',
-      moving: false
+  it('steady is not moving, and a breathing change alone is nothing', () => {
+    for (const b of [14, 11, 20])
+      expect(run(normal, seconds(120, [60, b])).at(-1)).toEqual({
+        text: 'Close to your usual',
+        moving: false
+      })
+  })
+
+  it('a no-read window says so, even mid-hold', () => {
+    const w = (signal: WindowEval['signal'], t: number): WindowEval => ({
+      start: t - 30_000,
+      t,
+      signal,
+      pulseDelta: signal === 'tense' ? 0.15 : 0,
+      backed: false,
+      happyMajority: false,
+      negativeMajority: false
     })
-    expect(run(normal, seconds(120, [60, 11])).at(-1)).toEqual({
-      text: 'Breathing slower than usual',
-      moving: true
-    })
+    const history = [w('tense', 30_000), w('noread', 60_000)]
+    for (const situation of ['focused', 'tense', 'low'] as Situation[])
+      expect(whyLine(history, situation, 'continuous', normal)).toEqual({
+        text: 'Low signal, holding steady',
+        moving: false
+      })
+    expect(describeWindow(history[1])).toBe(
+      'signal=noread rule="under the steady-pulse bar, holds paused"'
+    )
+    // The hold resumes where it was.
+    expect(whyLine([...history, w('tense', 90_000)], 'focused', 'continuous', normal)?.text).toBe(
+      'Pulse above your usual · 1 of 3 min'
+    )
   })
 
   it('never shows a number that could be a vital: only seconds, minutes and step counts', () => {

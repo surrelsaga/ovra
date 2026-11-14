@@ -41,6 +41,7 @@ export function whyLine(
 ): Why | undefined {
   const last = history[history.length - 1]
   if (!last) return undefined
+  if (last.signal === 'noread') return { text: 'Low signal, holding steady', moving: false }
   const up = last.signal === 'tense' || !!last.nearTense
   const down = last.signal === 'low' || !!last.nearLow
 
@@ -71,11 +72,6 @@ export function whyLine(
     const h = hold(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin)
     return { text: `Pulse below your usual · ${h.label}`, progress: h.progress, moving: true }
   }
-  const bd = last.breathingDelta
-  if (bd !== undefined && bd <= cfg.lowBreathingPct)
-    return { text: 'Breathing slower than usual', moving: true }
-  if (bd !== undefined && bd >= cfg.tenseBreathingPct)
-    return { text: 'Breathing faster than usual', moving: true }
   if (last.signal === 'unclear')
     return {
       text:
@@ -89,19 +85,21 @@ export function whyLine(
 export function describeWindow(w: WindowEval): string {
   const rule =
     w.signal === 'tense'
-      ? w.pulseOnly
-        ? 'pulse up, pulse only'
-        : 'pulse up, backed by breathing or HRV'
+      ? w.backed
+        ? 'pulse up, backed by HRV or breathing'
+        : 'pulse up, pulse only'
       : w.signal === 'low'
-        ? 'pulse down (breathing or blinking agrees)'
-        : w.signal === 'steady'
-          ? w.happyMajority
-            ? 'near usual, happy most of the window'
-            : 'near usual'
-          : w.nearTense
-            ? 'near the tense bar, hold paused'
-            : w.nearLow
-              ? 'near the low bar, hold paused'
-              : 'between bars'
+        ? 'pulse down (or a softer drop with lots of blinking)'
+        : w.signal === 'noread'
+          ? 'under the steady-pulse bar, holds paused'
+          : w.signal === 'steady'
+            ? w.happyMajority
+              ? 'near usual, happy most of the window'
+              : 'near usual'
+            : w.nearTense
+              ? 'near the tense bar, hold paused'
+              : w.nearLow
+                ? 'near the low bar, hold paused'
+                : 'between bars'
   return `signal=${w.signal} rule="${rule}"${w.negativeMajority ? ' negative-face' : ''}`
 }

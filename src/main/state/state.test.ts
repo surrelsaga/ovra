@@ -12,6 +12,7 @@ import {
 } from '@shared/types'
 import { buildBaseline, classify, evaluateWindow, type WindowEval } from './classifier'
 import { resolveConfig, stateConfig as cfg } from './config'
+import { sessionConfig } from '../session/config'
 import { createStateEngine } from '.'
 
 const MIN = 60_000
@@ -111,11 +112,34 @@ describe('baseline', () => {
     expect('baseline' in all && all.baseline.blinkRate).toBeGreaterThan(10)
   })
 
-  it('fails with a reason when there are too few stable pulse readings', () => {
-    const res = buildBaseline(stream(0, 4, { pulse: 62 }), cfg, 1)
-    expect(res).toEqual({ reason: expect.stringContaining('too few steady pulse readings') })
+  it('needs 30 distinct seconds of steady pulse, with the reason in plain words', () => {
+    expect(buildBaseline(stream(0, 29, { pulse: 62 }), cfg, 1)).toEqual({
+      reason: 'I only got 29 of 30 s of steady pulse.'
+    })
+    expect('baseline' in buildBaseline(stream(0, 30, { pulse: 62 }), cfg, 1)).toBe(true)
+    // Four readings a second for 10 s is still 10 s, not 40 readings.
+    const burst = stream(0, 10, { pulse: 62 }).flatMap((s) =>
+      [0, 250, 500, 750].map((ms) => ({ ...s, t: s.t + ms }))
+    )
+    expect(buildBaseline(burst, cfg, 1)).toEqual({
+      reason: 'I only got 10 of 30 s of steady pulse.'
+    })
     const unstable = stream(0, 60, {}).map((s) => ({ ...s, pulse: r(62, false) }))
     expect('reason' in buildBaseline(unstable, cfg, 1)).toBe(true)
+  })
+
+  it('demo mode uses the same bars as real mode', () => {
+    const demo = resolveConfig(sessionConfig.demo.state)
+    for (const k of [
+      'baselineMinPulseSec',
+      'windowMinPulseSec',
+      'goodMinFaceSec',
+      'tensePulsePct',
+      'tenseRmssdVetoPct',
+      'lowPulsePct',
+      'focusedPulsePct'
+    ] as const)
+      expect(demo[k], k).toBe(cfg[k])
   })
 })
 
@@ -125,20 +149,53 @@ describe('classifier', () => {
     expect(res[0]).toMatchObject({ situation: 'focused', confidence: cfg.confidenceFull })
   })
 
-  it('tense needs 2 check-ins of pulse up AND RMSSD down', () => {
+  it('tense needs 2 check-ins of pulse up; an RMSSD drop backs it to full confidence', () => {
     const tense = { pulse: 68, rmssd: 70 }
     const res = run(full, checkins({ pulse: 60, rmssd: 90 }, tense, tense))
     expect(res.map((x) => x.situation)).toEqual(['focused', 'focused', 'tense'])
+    expect(last(res).confidence).toBe(cfg.confidenceFull)
   })
 
-  it('tense from pulse + faster breathing', () => {
-    const tense = { pulse: 68, breathing: 18 }
-    expect(last(run(full, checkins(tense, tense))).situation).toBe('tense')
+  it('pulse alone makes tense, even with normal HRV and breathing present', () => {
+    const alone = { pulse: 68 }
+    expect(last(run(full, checkins(alone, alone)))).toMatchObject({
+      situation: 'tense',
+      confidence: cfg.confidencePulseOnly
+    })
+    const normal = { pulse: 68, breathing: 14, rmssd: 90 }
+    expect(last(run(full, checkins(normal, normal)))).toMatchObject({
+      situation: 'tense',
+      confidence: cfg.confidencePulseOnly
+    })
   })
 
-  it('pulse up alone is not tense when RMSSD/breathing are present and normal', () => {
-    const o = { pulse: 68, breathing: 14, rmssd: 90 }
-    expect(last(run(full, checkins(o, o, o))).situation).toBe('focused')
+  it('faster breathing (+15%) only adds confidence to tense', () => {
+    const tense = { pulse: 68, breathing: 16.2 }
+    expect(last(run(full, checkins(tense, tense)))).toMatchObject({
+      situation: 'tense',
+      confidence: cfg.confidenceFull
+    })
+  })
+
+  it('RMSSD up 15% or more vetoes tense', () => {
+    const relaxed = { pulse: 68, rmssd: 104 }
+    expect(run(full, checkins(relaxed, relaxed, relaxed)).map((x) => x.situation)).toEqual([
+      'focused',
+      'focused',
+      'focused'
+    ])
+    // Just under the veto: tense.
+    const almost = { pulse: 68, rmssd: 103 }
+    expect(last(run(full, checkins(almost, almost))).situation).toBe('tense')
+  })
+
+  it('breathing alone changes nothing', () => {
+    for (const breathing of [8, 11, 18, 24]) {
+      const o = { pulse: 60, rmssd: 90, breathing }
+      expect(run(full, checkins(o, o, o))).toEqual(
+        Array(3).fill(expect.objectContaining({ situation: 'focused' }))
+      )
+    }
   })
 
   it('tense on a pulse-only stream, with lower confidence', () => {
@@ -168,10 +225,9 @@ describe('classifier', () => {
     expect(run(full, checkins(t, t)).map((x) => x.situation)).toEqual(['focused', 'crashing'])
   })
 
-  it('low from pulse down AND slow breathing', () => {
+  it('low from pulse down; breathing ignored', () => {
     expect(run(full, checkins({ pulse: 54, breathing: 11 }))[0].situation).toBe('low')
-    // breathing present and normal: not low
-    expect(run(full, checkins({ pulse: 54, breathing: 14 }))[0].situation).toBe('focused')
+    expect(run(full, checkins({ pulse: 54, breathing: 18 }))[0].situation).toBe('low')
   })
 
   it('low on a pulse-only stream, with lower confidence', () => {
@@ -191,6 +247,17 @@ describe('classifier', () => {
     expect(run(full, checkins({ pulse: 61, rmssd: 90, expression: 'happy' }))[0].situation).toBe(
       'good'
     )
+  })
+
+  it('good needs 10 s of face frames with expressions; without them it is focused', () => {
+    const w = (exprSec: number): MetricsSnapshot[] =>
+      stream(0, 90, { pulse: 61 }).map((s, i) =>
+        i < exprSec ? { ...s, face: { present: true, expressions: { happy: 80 } } } : s
+      )
+    const c = (snaps: MetricsSnapshot[]): Situation | null =>
+      classify([evaluateWindow(snaps, full, cfg)], 'checkins', null, cfg).situation
+    expect(c(w(9))).toBe('focused')
+    expect(c(w(10))).toBe('good')
   })
 
   it('face alone never triggers a situation', () => {
@@ -219,16 +286,56 @@ describe('classifier', () => {
     expect(res[1].confidence).toBeLessThan(cfg.confidenceFull)
   })
 
-  it('ignores breathing for a window with talking', () => {
-    const o = { pulse: 68, rmssd: 90, breathing: 20 }
-    expect(last(run(full, checkins(o, o))).situation).toBe('tense')
+  it('ignores breathing for a window with talking (it can no longer back tense)', () => {
+    const o = { pulse: 68, breathing: 20 }
+    expect(last(run(full, checkins(o, o))).confidence).toBe(cfg.confidenceFull)
     const talking = { ...o, face: { talking: true } }
-    expect(last(run(full, checkins(talking, talking))).situation).toBe('focused')
+    expect(last(run(full, checkins(talking, talking)))).toMatchObject({
+      situation: 'tense',
+      confidence: cfg.confidencePulseOnly
+    })
   })
 
-  it('ignores unstable readings', () => {
-    const w = stream(0, 90, {}).map((s) => ({ ...s, pulse: r(90, false) }))
-    expect(evaluateWindow(w, full, cfg)).toBeNull()
+  it('a window under 10 s of steady pulse is no read', () => {
+    const unstable = stream(0, 90, {}).map((s) => ({ ...s, pulse: r(90, false) }))
+    expect(evaluateWindow(unstable, full, cfg).signal).toBe('noread')
+    expect(evaluateWindow(stream(0, 9, { pulse: 70 }), full, cfg).signal).toBe('noread')
+    expect(evaluateWindow(stream(0, 10, { pulse: 70 }), full, cfg).signal).toBe('tense')
+    expect(evaluateWindow([], full, cfg, 5).signal).toBe('noread')
+  })
+
+  it('a no-read window between two tense check-ins pauses the hold, not resets it', () => {
+    const tense = { pulse: 68 }
+    const res = run(pulseOnly, [
+      { at: 0, o: tense },
+      { at: 5 * MIN, sec: 5, o: tense }, // no read
+      { at: 10 * MIN, o: tense }
+    ])
+    expect(res.map((x) => x.situation)).toEqual(['focused', 'focused', 'tense'])
+    // A clear miss in the same place resets.
+    const reset = run(pulseOnly, checkins(tense, { pulse: 60 }, tense))
+    expect(last(reset).situation).toBe('focused')
+  })
+
+  it('no-read windows add no hold time in continuous mode and keep the situation', () => {
+    const c = { ...cfg, tenseHoldMin: 2 }
+    // A full minute where only the first 5 s had a steady pulse.
+    const w = (i: number, pulse: number, steadySec = 60): WindowEval =>
+      evaluateWindow(
+        stream(i * MIN, 60, { pulse }).map((s, j) =>
+          j < steadySec ? s : { ...s, pulse: r(pulse, false) }
+        ),
+        pulseOnly,
+        c
+      )
+    const history = [w(0, 68), w(1, 68, 5), w(2, 68)]
+    // Two qualifying minutes, but the no-read minute in between doesn't count.
+    expect(classify(history, 'continuous', 'focused', c).situation).toBe('focused')
+    history.push(w(3, 68))
+    expect(classify(history, 'continuous', 'focused', c).situation).toBe('tense')
+    const before = classify(history, 'continuous', 'tense', c)
+    history.push(w(4, 68, 3))
+    expect(classify(history, 'continuous', 'tense', c)).toEqual(before)
   })
 
   it.each([
@@ -261,7 +368,7 @@ describe('classifier', () => {
   it('does not pause a tense hold when secondary vitals clearly contradict it', () => {
     const history = [
       { pulse: 68, rmssd: 70 },
-      { pulse: 65.4, rmssd: 90 },
+      { pulse: 65.4, rmssd: 104 },
       { pulse: 68, rmssd: 70 }
     ].map((o, i) => evaluateWindow(stream(i * 5 * MIN, 90, o), full, cfg)!)
     expect(classify(history, 'checkins', 'focused', cfg).situation).toBe('focused')
@@ -354,13 +461,88 @@ describe('state engine', () => {
     expect(updates.map((u) => u.situation)).toEqual(['focused', 'focused', 'tense'])
   })
 
-  it('reports baseline failure and stays without a situation', () => {
-    const { ready, updates, phase, wait } = setup()
-    phase('calibration', 90, { face: { present: true } })
-    expect(ready).toEqual([{ ok: false, reason: expect.stringContaining('too few') }])
-    wait(MIN)
-    phase('checkin', 90, { pulse: 68 })
+  it('after a failed calibration, builds the baseline from the first 30 s of in-session steady pulse', () => {
+    const { engine, ready, updates, phase, wait } = setup()
+    phase('calibration', 20, { pulse: 60 })
+    expect(ready).toEqual([{ ok: false, reason: 'I only got 20 of 30 s of steady pulse.' }])
     expect(last(updates).situation).toBeNull()
+    // Start anyway: getting to know you until 30 s of steady pulse came in.
+    wait(MIN)
+    phase('checkin', 20, { pulse: 60 })
+    expect(last(updates).situation).toBeNull()
+    expect(engine.why()).toEqual({ text: 'Getting to know you', moving: false })
+    wait(MIN)
+    phase('checkin', 20, { pulse: 60 })
+    expect(ready.at(-1)).toEqual({ ok: true })
+    expect(last(updates).situation).toBe('focused')
+    expect(engine.diagnostics().baselineFailure).toBeNull()
+  })
+
+  it('fills missing breathing/HRV from the first 60 s of steady values in focused windows', () => {
+    const tenseWithHrv = (): Situation | null => {
+      for (let i = 0; i < 2; i++) {
+        wait(3.5 * MIN)
+        t.phase('checkin', 90, { pulse: 68, rmssd: 70 })
+      }
+      return last(t.updates).situation
+    }
+    let t = setup()
+    let wait = t.wait
+    t.phase('calibration', 90, { pulse: 60 }) // no HRV during calibration
+    expect(tenseWithHrv()).toBe('tense')
+    expect(last(t.updates).confidence).toBe(cfg.confidencePulseOnly)
+
+    t = setup()
+    wait = t.wait
+    t.phase('calibration', 90, { pulse: 60 })
+    wait(3.5 * MIN)
+    t.phase('checkin', 90, { pulse: 60, rmssd: 90 }) // focused: RMSSD baseline filled in
+    expect(tenseWithHrv()).toBe('tense')
+    expect(last(t.updates).confidence).toBe(cfg.confidenceFull)
+  })
+
+  it('a no-read check-in keeps the situation and says so', () => {
+    const { engine, updates, phase, wait } = setup()
+    phase('calibration', 90, { pulse: 60 })
+    for (let i = 0; i < 2; i++) {
+      wait(3.5 * MIN)
+      phase('checkin', 90, { pulse: 68 })
+    }
+    expect(last(updates).situation).toBe('tense')
+    wait(3.5 * MIN)
+    phase('checkin', 90, { face: { present: true } }) // no pulse at all
+    expect(last(updates)).toMatchObject({ situation: 'tense', confidence: cfg.confidencePulseOnly })
+    expect(engine.why()).toEqual({ text: 'Low signal, holding steady', moving: false })
+    expect(engine.lastWindow()?.line).toContain('signal=noread')
+  })
+
+  it('continuous: a no-read window keeps the situation and pauses the hold', () => {
+    overrides = { tenseHoldMin: 2.5 }
+    const { bus, engine, updates, phase } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    phase('calibration', 90, { pulse: 60, face: seatedFace })
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    const feed = (sec: number, pulse?: number): void => {
+      for (let i = 0; i < sec; i++) {
+        bus.emit('sdk:metrics', {
+          t: Date.now(),
+          face: seatedFace,
+          ...(pulse ? { pulse: r(pulse) } : {})
+        })
+        vi.advanceTimersByTime(1000)
+      }
+    }
+    feed(90, 68) // 3 windows: about 1.5 of 2 min of hold
+    console.log('DBG', updates.map((u) => u.situation).join(','), engine.lastWindow()?.line)
+    feed(60)
+    console.log('DBG2', engine.lastWindow()?.line) // seen but no pulse (code 7, motion): no-read windows, hold paused
+    expect(last(updates).situation).toBe('focused')
+    expect(engine.why()).toEqual({ text: 'Low signal, holding steady', moving: false })
+    feed(30, 68)
+    expect(last(updates).situation).toBe('focused')
+    feed(30, 68)
+    expect(last(updates).situation).toBe('tense')
+    engine.dispose()
   })
 
   it('diagnostic reads leave calibration, classifier and away outputs identical', () => {

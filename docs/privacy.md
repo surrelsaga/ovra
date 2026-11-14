@@ -221,7 +221,9 @@ empty) folder in `~/Library/Caches/Ovra/`.
 - *Last.fm:* artist and song title, to look up public genre tags.
 - *OpenRouter (only if you opt in):* song titles, artists and those public tags, so an AI model can guess each
   song's energy and mood. Presage's LLM Insights feature is not used.
-- *Spotify:* Ovra controls the Spotify app on your computer with local commands. Songs it plays appear in your
+- *Spotify:* when you paste a playlist (and at most once a day after that, at session start), Ovra reads its
+  public track list from Spotify's website, sending only the playlist id with a generic browser identifier and no
+  cookies. Ovra controls the Spotify app on your computer with local commands. Songs it plays appear in your
   Spotify history like any other.
 
 **SDK telemetry.** The SmartSpectra SDK turns telemetry on by default. Ovra always turns it off unless you chose

@@ -77,9 +77,9 @@ const has = (tag: string, kw: string): boolean => ` ${tag} `.includes(` ${kw} `)
 const anyHit = (tags: string[], kws: string[]): number =>
   tags.filter((t) => kws.some((k) => has(t, k))).length
 
-export function scoreFromTags(rawTags: string[], now: number): SongScores {
+export function scoreFromTags(rawTags: string[], now: number, title = ''): SongScores {
   const c = musicConfig.rules
-  const tags = rawTags.map(norm)
+  const tags = [...rawTags, title].filter(Boolean).map(norm)
   const energies = tags.flatMap((t) => {
     // Prefer the longest keyword in a tag ("hard rock" over "rock").
     const kw = Object.keys(ENERGY)
@@ -102,7 +102,7 @@ export function scoreFromTags(rawTags: string[], now: number): SongScores {
     confidence: hits
       ? Math.min(c.maxConfidence, c.baseConfidence + c.perHitConfidence * hits)
       : c.noMatchConfidence,
-    source: hits ? 'lastfm' : 'rules',
+    source: hits && rawTags.length ? 'lastfm' : 'rules',
     scoredAt: now,
     tags: rawTags
   }

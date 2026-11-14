@@ -3,6 +3,16 @@ import { memoryStorage } from '../dev/memory-storage'
 import { createLibrary, parsePlaylistUrl } from '.'
 import { applyOutcome, judgePlay } from './learning'
 
+beforeEach(() =>
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('offline')
+    })
+  )
+)
+afterEach(() => vi.unstubAllGlobals())
+
 const ID = '37i9dQZF1DXcBWIGoYBM5M'
 
 const track = (id: string, extra: Partial<NowPlaying> = {}): NowPlaying => ({
@@ -113,7 +123,7 @@ describe('learning from the body', () => {
 
   it('tense → focused during a song is a settle vote that lowers energy', () => {
     const o = judgePlay({ ...obs, before: 'tense', during: ['tense', 'focused'] })
-    expect(o).toEqual({ settle: true, steady: false, quickSkip: false })
+    expect(o).toMatchObject({ settle: true, steady: false, quickSkip: false })
     const l = applyOutcome(applyOutcome(undefined, o, 1), o, 2)
     expect(l).toMatchObject({ settleVotes: 2, energyDelta: -1, plays: 2, updatedAt: 2 })
     expect(judgePlay({ ...obs, before: 'crashing', during: ['focused'] }).settle).toBe(true)

@@ -160,10 +160,10 @@ describe('scorer', () => {
     await add('spotify:track:a')
     await vi.advanceTimersByTimeAsync(5000)
     expect(lib.get('spotify:track:a')?.scores).toMatchObject({ source: 'lastfm', energy: 2 })
-    expect(calls).toEqual(['lastfm', 'lastfm'])
+    expect(calls).toEqual(['lastfm'])
     scorer.enqueue(lib.get('spotify:track:a')!) // already scored: ignored
     await vi.advanceTimersByTimeAsync(5000)
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(1)
     expect(scorer.pending()).toBe(0)
   })
 
@@ -213,9 +213,187 @@ describe('scorer', () => {
     await add('spotify:track:a')
     await vi.advanceTimersByTimeAsync(6 * 60_000)
     expect(calls.filter((c) => c.startsWith('llm'))).toHaveLength(3)
-    expect(lib.get('spotify:track:a')?.scores).toBeUndefined() // waiting on backoff
+    expect(lib.get('spotify:track:a')?.scores?.source).toBe('lastfm') // usable while waiting on backoff
     await vi.advanceTimersByTimeAsync(2 * 60 * 60_000)
     expect(lib.get('spotify:track:a')?.scores?.source).toBe('lastfm')
     expect(calls.filter((c) => c.startsWith('llm'))).toHaveLength(9) // 3 attempts × 3 models
   })
+})
+
+it('upgrades existing rules scores in a full batch immediately, caches artist tags, and never sends empty artists', async () => {
+  vi.useFakeTimers()
+  try {
+    const lib = createLibrary(memoryStorage())
+    const songs: Song[] = []
+    for (let i = 0; i < 51; i++) {
+      songs.push(
+        (await lib.learn(
+          {
+            id: `spotify:track:${i}`,
+            uri: '',
+            name: `Piano ${i}`,
+            artist: i === 50 ? '' : 'Tyler, The Creator,\u00a0Dalby',
+            album: '',
+            durationMs: 1,
+            positionMs: 0,
+            state: 'playing',
+            isAd: false
+          },
+          Date.now()
+        ))!
+      )
+    }
+    const f = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes('openrouter')) {
+        const prompt = JSON.parse(String(init?.body)).messages[0].content
+        expect(prompt).toContain('Tyler, The Creator - Piano 0')
+        expect(prompt).not.toContain('Piano 50')
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    songs: Array.from({ length: 50 }, (_, i) => ({
+                      i,
+                      energy: 2,
+                      mood: 'neutral',
+                      vocals: 'instrumental',
+                      confidence: 0.9
+                    }))
+                  })
+                }
+              }
+            ]
+          })
+        )
+      }
+      return new Response(JSON.stringify({ toptags: { tag: [{ name: 'piano' }] } }))
+    })
+    const scorer = createScorer({
+      library: lib,
+      aiEnabled: () => true,
+      getKey: () => 'mock',
+      fetch: f
+    })
+    songs.forEach(scorer.enqueue)
+    expect(scorer.pending()).toBe(50)
+    expect(lib.songs()[0].scores?.source).toBe('rules')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(f.mock.calls.filter(([u]) => String(u).includes('audioscrobbler'))).toHaveLength(1)
+    expect(f.mock.calls.filter(([u]) => String(u).includes('openrouter'))).toHaveLength(1)
+    expect(lib.songs()[0].scores?.source).toBe('llm')
+    expect(scorer.pending()).toBe(0)
+    lib.songs().forEach(scorer.enqueue)
+    expect(scorer.pending()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('can refine a rules score after AI consent changes in the same run', async () => {
+  vi.useFakeTimers()
+  try {
+    const lib = createLibrary(memoryStorage())
+    const song = (await lib.learn(
+      {
+        id: 'spotify:track:x',
+        uri: '',
+        name: 'Piano',
+        artist: 'Dalby',
+        album: '',
+        durationMs: 1,
+        positionMs: 0,
+        state: 'playing',
+        isAd: false
+      },
+      Date.now()
+    ))!
+    let ai = false
+    const f = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes('openrouter')
+              ? {
+                  choices: [
+                    {
+                      message: {
+                        content:
+                          '{"songs":[{"i":0,"energy":2,"mood":"neutral","vocals":"instrumental","confidence":0.9}]}'
+                      }
+                    }
+                  ]
+                }
+              : { toptags: { tag: [{ name: 'piano' }] } }
+          )
+        )
+    )
+    const scorer = createScorer({
+      library: lib,
+      aiEnabled: () => ai,
+      getKey: () => 'mock',
+      fetch: f
+    })
+    scorer.enqueue(song)
+    await vi.advanceTimersByTimeAsync(5000)
+    ai = true
+    scorer.enqueue(lib.get(song.id)!)
+    expect(scorer.pending()).toBe(1)
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(lib.get(song.id)?.scores?.source).toBe('llm')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('keeps the per-run daily request cap even across explicit rescores', async () => {
+  vi.useFakeTimers()
+  try {
+    const lib = createLibrary(memoryStorage())
+    const song = (await lib.learn(
+      {
+        id: 'spotify:track:budget',
+        uri: '',
+        name: 'Piano',
+        artist: 'Dalby',
+        album: '',
+        durationMs: 1,
+        positionMs: 0,
+        state: 'playing',
+        isAd: false
+      },
+      Date.now()
+    ))!
+    let requests = 0
+    const f = vi.fn(async () => {
+      requests++
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"songs":[{"i":0,"energy":2,"mood":"neutral","vocals":"instrumental","confidence":0.9}]}'
+              }
+            }
+          ]
+        })
+      )
+    })
+    const scorer = createScorer({
+      library: lib,
+      aiEnabled: () => true,
+      getKey: (name) => (name === 'OPENROUTER_API_KEY' ? 'mock' : null),
+      fetch: f
+    })
+    for (let i = 0; i < 23; i++) {
+      await scorer.rescore(song.id)
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1000)
+    }
+    expect(requests).toBe(20)
+    scorer.reset()
+  } finally {
+    vi.useRealTimers()
+  }
 })

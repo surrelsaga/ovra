@@ -105,3 +105,10 @@ Format:
   the error text if the folder can't be opened.
 - Why: the upcoming Privacy screen lets the user see exactly what Ovra keeps on disk.
 - Status: applied in surrelsaga/ovra-privacy (requested by the coordinator)
+
+## 2026-11-14 — music playlists — catalog and positive votes
+
+- File: src/shared/types.ts
+- Change: optional `Song.origin: 'mine' | 'fallback' | 'heard'`, `Song.playlists: string[]`, `Song.playable: boolean`; optional `PlaylistLink.trackCount`, `totalCount`, `fetchedAt`, `readError`; optional `LearnedAdjustments.liftVotes`, `goodVotes`.
+- Why: read pasted playlists before playback, retain playlist context and rank songs using local positive votes while loading older saved libraries.
+- Status: applied in surrelsaga/ovra-music (requested by the coordinator)

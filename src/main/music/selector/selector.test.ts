@@ -119,47 +119,86 @@ describe('song fit', () => {
 })
 
 describe('pickSong', () => {
-  const calm = song('calm', { energy: 1, mood: 'bright' })
-  const unsureCalm = song('unsure', { energy: 1, mood: 'bright', confidence: 0.2 })
-  const unscored = song('new')
-
-  it('never uses unsure songs for settle or ease-down', () => {
-    expect(pickSong([unsureCalm, unscored], 'settle', { ...ctx, rng: () => 0 })).toBeNull()
-    expect(pickSong([unsureCalm, unscored], 'ease-down', { ...ctx, rng: () => 0 })).toBeNull()
-    expect(pickSong([unsureCalm, calm], 'settle', { ...ctx, rng: () => 0 })?.id).toBe(calm.id)
+  it('always chooses the nearest own or heard song, even when unscored or out of band', () => {
+    const mine = song('mine', { energy: 5, mood: 'dark' }, { origin: 'mine' })
+    const heard = song('heard', { energy: 3 }, { origin: 'heard' })
+    expect(pickSong([mine, heard], 'settle', ctx)?.id).toBe(heard.id)
+    expect(pickSong([song('new')], 'settle', ctx)?.id).toBe('spotify:track:new')
+    expect(pickSong([song('blocked', {}, { playable: false })], 'steady', ctx)).toBeNull()
   })
 
-  it('lets about 1 in 5 steady picks be unsure', () => {
-    const steady = song('steady', { energy: 3 })
-    const songs = [steady, unscored]
-    let i = 0
-    const seq = [0.1, 0.0, 0.5, 0.0] // first pick: rng < 0.2 → unsure; second: ≥ 0.2 → sure
-    const rng = (): number => seq[i++]
-    expect(pickSong(songs, 'steady', { ...ctx, rng })?.id).toBe(unscored.id)
-    expect(pickSong(songs, 'steady', { ...ctx, rng })?.id).toBe(steady.id)
-    expect(pickSong([unscored], 'steady', { ...ctx, rng: () => 0.5 })).toBeNull()
+  it('prefers a sure calm song to an unsure calm song', () => {
+    const sure = song('sure', { energy: 2 })
+    const unsure = song('unsure', { energy: 1, confidence: 0.1 })
+    expect(pickSong([unsure, sure], 'settle', ctx)?.id).toBe(sure.id)
   })
 
-  it('skips the current and recently played songs, prefers settle votes', () => {
-    const recent = song('recent', { energy: 1 }, { lastPlayedAt: ctx.now - 60_000 })
+  it('never repeats during a session until exhausted, then plays the oldest', () => {
+    const songs = [song('a', { energy: 1 }), song('b', { energy: 4 }), song('c', { energy: 5 })]
+    const played = new Map<string, number>()
+    for (let i = 0; i < songs.length; i++) {
+      const picked = pickSong(songs, 'settle', { ...ctx, played })!
+      expect(played.has(picked.id)).toBe(false)
+      played.set(picked.id, i)
+    }
+    expect(pickSong(songs, 'settle', { ...ctx, played })?.id).toBe(songs[0].id)
+    expect(pickSong([songs[0]], 'settle', { ...ctx, played, currentId: songs[0].id })?.id).toBe(
+      songs[0].id
+    )
+  })
+
+  it('keeps outside picks to at most one in ten, and only when own songs are far', () => {
+    const mine = song('mine', { energy: 5, mood: 'dark' }, { origin: 'mine' })
+    const outside = song('outside', { energy: 1 }, { origin: 'fallback' })
+    let fallbackPicks = 0
+    for (let picks = 0; picks < 40; picks++) {
+      const selected = pickSong([mine, outside], 'settle', { ...ctx, picks, fallbackPicks })!
+      fallbackPicks += selected.origin === 'fallback' ? 1 : 0
+      expect(fallbackPicks).toBeLessThanOrEqual(Math.floor((picks + 1) / 10))
+    }
+    expect(fallbackPicks).toBe(4)
+    expect(
+      pickSong([song('close', { energy: 1 }), outside], 'settle', { ...ctx, picks: 9 })?.origin
+    ).not.toBe('fallback')
+  })
+
+  it.each([
+    ['settle', 'settleVotes'],
+    ['steady', 'steadyVotes'],
+    ['lift', 'liftVotes'],
+    ['let-it-ride', 'goodVotes']
+  ] as const)('three positive %s plays outrank an AI guess', (target, field) => {
     const voted = song(
       'voted',
-      { energy: 2 },
+      { energy: 5, mood: 'dark' },
       {
         learned: {
           energyDelta: 0,
           confidenceDelta: 0,
-          settleVotes: 3,
+          settleVotes: 0,
           steadyVotes: 0,
           quickSkips: 0,
           plays: 3,
-          updatedAt: 0
+          updatedAt: 0,
+          [field]: 3
         }
       }
     )
-    expect(pickSong([recent], 'settle', ctx)).toBeNull()
-    expect(pickSong([calm], 'settle', { ...ctx, currentId: calm.id })).toBeNull()
-    expect(pickSong([calm, voted], 'settle', { ...ctx, rng: () => 0 })?.id).toBe(voted.id)
+    const guessed = song('guess', { energy: target === 'lift' ? 3 : 1, mood: 'bright' })
+    expect(pickSong([guessed, voted], target, ctx)?.id).toBe(voted.id)
+  })
+
+  it('uses playlist-name hints only as a small nudge for unsure songs', () => {
+    const calm = song('calm', undefined, { playlists: ['piano'] })
+    const gym = song('gym', undefined, { playlists: ['gym'] })
+    const playlistNames = new Map([
+      ['piano', 'Calm Piano'],
+      ['gym', 'Gym Workout']
+    ])
+    // With an RNG at zero, ranking exposes the small nudge instead of its random slack.
+    expect(pickSong([gym, calm], 'settle', { ...ctx, rng: () => 0, playlistNames })?.id).toBe(
+      calm.id
+    )
   })
 })
 

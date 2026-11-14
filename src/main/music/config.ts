@@ -5,6 +5,7 @@ export const musicConfig = {
   controller: {
     /** How often onTrackChange polls Spotify. */
     pollMs: 2000,
+    restartSlackMs: 1000,
     /** osascript timeout. */
     osascriptTimeoutMs: 5000,
     /** Spotify wasn't running at session start: check again this often and start once it is. */
@@ -22,11 +23,30 @@ export const musicConfig = {
     settleFadeSteps: 5,
     settleVolumeFloor: 8,
     /** Last minutes of a session switch the target to wind-down. */
-    windDownSec: 10 * 60,
-    /** A song played within this window isn't picked again. */
-    recentMs: 60 * 60_000,
-    /** About 1 in 5 picks in Steady / Let it ride may be an unsure song. */
-    unsureShare: 0.2
+    windDownSec: 10 * 60
+  },
+  catalog: {
+    embedUrl: 'https://open.spotify.com/embed/playlist/',
+    timeoutMs: 15_000,
+    refreshMs: 24 * 3600_000,
+    userAgent: 'Mozilla/5.0 (Ovra)'
+  },
+  selection: {
+    cooldownMs: 4 * 3600_000,
+    cooldownPenalty: 1,
+    darkPenalty: 2,
+    moodPenalty: 1,
+    unsurePenalty: 0.5,
+    unsurePenaltyCalm: 2,
+    voteBonus: 0.5,
+    maxVoteBonus: 1,
+    votesToTrust: 3,
+    skipPenalty: 0.5,
+    playlistHint: 0.2,
+    pickSlack: 0.5,
+    topK: 5,
+    fallbackMinDistance: 1.5,
+    fallbackEvery: 10
   },
   songs: {
     /** Effective confidence below this = "Not sure yet". */
@@ -48,6 +68,7 @@ export const musicConfig = {
   },
   lastfm: {
     baseUrl: 'https://ws.audioscrobbler.com/2.0/',
+    trackTags: false,
     tagsPerCall: 8,
     /** Gap between Last.fm calls (their limit is ~5/s). */
     minIntervalMs: 300,
@@ -82,6 +103,7 @@ export const musicConfig = {
     /** After this many failed batches a song falls back to keyword rules. */
     maxAttempts: 3
   },
+  devCheck: { picks: 3, listenMs: 2000, volume: 15 },
   scoring: {
     /** Failed Last.fm lookups retry this many times, then score with no tags. */
     maxTagAttempts: 3,
@@ -100,16 +122,12 @@ export const ACTIVITY_DEFAULT_TARGET: Record<Activity, MusicTarget> = {
   downtime: 'let-it-ride'
 }
 
-/**
- * Public mood playlists used when the library has nothing that fits.
- * TODO(Daniel): replace these placeholders with real public playlist links
- * (https://open.spotify.com/playlist/<22-char id>). Placeholders fail validation and are skipped.
- */
+/** Spotify editorial lists, each verified with one public embed read on 2026-11-14. */
 export const FALLBACK_PLAYLISTS: Record<MusicTarget, string[]> = {
-  settle: ['https://open.spotify.com/playlist/REPLACE_ME_CALM_PIANO'],
-  'ease-down': ['https://open.spotify.com/playlist/REPLACE_ME_CALM'],
-  'wind-down': ['https://open.spotify.com/playlist/REPLACE_ME_WIND_DOWN'],
-  steady: ['https://open.spotify.com/playlist/REPLACE_ME_FOCUS'],
-  'let-it-ride': ['https://open.spotify.com/playlist/REPLACE_ME_FEEL_GOOD'],
-  lift: ['https://open.spotify.com/playlist/REPLACE_ME_UPBEAT']
+  settle: ['https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO'],
+  'ease-down': ['https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO'],
+  'wind-down': ['https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO'],
+  steady: ['https://open.spotify.com/playlist/37i9dQZF1DWZeKCadgRdKQ'],
+  'let-it-ride': ['https://open.spotify.com/playlist/37i9dQZF1DX3rxVfibe1L0'],
+  lift: ['https://open.spotify.com/playlist/37i9dQZF1DXdPec7aLTmlC']
 }

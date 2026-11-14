@@ -4,6 +4,7 @@ import { Plus, Trash2, X } from 'lucide-react'
 import type { MusicStatus, PlaylistLink, Song } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { Button, ConfirmButton, EnergyDots, Toggle } from '../ui'
+import { musicUiConfig } from './config'
 import { SOURCE_LABEL, effectiveEnergy, songTab, type SongTab } from './config'
 
 const TABS: SongTab[] = ['Calm', 'Focus', 'Boost', 'Not sure yet']
@@ -28,6 +29,16 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
       .catch(() => undefined)
   }
   useEffect(load, [status.scoredCount])
+  useEffect(() => {
+    const refresh = (): void => {
+      void ovra()
+        .invoke('music:status')
+        .catch(() => undefined)
+    }
+    refresh()
+    const timer = setInterval(refresh, musicUiConfig.availabilityPollMs)
+    return () => clearInterval(timer)
+  }, [])
 
   const add = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -37,7 +48,7 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
       setUrl('')
       load()
     } catch {
-      setError('That doesn’t look like a Spotify playlist link.')
+      setError('Not a Spotify playlist link')
     }
   }
 
@@ -48,7 +59,7 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
       <header className="page__header">
         <h1 id="music-title">Music</h1>
         <p>
-          Ovra plays your playlists in the Spotify app and learns each song as it plays.
+          Ovra picks songs from your playlists in Spotify and learns what works as they play.
           {status.scoringQueue > 0 && ` Getting to know ${status.scoringQueue} more songs.`}
         </p>
         {!status.available && (
@@ -62,7 +73,8 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
             <span className="field__label">Paste a Spotify playlist link</span>
             <input
               className="input"
-              type="url"
+              type="text"
+              inputMode="url"
               placeholder="https://open.spotify.com/playlist/…"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -82,7 +94,16 @@ export function Music(props: { initialStatus: MusicStatus }): React.JSX.Element 
           <ul className="chips">
             {library.playlists.map((p) => (
               <li key={p.uri} className="chip">
-                <span>{p.name ?? p.url}</span>
+                <span>
+                  {p.name ?? p.url}
+                  <br />
+                  <small>
+                    {p.readError ??
+                      (p.trackCount !== undefined
+                        ? `Read ${p.trackCount} songs from ${p.name ?? 'this playlist'}`
+                        : 'Songs will be learned as they play')}
+                  </small>
+                </span>
                 <button
                   type="button"
                   className="chip__remove"

@@ -366,6 +366,8 @@ export interface LearnedAdjustments {
   confidenceDelta: number
   settleVotes: number
   steadyVotes: number
+  liftVotes?: number
+  goodVotes?: number
   quickSkips: number
   plays: number
   updatedAt: number
@@ -383,6 +385,9 @@ export interface Song {
   firstSeenAt: number
   lastPlayedAt?: number
   playCount: number
+  origin?: 'mine' | 'fallback' | 'heard'
+  playlists?: string[]
+  playable?: boolean
 }
 
 export interface PlaylistLink {
@@ -392,6 +397,10 @@ export interface PlaylistLink {
   url: string
   name?: string
   addedAt: number
+  trackCount?: number
+  totalCount?: number
+  fetchedAt?: number
+  readError?: string
 }
 
 export type MusicTarget = 'settle' | 'ease-down' | 'steady' | 'lift' | 'let-it-ride' | 'wind-down'

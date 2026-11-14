@@ -85,6 +85,10 @@ export interface PickContext {
   /** Effective energy of the song playing now, if known. */
   currentEnergy?: number
   steadyEnergy?: number
+  played?: ReadonlyMap<string, number>
+  picks?: number
+  fallbackPicks?: number
+  playlistNames?: ReadonlyMap<string, string>
 }
 
 /** Does a scored song fit the target? Unsure songs are handled by pickSong. */
@@ -115,44 +119,96 @@ export function fits(song: Song, target: MusicTarget, ctx: PickContext): boolean
   }
 }
 
-const votes = (s: Song, target: MusicTarget): number =>
-  target === 'steady' || target === 'let-it-ride'
-    ? (s.learned?.steadyVotes ?? 0)
-    : target === 'lift'
-      ? 0
-      : (s.learned?.settleVotes ?? 0)
+const votes = (s: Song, target: MusicTarget): number => {
+  const l = s.learned
+  return target === 'steady'
+    ? (l?.steadyVotes ?? 0)
+    : target === 'let-it-ride'
+      ? (l?.goodVotes ?? 0)
+      : target === 'lift'
+        ? (l?.liftVotes ?? 0)
+        : (l?.settleVotes ?? 0)
+}
 
-/** Ease down / wind down step gently: prefer the highest energy that still fits. */
-const stepRank = (s: Song, target: MusicTarget): number =>
-  target === 'ease-down' || target === 'wind-down' ? effective(s)!.energy : 0
-
-/**
- * Picks the next song for a target, or null (then a playlist plays instead).
- * Unsure songs never go to Settle/Ease down; about 1 in 5 picks in Steady/Let it ride may be one.
- */
-export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): Song | null {
-  const fresh = songs.filter(
-    (s) =>
-      s.id !== ctx.currentId &&
-      !(s.lastPlayedAt !== undefined && ctx.now - s.lastPlayedAt < cfg.switching.recentMs)
-  )
-  const allowUnsure = target === 'steady' || target === 'let-it-ride'
-  const unsure = allowUnsure ? fresh.filter(isUnsure) : []
-  if (unsure.length && ctx.rng() < cfg.switching.unsureShare) {
-    return unsure[Math.floor(ctx.rng() * unsure.length)]
+/** Nearest fit, with small penalties for uncertainty, recent plays and skips. */
+export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): number {
+  const c = cfg.selection
+  const e = effective(s)
+  let energy = e?.energy ?? cfg.songs.steadyDefaultEnergy
+  if (isUnsure(s)) {
+    const names = (s.playlists ?? []).map((p) => ctx.playlistNames?.get(p) ?? '').join(' ')
+    if (/chill|calm|sleep|piano/i.test(names)) energy -= c.playlistHint
+    if (/gym|workout|hype|party/i.test(names)) energy += c.playlistHint
   }
-  const sure = fresh
-    .filter((s) => !isUnsure(s) && fits(s, target, ctx))
-    .sort(
-      (a, b) =>
-        votes(b, target) - votes(a, target) ||
-        stepRank(b, target) - stepRank(a, target) ||
-        effective(b)!.confidence - effective(a)!.confidence
+  const stepDown =
+    ctx.currentEnergy !== undefined
+      ? Math.max(1, Math.round(ctx.currentEnergy) - 1)
+      : cfg.songs.easeDownDefaultMax
+  const steady = ctx.steadyEnergy ?? cfg.songs.steadyDefaultEnergy
+  const ride = ctx.currentEnergy ?? steady
+  const [min, max] =
+    target === 'settle'
+      ? [1, 2]
+      : target === 'ease-down' || target === 'wind-down'
+        ? [1, stepDown]
+        : target === 'lift'
+          ? [3, 4]
+          : target === 'let-it-ride'
+            ? [ride - 1, ride + 1]
+            : [steady - cfg.songs.steadyEnergyRange, steady + cfg.songs.steadyEnergyRange]
+  let distance = Math.max(min - energy, energy - max, 0)
+  const calm = target === 'settle' || target === 'ease-down'
+  if (calm && e?.mood === 'dark') distance += c.darkPenalty
+  if ((target === 'lift' || target === 'let-it-ride') && e?.mood !== 'bright')
+    distance += c.moodPenalty
+  if (isUnsure(s)) distance += calm ? c.unsurePenaltyCalm : c.unsurePenalty
+  if (s.lastPlayedAt !== undefined && ctx.now - s.lastPlayedAt < c.cooldownMs)
+    distance += c.cooldownPenalty
+  return (
+    distance +
+    (s.learned?.quickSkips ?? 0) * c.skipPenalty -
+    Math.min(c.maxVoteBonus, votes(s, target) * c.voteBonus)
+  )
+}
+
+/** User playlists and heard tracks lead; outside picks cannot exceed one in ten. */
+export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): Song | null {
+  const c = cfg.selection
+  const playable = songs.filter((s) => s.playable !== false)
+  const own = playable.filter((s) => s.origin !== 'fallback')
+  const outside = playable.filter((s) => s.origin === 'fallback')
+  const available = (pool: Song[]): Song[] => {
+    const fresh = pool.filter((s) => s.id !== ctx.currentId && !ctx.played?.has(s.id))
+    if (fresh.length) return fresh
+    // Exhaustion: replay the longest-ago song, including the current song in a one-song library.
+    const older = pool.filter((s) => s.id !== ctx.currentId)
+    const remaining = older.length ? older : pool
+    if (!remaining.length) return []
+    const oldest = Math.min(
+      ...remaining.map((s) => ctx.played?.get(s.id) ?? s.lastPlayedAt ?? -Infinity)
     )
-  if (!sure.length) return null
-  // ponytail: random among the top 5 keeps variety; weight by votes if picks feel repetitive.
-  const top = sure.slice(0, 5)
-  return top[Math.floor(ctx.rng() * top.length)]
+    return remaining.filter(
+      (s) => (ctx.played?.get(s.id) ?? s.lastPlayedAt ?? -Infinity) === oldest
+    )
+  }
+  let pool = available(own)
+  // Three positive plays outweigh a guess, even if the guessed energy is far away.
+  const trusted = pool.filter(
+    (s) => (s.learned?.plays ?? 0) >= c.votesToTrust && votes(s, target) >= c.votesToTrust
+  )
+  const best = Math.min(...pool.map((s) => songDistance(s, target, ctx)))
+  const outsideAllowed =
+    (ctx.fallbackPicks ?? 0) < Math.floor(((ctx.picks ?? 0) + 1) / c.fallbackEvery)
+  if (trusted.length) pool = trusted
+  else if (outsideAllowed && outside.length && best > c.fallbackMinDistance)
+    pool = available(outside)
+  if (!pool.length) return null
+  pool.sort((a, b) => songDistance(a, target, ctx) - songDistance(b, target, ctx))
+  const closest = songDistance(pool[0], target, ctx)
+  const top = pool
+    .filter((s) => songDistance(s, target, ctx) <= closest + c.pickSlack)
+    .slice(0, c.topK)
+  return top[Math.min(top.length - 1, Math.floor(ctx.rng() * top.length))]
 }
 
 export interface TargetGap {

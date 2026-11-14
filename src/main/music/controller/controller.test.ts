@@ -125,3 +125,24 @@ describe('SpotifyMacController', () => {
     vi.useRealTimers()
   })
 })
+
+it('notifies when a one-song playlist restarts the same track', async () => {
+  vi.useFakeTimers()
+  try {
+    let position = '10'
+    const c = new SpotifyMacController(async () =>
+      line(['spotify:track:a', 'A', 'Artist', '', '20000', position, 'playing', ''])
+    )
+    const cb = vi.fn()
+    const off = c.onTrackChange(cb)
+    await vi.advanceTimersByTimeAsync(2000)
+    position = '12'
+    await vi.advanceTimersByTimeAsync(2000)
+    position = '0'
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(cb).toHaveBeenCalledTimes(2)
+    off()
+  } finally {
+    vi.useRealTimers()
+  }
+})

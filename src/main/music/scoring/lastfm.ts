@@ -40,7 +40,9 @@ export async function fetchLastfmTags(
   key: string,
   f: typeof fetch = fetch
 ): Promise<string[]> {
-  const track = await getTags({ method: 'track.gettoptags', artist, track: title }, key, f)
+  const track = musicConfig.lastfm.trackTags
+    ? await getTags({ method: 'track.gettoptags', artist, track: title }, key, f)
+    : []
   const art = await getTags({ method: 'artist.gettoptags', artist }, key, f)
   return [...new Set([...track, ...art])]
 }

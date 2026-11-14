@@ -55,7 +55,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   const { bus, privacy, controller } = deps
   const now = deps.now ?? Date.now
   const rng = deps.rng ?? Math.random
-  const library = createLibrary(deps.storage)
+  const library = createLibrary(deps.storage, deps.fetch)
   const tracker = createTargetTracker(deps.targetGap)
   const scorer = createScorer({
     library,
@@ -84,8 +84,12 @@ export function createMusic(deps: MusicDeps): MusicService {
   let pausedForBreak = false
   let settleFade: Promise<void> | null = null
   let cancelSettleFade: (() => void) | null = null
-  /** Last target the app acted on with a playlist fallback (once per target change). */
-  let actedTarget: string | null = null
+  const played = new Map<string, number>()
+  const fallbackLinks = new Map<string, number>()
+  let picks = 0
+  let fallbackPicks = 0
+  let picking = -1
+  let checkingAvailability = false
   let lastRetry = 0
 
   const status = (): MusicStatus => ({
@@ -105,17 +109,29 @@ export function createMusic(deps: MusicDeps): MusicService {
     bus.emit('orb:bubble', { text: SPOTIFY_HINT })
   }
 
-  function fallbackUri(target: string): string | null {
-    const list = (FALLBACK_PLAYLISTS[target as keyof typeof FALLBACK_PLAYLISTS] ?? [])
-      .map((u) => parsePlaylistUrl(u)?.uri)
-      .filter((u): u is string => !!u)
-    return list.length ? list[Math.floor(rng() * list.length)] : null
+  async function checkAvailability(): Promise<void> {
+    if (session || checkingAvailability) return
+    checkingAvailability = true
+    const g = generation
+    try {
+      const running = await controller.isAvailable().catch(() => false)
+      if (g !== generation || session) return
+      available = running
+      emitStatus()
+    } finally {
+      checkingAvailability = false
+    }
   }
 
-  async function fadePlay(uri: string, activeSession: Session, g: number): Promise<void> {
+  async function fadePlay(
+    uri: string,
+    contextUri: string | undefined,
+    activeSession: Session,
+    g: number
+  ): Promise<void> {
     if (settleFade) return
     const getVolume = controller.getVolume
-    if (!getVolume) return controller.play(uri)
+    if (!getVolume) return controller.play(uri, contextUri)
     let cancelled = false
     let userChanged = false
     let initial: number | null = null
@@ -145,7 +161,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       try {
         initial = await getVolume.call(controller).catch(() => null)
         if (initial === null || cancelled) {
-          if (initial === null && !cancelled) await controller.play(uri)
+          if (initial === null && !cancelled) await controller.play(uri, contextUri)
           return
         }
         lastSet = initial
@@ -169,7 +185,7 @@ export function createMusic(deps: MusicDeps): MusicService {
           await wait()
           if (!stillCurrent()) return
         }
-        await controller.play(uri)
+        await controller.play(uri, contextUri)
         for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
           if (!stillCurrent()) return
           const volume = floor + ((initial - floor) * step) / musicConfig.switching.settleFadeSteps
@@ -201,37 +217,70 @@ export function createMusic(deps: MusicDeps): MusicService {
     await settleFade
   }
 
-  /** Plays the best song for the target; else a fallback playlist once per target (or a user playlist at start). */
-  async function playNext(atStart: boolean): Promise<void> {
+  /** Every near-end decision makes a fresh exact pick, even when the target is unchanged. */
+  async function playNext(): Promise<void> {
     const target = tracker.current()
-    if (!session || privacy.get().music !== 'spotify' || leaveAlone || !target) return
+    if (
+      !session ||
+      privacy.get().music !== 'spotify' ||
+      leaveAlone ||
+      !target ||
+      picking === generation
+    )
+      return
+    picking = generation
     const activeSession = session
     const g = generation
-    const running = await controller.isAvailable()
-    if (g !== generation || session !== activeSession || privacy.get().music !== 'spotify') return
-    available = running
-    if (!available) return hint()
-    const songs = library.songs()
-    const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
-    const song = pickSong(songs, target, {
-      now: now(),
-      rng,
-      currentId: nowPlaying?.id,
-      currentEnergy: cur ? effective(cur)?.energy : undefined,
-      steadyEnergy: steadyEnergy(songs)
-    })
-    let uri = song?.id ?? null
-    if (!uri && actedTarget !== target) {
-      const mine = library.playlists()
-      uri =
-        fallbackUri(target) ??
-        (atStart && mine.length ? mine[Math.floor(rng() * mine.length)].uri : null)
+    try {
+      const running = await controller.isAvailable()
+      if (
+        g !== generation ||
+        session !== activeSession ||
+        privacy.get().music !== 'spotify' ||
+        leaveAlone
+      )
+        return
+      available = running
+      if (!available) return hint()
+      const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
+      const context = {
+        now: now(),
+        rng,
+        currentId: nowPlaying?.id,
+        played,
+        picks,
+        fallbackPicks,
+        currentEnergy: cur ? effective(cur)?.energy : undefined,
+        steadyEnergy: steadyEnergy(library.songs()),
+        playlistNames: new Map(library.playlists().map((p) => [p.uri, p.name ?? '']))
+      }
+      if (fallbackPicks < Math.floor((picks + 1) / musicConfig.selection.fallbackEvery)) {
+        for (const url of FALLBACK_PLAYLISTS[target]) {
+          const parsed = parsePlaylistUrl(url)!
+          const prev = fallbackLinks.get(parsed.uri)
+          if (prev !== undefined && now() - prev < musicConfig.catalog.refreshMs) continue
+          await library.readPlaylist({ ...parsed, addedAt: now() }, now(), 'fallback')
+          fallbackLinks.set(parsed.uri, now())
+          library.songs().forEach((s) => scorer.enqueue(s))
+        }
+      }
+      if (g !== generation || session !== activeSession || leaveAlone) return
+      const song = pickSong(library.songs(), target, context)
+      const link = library.playlists()[0]
+      const uri = song?.id ?? link?.uri
+      if (!uri) return
+      const contextUri =
+        song?.playlists?.[0] ?? link?.uri ?? parsePlaylistUrl(FALLBACK_PLAYLISTS[target][0])!.uri
+      if (play) play.endedByApp = true
+      if (target === 'settle') await fadePlay(uri, contextUri, activeSession, g)
+      else await controller.play(uri, contextUri)
+      if (g !== generation || session !== activeSession) return
+      if (song) played.set(song.id, now())
+      picks++
+      if (song?.origin === 'fallback') fallbackPicks++
+    } finally {
+      if (picking === g) picking = -1
     }
-    if (!uri) return
-    actedTarget = target
-    if (play) play.endedByApp = true
-    if (target === 'settle') await fadePlay(uri, activeSession, g)
-    else await controller.play(uri)
   }
 
   function evaluate(): void {
@@ -246,7 +295,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     })
     emitStatus()
     // Only change between tracks, except Settle, which switches right away.
-    if (changed === 'settle') safe(playNext(false))
+    if (changed === 'settle') safe(playNext())
   }
 
   function scheduleEnd(t: NowPlaying): void {
@@ -265,7 +314,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       nowPlaying = t
       return scheduleEnd(t)
     }
-    await playNext(false)
+    await playNext()
   }
 
   /** Learning: judge the song that just stopped playing. */
@@ -275,7 +324,8 @@ export function createMusic(deps: MusicDeps): MusicService {
     const song = p && library.get(p.songId)
     if (!p || !song) return
     const outcome = judgePlay({ ...p, listenedMs: now() - p.startedAt })
-    const learnedSomething = outcome.settle || outcome.steady || outcome.quickSkip
+    const learnedSomething =
+      outcome.settle || outcome.steady || outcome.lift || outcome.good || outcome.quickSkip
     safe(
       library.update({
         ...song,
@@ -289,14 +339,16 @@ export function createMusic(deps: MusicDeps): MusicService {
   function onTrack(t: NowPlaying): void {
     if (!session) return
     const g = generation
+    t = library.resolve(t)
     available = true
     const prev = nowPlaying
     nowPlaying = t
     scheduleEnd(t)
-    if (prev?.id === t.id) return emitStatus()
+    if (prev?.id === t.id && (prev.state !== t.state || t.state !== 'playing')) return emitStatus()
     finishPlay()
     bus.emit('music:track-changed', t)
     if (!t.isAd && t.id.startsWith('spotify:track:')) {
+      played.set(t.id, now())
       play = { songId: t.id, startedAt: now(), before: situation, during: [], endedByApp: false }
     }
     safe(
@@ -336,7 +388,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (available || nowPlaying || leaveAlone) return
     if (now() - lastRetry < musicConfig.controller.unavailableRetryMs) return
     lastRetry = now()
-    safe(playNext(true))
+    safe(playNext())
   })
   bus.on('break:away', () => {
     safe(abortSettleFade())
@@ -356,12 +408,14 @@ export function createMusic(deps: MusicDeps): MusicService {
     available = false
     leaveAlone = privacy.getSettings().leaveMusicAlone
     scorer.reset()
+    fallbackLinks.clear()
     library.forget()
     play = null
     emitStatus()
   })
 
   bus.on('privacy:changed', (p) => {
+    if (p.aiScoring) safe(ready.then(() => library.songs().forEach((song) => scorer.enqueue(song))))
     if (p.music !== 'none') return
     safe(stopInternal())
     nowPlaying = null
@@ -369,14 +423,20 @@ export function createMusic(deps: MusicDeps): MusicService {
   })
 
   return {
-    status,
+    status() {
+      safe(checkAvailability())
+      return status()
+    },
     async library() {
       await ready
       return { songs: library.songs(), playlists: library.playlists() }
     },
     async addPlaylist(url) {
       await ready
-      return library.addPlaylist(url, now())
+      const link = await library.addPlaylist(url, now())
+      library.songs().forEach((s) => scorer.enqueue(s))
+      emitStatus()
+      return link
     },
     async removePlaylist(uri) {
       await ready
@@ -396,6 +456,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     async clearLibrary() {
       await ready
       scorer.reset()
+      fallbackLinks.clear()
       play = null
       await library.clear()
       emitStatus()
@@ -414,13 +475,19 @@ export function createMusic(deps: MusicDeps): MusicService {
       situation = null
       remainingSec = undefined
       hintShown = false
-      actedTarget = null
+      played.clear()
+      picks = 0
+      fallbackPicks = 0
       nowPlaying = null
       lastRetry = now()
+      const startedGeneration = generation
+      await library.refresh(now())
+      if (generation !== startedGeneration || session !== s) return
+      library.songs().forEach((song) => scorer.enqueue(song))
       stopPolling = controller.onTrackChange(onTrack)
       evaluate()
       if (leaveAlone) available = await controller.isAvailable()
-      else await playNext(true).catch(() => {})
+      else await playNext().catch(() => {})
       emitStatus()
     },
     async stopSession() {

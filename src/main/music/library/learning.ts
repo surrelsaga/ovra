@@ -15,6 +15,8 @@ export interface PlayObservation {
 export interface PlayOutcome {
   settle: boolean
   steady: boolean
+  lift?: boolean
+  good?: boolean
   quickSkip: boolean
 }
 
@@ -23,6 +25,8 @@ export function judgePlay(o: PlayObservation): PlayOutcome {
   return {
     settle: wasTense && o.during.includes('focused'),
     steady: o.before === 'focused' && o.during.length > 0 && o.during.every((s) => s === 'focused'),
+    lift: o.before === 'low' && o.during.some((s) => s === 'focused' || s === 'good'),
+    good: o.during.includes('good'),
     quickSkip: !o.endedByApp && o.listenedMs < musicConfig.learning.quickSkipMs
   }
 }
@@ -51,6 +55,8 @@ export function applyOutcome(
       : l.confidenceDelta,
     settleVotes: l.settleVotes + (o.settle ? 1 : 0),
     steadyVotes: l.steadyVotes + (o.steady ? 1 : 0),
+    liftVotes: (l.liftVotes ?? 0) + (o.lift ? 1 : 0),
+    goodVotes: (l.goodVotes ?? 0) + (o.good ? 1 : 0),
     quickSkips: l.quickSkips + (o.quickSkip ? 1 : 0),
     plays: l.plays + 1,
     updatedAt: now

@@ -82,6 +82,72 @@ export class SpotifyMacController implements MusicController {
     )
   }
 
+  /** Dev check only: save everything before touching playback, restore even after failure or Ctrl+C. */
+  async withPlaybackRestored(action: (interrupted: () => boolean) => Promise<void>): Promise<void> {
+    const saved = await this.run(`${IF_RUNNING}
+      tell application "Spotify"
+        return (sound volume as text) & tab & (shuffling as text) & tab & (repeating as text) & tab & (player position as text) & tab & (player state as text)
+      end tell
+    end if
+    return ""`)
+    const [volume, shuffle, repeat, position, state] = saved.trim().split('\t')
+    const v = Number(volume)
+    const pos = Number(position?.replace(',', '.'))
+    if (
+      !volume ||
+      !Number.isFinite(v) ||
+      v < 0 ||
+      v > 100 ||
+      !['true', 'false'].includes(shuffle) ||
+      !['true', 'false'].includes(repeat) ||
+      !Number.isFinite(pos) ||
+      pos < 0 ||
+      !['playing', 'paused', 'stopped'].includes(state)
+    )
+      throw new Error('Could not save Spotify state; playback was not changed')
+    const track = await this.current()
+    if (state !== 'stopped' && !track)
+      throw new Error('Could not save Spotify track; playback was not changed')
+    if (track && (track.isAd || !SPOTIFY_URI.test(track.uri)))
+      throw new Error('Cannot restore this Spotify item; playback was not changed')
+    let interrupted = false
+    const onInterrupt = (): void => {
+      interrupted = true
+    }
+    process.on('SIGINT', onInterrupt)
+    process.on('SIGTERM', onInterrupt)
+    try {
+      await action(() => interrupted)
+    } finally {
+      try {
+        try {
+          if (track) await this.play(track.uri)
+        } finally {
+          try {
+            await this.tell(`set player position to ${pos}`)
+          } finally {
+            try {
+              await this.tell(`set shuffling to ${shuffle}`)
+            } finally {
+              try {
+                await this.tell(`set repeating to ${repeat}`)
+              } finally {
+                try {
+                  await this.setVolume(v)
+                } finally {
+                  if (state !== 'playing') await this.pause()
+                }
+              }
+            }
+          }
+        }
+      } finally {
+        process.off('SIGINT', onInterrupt)
+        process.off('SIGTERM', onInterrupt)
+      }
+    }
+  }
+
   async pause(): Promise<void> {
     await this.tell('pause')
   }
@@ -122,6 +188,7 @@ export class SpotifyMacController implements MusicController {
   /** Fires when the track id or player state changes. */
   onTrackChange(cb: (t: NowPlaying) => void): () => void {
     let last = ''
+    let position = 0
     let busy = false
     const timer = setInterval(async () => {
       if (busy) return
@@ -129,7 +196,9 @@ export class SpotifyMacController implements MusicController {
       const t = await this.current()
       busy = false
       const key = t ? `${t.id}|${t.state}` : ''
-      if (t && key !== last) cb(t)
+      if (t && (key !== last || t.positionMs + musicConfig.controller.restartSlackMs < position))
+        cb(t)
+      position = t?.positionMs ?? 0
       last = key
     }, musicConfig.controller.pollMs)
     return () => clearInterval(timer)

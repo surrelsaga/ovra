@@ -12,6 +12,7 @@ import type {
 import { DEFAULT_PRIVACY, DEFAULT_SETTINGS } from '@shared/types'
 import { createBus } from '../bus'
 import { memoryStorage } from './dev/memory-storage'
+import { readFileSync } from 'node:fs'
 import { createMusic } from '.'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
@@ -19,13 +20,17 @@ vi.mock('../ipc', () => ({ handle: vi.fn() }))
 class FakeController implements MusicController {
   running = true
   calls: string[] = []
+  contexts: (string | undefined)[] = []
   np: NowPlaying | null = null
   volume = 60
   getVolume?: () => Promise<number | null>
   startedAt = 0
   cb?: (t: NowPlaying) => void
   isAvailable = async (): Promise<boolean> => this.running
-  play = async (uri: string): Promise<void> => void this.calls.push(`play ${uri}`)
+  play = async (uri: string, context?: string): Promise<void> => {
+    this.calls.push(`play ${uri}`)
+    this.contexts.push(context)
+  }
   pause = async (): Promise<void> => void this.calls.push('pause')
   resume = async (): Promise<void> => void this.calls.push('resume')
   next = async (): Promise<void> => {}
@@ -98,6 +103,7 @@ const session = (patch: Partial<Session['config']> = {}): Session => ({
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test fixture, inferred
 async function setup(
   opts: {
+    fetch?: typeof fetch
     songs?: Song[]
     privacy?: Partial<PrivacySettings>
     targetGap?: { minTargetChangeMs: number; downtimeChangeMultiplier: number }
@@ -124,7 +130,12 @@ async function setup(
     controller,
     getKey: () => null,
     rng: () => 0,
-    targetGap: opts.targetGap
+    targetGap: opts.targetGap,
+    fetch:
+      opts.fetch ??
+      (async () => {
+        throw new Error('offline')
+      })
   })
   const state = (situation: Situation | null): void =>
     bus.emit('state:updated', {
@@ -254,7 +265,7 @@ describe('music service', () => {
     expect(controller.calls).toEqual(['play spotify:track:mid'])
   })
 
-  it('settle switches right away and never plays unsure songs', async () => {
+  it('settle switches right away and keeps picking even if only unsure songs exist', async () => {
     const { music, controller, state } = await setup()
     await music.startSession(session())
     controller.calls = []
@@ -272,7 +283,7 @@ describe('music service', () => {
     await vi.advanceTimersByTimeAsync(3 * MIN)
     unsure.state('crashing')
     await vi.advanceTimersByTimeAsync(0)
-    expect(unsure.controller.calls).toEqual([]) // fallback playlists are placeholders, so nothing
+    expect(unsure.controller.calls).toEqual(['play spotify:track:maybe'])
   })
 
   it('fades down, switches, and restores the starting volume for Settle', async () => {
@@ -513,4 +524,74 @@ it('deletion cancels a music start which is still waiting for its library', asyn
   expect(t.controller.cb).toBeUndefined()
   expect(t.music.status().target).toBeNull()
   expect(t.controller.calls).toEqual([])
+})
+
+it('picks catalog tracks with playlist context repeatedly at the same target', async () => {
+  const html = readFileSync(new URL('./library/fixtures/piano.html', import.meta.url), 'utf8')
+  const f = vi.fn(async () => new Response(html))
+  const t = await setup({ songs: [], fetch: f })
+  const p = await t.music.addPlaylist('spotify:playlist:37i9dQZF1DX4sWSpwq3LiO')
+  await t.music.startSession(session())
+  for (let i = 0; i < 3; i++) {
+    const uri = t.controller.calls.at(-1)!.slice('play '.length)
+    expect(uri).toMatch(/^spotify:track:/)
+    expect(t.controller.contexts.at(-1)).toBe(p.uri)
+    t.controller.start(uri, 5000)
+    await vi.advanceTimersByTimeAsync(3500)
+  }
+  expect(t.controller.calls).toHaveLength(4)
+  expect(new Set(t.controller.calls.slice(0, 3)).size).toBe(3)
+  await t.music.stopSession()
+})
+
+it('refreshes availability when status is requested without a session, without launching Spotify', async () => {
+  const t = await setup()
+  expect(t.music.status().available).toBe(false)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(t.music.status().available).toBe(true)
+  t.controller.running = false
+  await vi.advanceTimersByTimeAsync(0)
+  t.music.status()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(t.music.status().available).toBe(false)
+  expect(t.controller.calls).toEqual([])
+})
+
+it('learns a fresh play when the same track restarts after exhaustion', async () => {
+  const s = song('only', { energy: 3 })
+  const t = await setup({ songs: [s] })
+  await t.music.startSession(session())
+  t.controller.start(s.id, 200_000)
+  await vi.advanceTimersByTimeAsync(40_000)
+  t.controller.start(s.id, 200_000)
+  await vi.advanceTimersByTimeAsync(0)
+  expect((await t.music.library()).songs[0].playCount).toBe(2)
+  expect((await t.music.library()).songs[0].learned?.plays).toBe(1)
+  await t.music.stopSession()
+})
+
+it('a pending old pick cannot block playback in a new session', async () => {
+  const t = await setup()
+  let resolve!: (value: boolean) => void
+  let entered!: () => void
+  const checking = new Promise<void>((r) => {
+    entered = r
+  })
+  t.controller.isAvailable = vi
+    .fn()
+    .mockImplementationOnce(() => {
+      entered()
+      return new Promise<boolean>((r) => {
+        resolve = r
+      })
+    })
+    .mockResolvedValue(true)
+  const old = t.music.startSession(session())
+  await checking
+  await t.music.startSession({ ...session(), id: 'new' })
+  expect(t.controller.calls).toEqual(['play spotify:track:steady'])
+  resolve(true)
+  await old
+  expect(t.controller.calls).toHaveLength(1)
+  await t.music.stopSession()
 })

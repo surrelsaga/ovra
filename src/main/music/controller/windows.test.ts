@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parseWindowsNowPlaying, SpotifyWindowsController } from './windows'
+import { parseWindowsNowPlaying, SpotifyWindowsController, type PowerShellRunner } from './windows'
 
 describe('Windows Spotify controller', () => {
   it('rejects invalid URIs before invoking PowerShell', async () => {
@@ -69,3 +69,10 @@ describe('Windows Spotify controller', () => {
 })
 
 afterEach(() => vi.useRealTimers())
+
+it('opens the selected playlist context on Windows only if Spotify is running', async () => {
+  const run = vi.fn<PowerShellRunner>().mockResolvedValue('')
+  await new SpotifyWindowsController(run).play('spotify:track:a', 'spotify:playlist:b')
+  expect(run.mock.calls[0][0]).toContain('Get-Process Spotify')
+  expect(run.mock.calls[0][0]).toContain("Start-Process 'spotify:playlist:b'")
+})

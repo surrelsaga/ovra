@@ -82,7 +82,9 @@ export class SpotifyWindowsController implements MusicController {
     assertUri(uri)
     if (contextUri !== undefined) assertUri(contextUri)
     // URI characters are constrained by SPOTIFY_URI, so this quoted argument cannot break the script.
-    await this.run(`Start-Process '${uri}'`)
+    await this.run(
+      `if (Get-Process Spotify -ErrorAction SilentlyContinue) { Start-Process '${contextUri ?? uri}' }`
+    )
   }
 
   private async command(method: 'Pause' | 'Play' | 'Next'): Promise<void> {

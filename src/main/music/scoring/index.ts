@@ -46,10 +46,13 @@ export function createScorer(d: ScorerDeps): Scorer {
   const queue = new Map<string, Item>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let running = false
+  const artistTags = new Map<string, string[]>()
+  const attempted = new Set<string>()
+  const llmAttempted = new Set<string>()
   let lastfmAt = 0
   let llmNextAt = 0
   let llmFailures = 0
-  // ponytail: in-memory daily budget, resets on restart; persist it if restarts start eating the 50/day.
+  // shortcut: daily budget resets on restart, persist when a shared scoring-budget storage contract exists.
   let day = ''
   let dayCount = 0
 
@@ -84,11 +87,17 @@ export function createScorer(d: ScorerDeps): Scorer {
         item.tags = []
         continue
       }
+      const cached = artistTags.get(item.artist)
+      if (cached) {
+        item.tags = cached
+        continue
+      }
       const wait = lastfmAt + cfg.lastfm.minIntervalMs - now()
       if (wait > 0) await sleep(wait)
       lastfmAt = now()
       try {
         item.tags = await fetchLastfmTags(item.artist, item.title, key, f)
+        artistTags.set(item.artist, item.tags)
       } catch {
         item.tagAttempts++
         if (item.tagAttempts >= cfg.scoring.maxTagAttempts) item.tags = []
@@ -100,9 +109,21 @@ export function createScorer(d: ScorerDeps): Scorer {
   async function scoreReady(): Promise<number | null> {
     const ready = [...queue.values()].filter((i) => i.tags)
     if (!ready.length) return null
+    for (const item of ready) {
+      const song = d.library.get(item.id)
+      if (
+        song &&
+        (!song.scores || song.scores.source === 'rules' || song.scores.source === 'lastfm')
+      )
+        await d.library.update({
+          ...song,
+          scores: scoreFromTags(item.tags ?? [], now(), item.title)
+        })
+    }
+    d.onChange?.()
     const key = d.getKey('OPENROUTER_API_KEY')
     if (!d.aiEnabled() || !key) {
-      for (const i of ready) await save(i, scoreFromTags(i.tags ?? [], now()))
+      for (const i of ready) await save(i, scoreFromTags(i.tags ?? [], now(), i.title))
       return null
     }
     const oldest = Math.min(...ready.map((i) => i.queuedAt))
@@ -110,6 +131,7 @@ export function createScorer(d: ScorerDeps): Scorer {
     const at = Math.max(dueAt, llmNextAt)
     if (now() < at) return at
     const batch = ready.slice(0, cfg.llm.batchMax)
+    batch.forEach((i) => llmAttempted.add(i.id))
     const songs = batch.map((i) => ({ title: i.title, artist: i.artist, tags: i.tags ?? [] }))
     try {
       const text = await requestScores(buildPrompt(songs), key, takeLlm, f)
@@ -122,7 +144,7 @@ export function createScorer(d: ScorerDeps): Scorer {
           item,
           s
             ? { ...s, source: 'llm', scoredAt: now(), tags: item.tags }
-            : scoreFromTags(item.tags ?? [], now())
+            : scoreFromTags(item.tags ?? [], now(), item.title)
         )
       }
     } catch (e) {
@@ -132,7 +154,7 @@ export function createScorer(d: ScorerDeps): Scorer {
       for (const item of batch) {
         item.llmAttempts++
         if (item.llmAttempts >= cfg.llm.maxAttempts)
-          await save(item, scoreFromTags(item.tags ?? [], now()))
+          await save(item, scoreFromTags(item.tags ?? [], now(), item.title))
       }
     }
     return queue.size ? llmNextAt : null
@@ -158,11 +180,15 @@ export function createScorer(d: ScorerDeps): Scorer {
 
   return {
     enqueue(song) {
-      if (song.scores || queue.has(song.id)) return
+      if (!song.artist.trim() || queue.has(song.id) || llmAttempted.has(song.id)) return
+      const refine = d.aiEnabled() && !!d.getKey('OPENROUTER_API_KEY')
+      if (attempted.has(song.id) && !refine) return
+      if (song.scores && !['rules', 'lastfm'].includes(song.scores.source)) return
+      attempted.add(song.id)
       queue.set(song.id, {
         id: song.id,
         title: song.title,
-        artist: song.artist,
+        artist: song.artist.split(/,\u00a0/)[0].trim(),
         queuedAt: now(),
         tagAttempts: 0,
         llmAttempts: 0,
@@ -175,6 +201,8 @@ export function createScorer(d: ScorerDeps): Scorer {
       const song = d.library.get(songId)
       if (!song) return
       queue.delete(songId)
+      attempted.delete(songId)
+      llmAttempted.delete(songId)
       const fresh = { ...song, scores: undefined }
       await d.library.update(fresh)
       this.enqueue(fresh)
@@ -182,6 +210,9 @@ export function createScorer(d: ScorerDeps): Scorer {
     pending: () => queue.size,
     reset() {
       queue.clear()
+      attempted.clear()
+      llmAttempted.clear()
+      artistTags.clear()
       if (timer) clearTimeout(timer)
       timer = null
     }

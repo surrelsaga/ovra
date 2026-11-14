@@ -78,3 +78,5 @@ export function fmtDate(t: number): string {
     minute: '2-digit'
   })
 }
+
+export const musicUiConfig = { availabilityPollMs: 5000 } as const

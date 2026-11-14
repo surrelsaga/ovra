@@ -42,6 +42,7 @@ export default function App(): React.JSX.Element {
   const [sdkFailed, setSdkFailed] = useState(false)
   const [page, setPage] = useState<Page>('session')
   const [musicHelp, setMusicHelp] = useState(false)
+  const [cameraRequest, setCameraRequest] = useState(0)
   const helpDone = useRef<(() => void) | null>(null)
   const activeSessionId = useRef<string | null>(null)
 
@@ -80,6 +81,11 @@ export default function App(): React.JSX.Element {
   }
   useEffect(() => {
     const offs = [
+      ovra().on('push:main-window', (window) => {
+        if (!window.showCamera) return
+        setPage('session')
+        setCameraRequest((request) => request + 1)
+      }),
       ovra().on('push:privacy', (privacy) => {
         setData((d) => d && { ...d, privacy })
         if (!privacy.answeredAt) {
@@ -90,7 +96,10 @@ export default function App(): React.JSX.Element {
       ovra().on('push:settings', (settings) => setData((d) => d && { ...d, settings })),
       ovra().on('push:session', (s) => {
         setSession(s)
-        if (s?.id !== activeSessionId.current) setSdkFailed(false)
+        if (s?.id !== activeSessionId.current) {
+          setSdkFailed(false)
+          setCameraRequest(0)
+        }
         activeSessionId.current = s?.id ?? null
       }),
       ovra().on('push:sdk-error', () => setSdkFailed(true)),
@@ -111,7 +120,16 @@ export default function App(): React.JSX.Element {
   const sessionPage = (): React.JSX.Element => {
     if (active?.status === 'calibrating')
       return <Calibration session={active} settings={data.settings} />
-    if (active) return <Running session={active} sdkFailed={sdkFailed} />
+    if (active)
+      return (
+        <Running
+          key={`${active.id}:${cameraRequest}`}
+          session={active}
+          sdkFailed={sdkFailed}
+          cameraConsent={data.privacy.camera === 'yes'}
+          showCameraInitially={cameraRequest > 0}
+        />
+      )
     if (summary)
       return (
         <SessionSummaryView

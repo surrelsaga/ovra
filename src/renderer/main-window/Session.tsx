@@ -13,6 +13,7 @@ import type {
 import { ovra, usePush } from '../shared/bridge'
 import { Button, ChoiceGroup, MoonOrb, Progress, Toggle } from '../ui'
 import { ACTIVITIES, ACTIVITY_LABEL, fmtClock, fmtMinutes, mainConfig } from './config'
+import { SessionCamera } from './SessionCamera'
 
 const NO_MUSIC: MusicStatus = {
   available: false,
@@ -318,11 +319,27 @@ export function Calibration({
 
 export function Running({
   session,
-  sdkFailed = false
+  sdkFailed = false,
+  cameraConsent = false,
+  showCameraInitially = false
 }: {
   session: Session
   sdkFailed?: boolean
+  cameraConsent?: boolean
+  showCameraInitially?: boolean
 }): React.JSX.Element {
+  const [showCamera, setShowCamera] = useState(showCameraInitially)
+  const [visible, setVisible] = useState(document.visibilityState === 'visible')
+  const mainWindow = usePush('push:main-window', {
+    visible: document.visibilityState === 'visible'
+  })
+  const orb = usePush('push:orb', { mood: 'calm', listening: false, paused: true, away: false })
+  useEffect(() => {
+    const changed = (): void => setVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', changed)
+    return () => document.removeEventListener('visibilitychange', changed)
+  }, [])
+  const canPreview = cameraConsent && session.sensingEnabled && !orb.paused
   const tick = usePush('push:session-tick', {
     sessionId: session.id,
     elapsedSec: 0,
@@ -343,6 +360,19 @@ export function Running({
         <p className="muted" role="status">
           Couldn’t start the camera check. Your session will keep running with timed breaks.
         </p>
+      )}
+      {cameraConsent && session.sensingEnabled && (
+        <>
+          <Button
+            variant="ghost"
+            disabled={orb.paused}
+            aria-expanded={showCamera && canPreview}
+            onClick={() => setShowCamera(!showCamera)}
+          >
+            {orb.paused ? 'Camera paused by you' : showCamera ? 'Hide camera' : 'Show camera'}
+          </Button>
+          {showCamera && canPreview && visible && mainWindow.visible && <SessionCamera />}
+        </>
       )}
       <Button variant="danger" icon={<Square />} onClick={() => void ovra().invoke('session:end')}>
         End session

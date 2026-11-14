@@ -2,7 +2,7 @@ export function canGrantPreviewPermission(
   webContentsId: number,
   mainWebContentsId: number | undefined,
   permission: string,
-  calibrating: boolean,
+  sessionActive: boolean,
   cameraConsent: boolean,
   mediaTypes?: string[],
   mediaType?: string
@@ -10,7 +10,7 @@ export function canGrantPreviewPermission(
   return (
     permission === 'media' &&
     webContentsId === mainWebContentsId &&
-    calibrating &&
+    sessionActive &&
     cameraConsent &&
     (mediaType === 'video' || !!mediaTypes?.includes('video')) &&
     !mediaTypes?.includes('audio') &&

@@ -35,6 +35,7 @@ export interface WindowsDeps {
 
 /** WindowsService plus the bits the IPC handlers and the harness need. */
 export interface ShellWindows extends WindowsService {
+  showMain(showCamera?: boolean): void
   orbMoved(pos: { x: number; y: number }): void
   /** Click-through for the transparent parts of the orb window. Mouse moves are still forwarded. */
   orbIgnoreMouse(ignore: boolean): void
@@ -75,6 +76,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let cardView: MoveCardView = { kind: 'hidden' }
   let calibration = false
+  let inSession = false
+  let cameraPaused = false
 
   const orbStart = (): { x: number; y: number } => {
     const saved = privacy.getSettings().orbPosition
@@ -107,6 +110,13 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       e.preventDefault()
       main.hide()
     })
+    const visibility = (): void =>
+      push(main, 'push:main-window', { visible: main.isVisible() && !main.isMinimized() })
+    main.on('show', visibility)
+    main.on('hide', visibility)
+    main.on('minimize', visibility)
+    main.on('restore', visibility)
+    main.webContents.on('did-finish-load', visibility)
 
     const orb = new BrowserWindow({
       width: cfg.orb.width,
@@ -170,12 +180,18 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   }
 
   const service: ShellWindows = {
-    showMain() {
+    showMain(showCamera = false) {
       const { main } = ensure()
       if (!deps.background) {
+        if (main.isMinimized()) main.restore()
         main.show()
         main.focus()
       }
+      if (showCamera)
+        push(main, 'push:main-window', {
+          visible: main.isVisible() && !main.isMinimized(),
+          showCamera: true
+        })
     },
     showOrb() {
       const { main, orb } = ensure()
@@ -231,7 +247,7 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
     windows: () => wins
   }
 
-  // The main window gets video permission only while calibration is actively sensing.
+  // Display-only video permission is limited to a consenting, unpaused session.
   const mainSession = session.defaultSession
   mainSession.protocol.handle('ovra-preview', (request) => {
     const file = privacy.getSettings().devVideoSource
@@ -261,8 +277,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
         wc.id,
         wins?.main.webContents.id,
         permission,
-        calibration,
-        privacy.canUseCamera(),
+        calibration || inSession,
+        privacy.canUseCamera() && !cameraPaused,
         'mediaTypes' in details ? details.mediaTypes : undefined
       )
     )
@@ -274,8 +290,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
         wc.id,
         wins?.main.webContents.id,
         permission,
-        calibration,
-        privacy.canUseCamera(),
+        calibration || inSession,
+        privacy.canUseCamera() && !cameraPaused,
         undefined,
         details.mediaType
       )
@@ -288,7 +304,15 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   })
   bus.on('session:status', (s) => {
     calibration = s.status === 'calibrating' && s.sensingEnabled
+    inSession = s.status !== 'ended' && s.sensingEnabled
   })
+  bus.on('session:started', () => (cameraPaused = false))
+  bus.on('session:ended', () => {
+    inSession = false
+    calibration = false
+  })
+  bus.on('privacy:camera-paused', () => (cameraPaused = true))
+  bus.on('privacy:camera-resumed', () => (cameraPaused = false))
   bus.on('sdk:error', (error) => {
     if (wins) push(wins.main, 'push:sdk-error', error)
   })
@@ -308,7 +332,7 @@ export async function listVideos(dir: string): Promise<string[]> {
 
 /** Registers window:* and dev:list-videos IPC handlers. */
 export function registerWindowsIpc(windows: ShellWindows): void {
-  handle('window:open-main', () => windows.showMain())
+  handle('window:open-main', (request) => windows.showMain(request?.showCamera === true))
   handle('window:orb-moved', (pos) => windows.orbMoved(pos))
   handle('window:orb-ignore-mouse', ({ ignore }) => windows.orbIgnoreMouse(ignore))
   handle('dev:list-videos', () => (is.dev ? listVideos(testMediaDir()) : []))

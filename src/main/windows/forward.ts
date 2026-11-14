@@ -14,6 +14,7 @@ import {
   type SessionStatus
 } from '@shared/types'
 import { situationLines, targetLines, windowsConfig as cfg } from './config'
+import { bindFramingHint } from './framing'
 
 /** What the forwarder needs from the window layer. Faked in tests. */
 export interface ShellControl {
@@ -61,8 +62,8 @@ export function bindForwarding(
   let bubbleTimer: ReturnType<typeof setTimeout> | undefined
   let breathTimer: ReturnType<typeof setInterval> | undefined
   let whyTimer: ReturnType<typeof setInterval> | undefined
-  /** Demo hint waiting for the bubble to be free; also an interrupted hint, shown again after. */
-  let pendingHint: { text: string; ttlMs: number } | undefined
+  /** Advice waiting for a free bubble; interrupted demo hints may be shown again. */
+  let pendingHint: { text: string; ttlMs: number; action?: OrbView['bubbleAction'] } | undefined
   let shownTtlMs = 0
 
   const update = (patch: Partial<OrbView>): void => {
@@ -73,21 +74,27 @@ export function bindForwarding(
   const isHint = (text: string | undefined): text is string =>
     !!text?.startsWith(cfg.demoHintPrefix)
 
-  const say = (text: string, ttlMs: number = cfg.bubbleTtlMs, teaching = false): void => {
+  const say = (
+    text: string,
+    ttlMs: number = cfg.bubbleTtlMs,
+    teaching = false,
+    action?: OrbView['bubbleAction']
+  ): void => {
     if (!teaching && Date.now() < teachingUntil) {
-      if (isHint(text)) pendingHint = { text, ttlMs }
+      if (isHint(text) || action) pendingHint = { text, ttlMs, action }
       return
     }
     if (teaching) teachingUntil = Date.now() + ttlMs
-    if (isHint(view.bubble) && !isHint(text)) pendingHint = { text: view.bubble, ttlMs: shownTtlMs }
+    if (isHint(view.bubble) && !isHint(text) && !pendingHint?.action)
+      pendingHint = { text: view.bubble, ttlMs: shownTtlMs, action: view.bubbleAction }
     clearTimeout(bubbleTimer)
     shownTtlMs = ttlMs
-    update({ bubble: text })
+    update({ bubble: text, bubbleAction: action })
     bubbleTimer = setTimeout(() => {
-      update({ bubble: undefined })
+      update({ bubble: undefined, bubbleAction: undefined })
       const hint = pendingHint
       pendingHint = undefined
-      if (hint) say(hint.text, hint.ttlMs)
+      if (hint) say(hint.text, hint.ttlMs, false, hint.action)
     }, ttlMs)
   }
 
@@ -229,7 +236,7 @@ export function bindForwarding(
         if (!teachOff && Date.now() < teachingUntil) {
           clearTimeout(bubbleTimer)
           teachingUntil = 0
-          update({ bubble: undefined })
+          update({ bubble: undefined, bubbleAction: undefined })
         }
         if (teachOff) {
           teachCount++
@@ -262,11 +269,12 @@ export function bindForwarding(
     bus.on('privacy:changed', (p) => send('push:privacy', p)),
     bus.on('orb:bubble', (b) => {
       // A demo hint never interrupts another bubble; it waits for it to clear.
-      if (isHint(b.text) && view.bubble)
-        pendingHint = { text: b.text, ttlMs: b.ttlMs ?? cfg.bubbleTtlMs }
-      else say(b.text, b.ttlMs)
+      if ((isHint(b.text) || b.action) && view.bubble)
+        pendingHint = { text: b.text, ttlMs: b.ttlMs ?? cfg.bubbleTtlMs, action: b.action }
+      else say(b.text, b.ttlMs, false, b.action)
     })
   ]
+  const stopFraming = bindFramingHint(bus)
 
   return {
     orb: () => view,
@@ -275,6 +283,7 @@ export function bindForwarding(
       send('push:orb', view)
     },
     dispose: () => {
+      stopFraming()
       offs.forEach((off) => off())
       clearTimeout(bubbleTimer)
       clearInterval(breathTimer)

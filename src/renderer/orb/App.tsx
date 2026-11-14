@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent
 } from 'react'
@@ -159,6 +160,7 @@ export default function App(): React.JSX.Element {
   return (
     <div
       className="orb-app"
+      style={{ '--control-tooltip-delay': `${orbConfig.tooltipDelayMs}ms` } as CSSProperties}
       data-hover={hover || undefined}
       // Mouse presses never take focus, so a later key press can't show a focus ring; Tab still can.
       onMouseDown={(e) => e.preventDefault()}
@@ -167,6 +169,15 @@ export default function App(): React.JSX.Element {
         {view.bubble && (
           <p className="bubble" data-hit>
             {view.bubble}
+            {view.bubbleAction === 'show-camera' && (
+              <button
+                type="button"
+                className="bubble__action"
+                onClick={() => void ovra().invoke('window:open-main', { showCamera: true })}
+              >
+                Show camera
+              </button>
+            )}
           </p>
         )}
       </div>
@@ -270,38 +281,46 @@ export default function App(): React.JSX.Element {
           className="control"
           aria-pressed={view.paused}
           aria-label={view.paused ? 'Resume camera' : 'Pause camera'}
-          title={view.paused ? 'Resume camera' : 'Pause camera'}
           onClick={toggleCamera}
         >
           {view.paused ? <Camera /> : <CameraOff />}
+          <span className="control-tooltip" role="tooltip">
+            {view.paused ? 'Resume camera' : 'Pause camera'}
+          </span>
         </button>
         <button
           type="button"
           className="control"
           aria-pressed={leaveAlone}
           aria-label="Leave my music alone"
-          title={leaveAlone ? 'Music: hands off (on)' : 'Leave my music alone'}
           onClick={toggleMusic}
         >
           {leaveAlone ? <Hand /> : <Music />}
+          <span className="control-tooltip" role="tooltip">
+            {leaveAlone ? 'Music: hands off (on)' : 'Leave my music alone'}
+          </span>
         </button>
         <button
           type="button"
           className="control"
           aria-label="End session"
-          title="End session"
           onClick={() => void ovra().invoke('session:end')}
         >
           <Square />
+          <span className="control-tooltip" role="tooltip">
+            End session
+          </span>
         </button>
         <button
           type="button"
           className="control"
           aria-label="Open main window"
-          title="Open main window"
           onClick={() => void ovra().invoke('window:open-main')}
         >
           <AppWindow />
+          <span className="control-tooltip" role="tooltip">
+            Open main window
+          </span>
         </button>
       </div>
     </div>

@@ -3,6 +3,13 @@
 Agents: don't edit `src/shared/types.ts` or `package.json`. Add a request here, commit it on your branch,
 and tell the orchestrator. The orchestrator applies it on main and tells everyone to rebase.
 
+## 2026-11-15 — UI bits (Job 3) — framing bubble action and Session preview
+
+- File: src/shared/types.ts
+- Change: optional `OrbView.bubbleAction?: 'show-camera'` and `BusEvents['orb:bubble'].action?: 'show-camera'`; `window:open-main` accepts its existing void request or `{ showCamera: true }`; additive push `push:main-window: { visible: boolean; showCamera?: boolean }` and whitelist entry.
+- Why: carry the optional framing action to the orb, route it to the Session tab, and explicitly release the display-only stream on window hide/minimise even when renderer background throttling is disabled. Existing bubble text and open-main callers remain valid; no images or frames cross IPC.
+- Status: applied in surrelsaga/ovra-uibits (requested by the coordinator)
+
 Format:
 
 ```

@@ -533,6 +533,7 @@ export interface OrbView {
   /** Breathe along: orb scale follows this, 0 (exhaled) – 1 (inhaled). */
   breath?: number
   bubble?: string
+  bubbleAction?: 'show-camera'
   nowPlaying?: { name: string; artist: string; word: TargetWord | null }
   /** Check-in mode, camera off: when the next check-in should start (estimate). Unset when unknown. */
   nextCheckAt?: number
@@ -652,7 +653,7 @@ export interface BusEvents {
   /** Emitted by privacy at the end of deleteEverything(). Modules drop in-memory caches (e.g. music library). */
   'data:deleted-all': Record<string, never>
 
-  'orb:bubble': { text: string; ttlMs?: number }
+  'orb:bubble': { text: string; ttlMs?: number; action?: 'show-camera' }
 }
 
 export type BusEventName = keyof BusEvents
@@ -714,7 +715,7 @@ export interface IpcInvoke {
   'data:show-folder': { req: void; res: void }
   'data:folder': { req: void; res: { path: string; platform: string } }
 
-  'window:open-main': { req: void; res: void }
+  'window:open-main': { req: void | { showCamera: true }; res: void }
   'window:orb-moved': { req: { x: number; y: number }; res: void }
   /** Orb window click-through: true while the pointer is over the transparent area. */
   'window:orb-ignore-mouse': { req: { ignore: boolean }; res: void }
@@ -735,6 +736,8 @@ export type IpcInvokeChannel = keyof IpcInvoke
 // ---------------------------------------------------------------------------
 
 export interface IpcPush {
+  /** Main-window visibility and an optional request to open its Session camera preview. */
+  'push:main-window': { visible: boolean; showCamera?: boolean }
   'push:session': Session | null
   'push:session-tick': SessionTick
   'push:session-summary': SessionSummary
@@ -812,6 +815,7 @@ export const IPC_INVOKE_CHANNELS = [
 ] as const satisfies readonly IpcInvokeChannel[]
 
 export const IPC_PUSH_CHANNELS = [
+  'push:main-window',
   'push:session',
   'push:session-tick',
   'push:session-summary',

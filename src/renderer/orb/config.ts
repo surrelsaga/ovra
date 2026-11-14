@@ -1,5 +1,6 @@
 // Owner: Agent E. Orb window tunables.
 export const orbConfig = {
+  tooltipDelayMs: 300,
   cameraNoteMs: 3_000,
   dragThresholdPx: 4,
   keyMovePx: 16,

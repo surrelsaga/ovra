@@ -1,7 +1,7 @@
 import { canGrantPreviewPermission } from './preview-permission'
 
-describe('calibration preview permission', () => {
-  it('allows video only for the consenting main window during calibration', () => {
+describe('session preview permission', () => {
+  it('allows video only for the consenting main window during an active session', () => {
     expect(canGrantPreviewPermission(1, 1, 'media', true, true, ['video'])).toBe(true)
     expect(canGrantPreviewPermission(2, 1, 'media', true, true, ['video'])).toBe(false)
     expect(canGrantPreviewPermission(1, 1, 'media', false, true, ['video'])).toBe(false)

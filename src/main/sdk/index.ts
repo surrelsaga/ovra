@@ -96,10 +96,14 @@ export function createSensing(deps: SensingDeps): SensingService {
         m = { ...m }
         delete m.face
       }
+      const code = m.validationCode ?? validationCode
+      if (code !== null) m = { ...m, validationCode: code }
       // Raw no-face overrides presence immediately; only the displayed hint is debounced.
-      if (validationCode === ValidationCode.noFaceFound)
-        m = face ? { t: m.t, face: { present: false } } : { t: m.t }
-      else if (validationCode === ValidationCode.multipleFaces && m.face)
+      if (code === ValidationCode.noFaceFound)
+        m = face
+          ? { t: m.t, validationCode: code, face: { present: false } }
+          : { t: m.t, validationCode: code }
+      else if (code === ValidationCode.multipleFaces && m.face)
         m = { ...m, face: { present: false } }
       if (calibration && !noFaceFound && hasFace(m, face) && m.pulse?.stable) {
         calibration.measurableAt ??= Date.now()
@@ -112,10 +116,11 @@ export function createSensing(deps: SensingDeps): SensingService {
         !app.isPackaged &&
         process.env.OVRA_MONITOR === '1' &&
         fromCapture(e) &&
-        current === diag.phase &&
+        (current === diag.phase ||
+          (current === 'return-check' && mode === 'continuous' && diag.phase === 'continuous')) &&
         privacy.canUseCamera()
       )
-        bus.emit('monitor:diag', diag)
+        bus.emit('monitor:diag', { ...diag, phase: current! })
     })
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
@@ -391,7 +396,21 @@ export function createSensing(deps: SensingDeps): SensingService {
       if (!current) await runCapture('continuous')
     },
 
-    startReturnCheck: () => runCapture('return-check', cfg.returnCheckMs),
+    async startReturnCheck() {
+      if (mode === 'continuous' && current === 'return-check') return
+      if (mode !== 'continuous' || current !== 'continuous')
+        return runCapture('return-check', cfg.returnCheckMs)
+      // A return is a new evaluation window, not a new SDK stream (warm-ups must survive).
+      clearPhaseTimers()
+      current = 'return-check'
+      bus.emit('sdk:checkin-started', { phase: 'return-check' })
+      phaseDeadline = Date.now() + cfg.returnCheckMs
+      phaseTimer = setTimeout(() => {
+        current = 'continuous'
+        bus.emit('sdk:checkin-ended', { phase: 'return-check' })
+        bus.emit('sdk:checkin-started', { phase: 'continuous' })
+      }, cfg.returnCheckMs)
+    },
 
     async stop() {
       gen++

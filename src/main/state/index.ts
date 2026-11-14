@@ -51,6 +51,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let calibrationPulseCount = 0
   let calibrationPulseSpanSec = 0
   let phase: Exclude<SensingPhase, 'idle'> | null = null
+  let lastEnded: SensingPhase | null = null
   let phaseStart = 0
   let buf: MetricsSnapshot[] = []
   let sawFace = false
@@ -64,6 +65,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let seatedSince: number | null = null
   /** Last face seen while the camera is on. Null = camera was off, so the gap doesn't count. */
   let lastFace: number | null = null
+  let lastFrame: number | null = null
   let away = false
   let manualAway = false
   let paused = false
@@ -95,14 +97,14 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     calibratedFace = undefined
     baselineFailure = null
     calibrationPulseCount = calibrationPulseSpanSec = 0
-    phase = null
+    phase = lastEnded = null
     buf = []
     history = []
     situation = null
     confidence = 0
     trend = 'steady'
     seatedSince = null
-    lastFace = null
+    lastFace = lastFrame = null
     validationCode = ValidationCode.ok
     wakeBuckets.clear()
     away = manualAway = paused = false
@@ -128,7 +130,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
 
   // Continuous mode: away after N s without presence evidence, and a periodic update.
   function tick(): void {
-    if (paused || phase !== 'continuous') return
+    if (paused || (phase !== 'continuous' && (mode !== 'continuous' || phase !== 'return-check')))
+      return
     const now = Date.now()
     const c = cfg()
     if (!away && now - (lastFace ?? phaseStart) >= c.awayNoFaceSec * 1000) {
@@ -148,14 +151,21 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   })
 
   bus.on('sdk:checkin-started', ({ phase: p }) => {
+    const continuing =
+      mode === 'continuous' &&
+      (phase === 'continuous' || phase === 'return-check' || lastEnded === 'return-check') &&
+      (p === 'continuous' || p === 'return-check')
     phase = p
+    lastEnded = null
     phaseStart = lastEval = Date.now()
     buf = []
     sawFace = false
-    validationCode = ValidationCode.ok
-    wakeBuckets.clear()
-    lastFace = null // the camera was off before this; that gap isn't a seated gap
-    if (p === 'continuous') {
+    if (!continuing) {
+      validationCode = ValidationCode.ok
+      wakeBuckets.clear()
+      lastFace = lastFrame = null // camera-off time is not a seated gap
+    }
+    if (p === 'continuous' || (mode === 'continuous' && p === 'return-check')) {
       stopTimer()
       timer = setInterval(tick, 1000)
     }
@@ -169,12 +179,24 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   })
 
   bus.on('sdk:metrics', (s) => {
-    if (!phase || paused || validationCode === ValidationCode.noFaceFound) return
+    if (!phase || paused || !Number.isFinite(s.t) || (lastFrame !== null && s.t <= lastFrame))
+      return
+    lastFrame = s.t
+    const code = s.validationCode ?? validationCode
+    if (code === ValidationCode.noFaceFound) {
+      wakeBuckets.clear()
+      return
+    }
     const c = cfg()
     const pulse = !!s.pulse?.stable && Number.isFinite(s.pulse.value)
     const face =
-      validationCode !== ValidationCode.multipleFaces &&
-      hasFace({ t: s.t, face: s.face }, privacy.canUseFace(), c, calibratedFace)
+      code !== ValidationCode.multipleFaces &&
+      hasFace(
+        { t: s.t, face: s.face, validationCode: s.validationCode },
+        privacy.canUseFace(),
+        c,
+        calibratedFace
+      )
     if (!pulse && !face) return
     onFace(s.t)
     buf.push(s)
@@ -190,13 +212,12 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
 
   bus.on('sdk:checkin-ended', ({ phase: p }) => {
     if (p !== phase) return
+    lastEnded = p
     phase = null
     const snaps = buf
     buf = []
-    if (p === 'continuous') {
-      stopTimer()
-      return
-    }
+    stopTimer()
+    if (p === 'continuous') return
     if (p === 'calibration') {
       const c = cfg()
       const r = buildBaseline(snaps, c, Date.now())
@@ -237,8 +258,11 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   })
 
   bus.on('break:returned', () => {
-    if (!manualAway) return
+    if (!away && !manualAway) return
     manualAway = away = false
+    // An explicit return gets the same no-face grace period as a fresh stream.
+    lastFace = Date.now()
+    wakeBuckets.clear()
     emit()
   })
 
@@ -261,7 +285,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   })
   bus.on('privacy:camera-resumed', () => {
     paused = false
-    lastFace = null
+    lastFace = lastFrame = null
     phaseStart = Date.now()
   })
 

@@ -86,10 +86,13 @@ it('leaves throttle/merge output identical while counting raw payloads and all v
     h.send.mockClear()
     await start(diagnostics)
     for (let i = 0; i < 20; i++) {
-      h.events.metrics({
-        cardio: { pulseRate: [{ value: 99, confidence: 75, stable: i % 2 === 0 }] },
-        face: { landmarks: [] }
-      })
+      h.events.metrics(
+        {
+          cardio: { pulseRate: [{ value: 99, confidence: 75, stable: i % 2 === 0 }] },
+          face: { landmarks: [] }
+        },
+        Date.now() * 1000
+      )
       h.events.validationStatus(7, Date.now(), 'Place more of the chest in view.')
       await vi.advanceTimersByTimeAsync(50)
     }
@@ -119,4 +122,22 @@ it('leaves throttle/merge output identical while counting raw payloads and all v
   }
   const normal = await run(false)
   expect(await run(true)).toEqual(normal)
+})
+
+it('forwards raw validation and the SDK frame timestamp instead of refreshing a frozen frame', async () => {
+  await start()
+  const timestampUs = Date.now() * 1000
+  h.events.validationStatus(7, timestampUs, 'Chest not visible')
+  h.events.metrics({ face: {} }, timestampUs)
+  await vi.advanceTimersByTimeAsync(250)
+  h.events.metrics({ face: {} }, timestampUs)
+  await vi.advanceTimersByTimeAsync(250)
+  const snapshots = h.send.mock.calls
+    .filter(([channel]) => channel === 'capture:metrics')
+    .map(([, snapshot]) => snapshot)
+  expect(snapshots).toEqual([
+    { t: timestampUs / 1000, validationCode: 7, face: { present: true } },
+    { t: timestampUs / 1000, validationCode: 7, face: { present: true } }
+  ])
+  await stop()
 })

@@ -8,6 +8,7 @@ import type {
   Situation,
   Trend
 } from '@shared/types'
+import { ValidationCode } from '@shared/types'
 import { stateConfig, type StateConfig } from './config'
 
 export function median(xs: number[]): number | undefined {
@@ -17,14 +18,32 @@ export function median(xs: number[]): number | undefined {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** Pulse or a plausible landmark-derived box; a bare SDK face object proves nothing. */
+/** Raw face-specific validation, pulse or plausible landmarks; bare face objects prove nothing. */
 export function hasFace(
   s: MetricsSnapshot,
   faceEnabled: boolean,
   cfg: StateConfig = stateConfig,
   calibrated?: Pick<FaceSnapshot, 'center' | 'size'>
 ): boolean {
+  if (s.validationCode === ValidationCode.noFaceFound) return false
   if (s.pulse?.stable && Number.isFinite(s.pulse.value)) return true
+  if (s.validationCode === ValidationCode.multipleFaces) return false
+  if (
+    s.validationCode !== undefined &&
+    [
+      ValidationCode.ok,
+      ValidationCode.faceNotCentered,
+      ValidationCode.faceSizeOutOfRange,
+      ValidationCode.chestNotVisible,
+      ValidationCode.excessiveMotion,
+      ValidationCode.faceTooClose,
+      ValidationCode.faceTooFar,
+      ValidationCode.faceTooHigh,
+      ValidationCode.faceTooLow,
+      ValidationCode.faceNotForward
+    ].some((code) => code === s.validationCode)
+  )
+    return true
   const f = s.face
   if (!faceEnabled || !f?.present || !f.center || f.size === undefined) return false
   const { x, y } = f.center

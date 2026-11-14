@@ -134,9 +134,11 @@ async function start(req: CaptureStartRequest): Promise<void> {
   }
   active = a
 
-  sdk.on('metrics', (buf) => {
+  sdk.on('metrics', (buf, timestampUs) => {
     const raw = decodeMetrics(buf)
-    const snapshot = reduceMetrics(raw, frame, Date.now())
+    // SDK frame timestamps are epoch microseconds; receipt time would hide a frozen stream.
+    const snapshot = reduceMetrics(raw, frame, timestampUs / 1000)
+    if (lastCode !== null) snapshot.validationCode = lastCode
     if (diagnostics) addPayload(diagnostics, raw, snapshot)
     pending = mergeSnapshots(pending, snapshot)
   })

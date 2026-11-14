@@ -209,13 +209,14 @@ describe('phases and check-in scheduler', () => {
     const returning = sensing.startReturnCheck()
     const calibrating = sensing.startCalibration()
     await vi.advanceTimersByTimeAsync(0)
-    expect(sensing.phase()).toBe('continuous')
-    expect(names()).toEqual(['sdk:checkin-started:continuous'])
+    expect(sensing.phase()).toBe('return-check')
+    expect(names()).toEqual(['sdk:checkin-started:continuous', 'sdk:checkin-started:return-check'])
     h.handlers['capture:status']('idle', { sender: h.wc })
     await Promise.all([returning, calibrating])
     expect(names()).toEqual([
       'sdk:checkin-started:continuous',
-      'sdk:checkin-ended:continuous',
+      'sdk:checkin-started:return-check',
+      'sdk:checkin-ended:return-check',
       'sdk:checkin-started:calibration'
     ])
     expect(sensing.phase()).toBe('calibration')
@@ -316,20 +317,38 @@ describe('phases and check-in scheduler', () => {
     expect(names()).toHaveLength(4)
   })
 
-  it('return check hands back to continuous mode', async () => {
+  it('return check keeps one continuous SDK stream through both phase changes', async () => {
     const { sensing, names } = setup()
     await sensing.startContinuous()
     await sensing.startReturnCheck()
     expect(sensing.phase()).toBe('return-check')
-    await vi.advanceTimersByTimeAsync(3_000)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await sensing.startReturnCheck() // duplicate requests do not restart or extend the check
+    await vi.advanceTimersByTimeAsync(2_000)
     expect(sensing.phase()).toBe('continuous')
     expect(names()).toEqual([
       'sdk:checkin-started:continuous',
-      'sdk:checkin-ended:continuous',
       'sdk:checkin-started:return-check',
       'sdk:checkin-ended:return-check',
       'sdk:checkin-started:continuous'
     ])
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start'])
+  })
+
+  it('cancels a logical return check when paused without restarting capture later', async () => {
+    const { sensing, names } = setup()
+    await sensing.startContinuous()
+    await sensing.startReturnCheck()
+    await sensing.pause()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(sensing.phase()).toBe('idle')
+    expect(names()).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:checkin-started:return-check',
+      'sdk:checkin-ended:return-check',
+      'privacy:camera-paused'
+    ])
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start', 'push:capture-stop'])
   })
 
   it('pause stops the camera and skips check-ins until resumed', async () => {
@@ -405,7 +424,9 @@ describe('capture messages', () => {
       h.handlers['capture:metrics'](m, { sender: h.wc })
       expect(engine.diagnostics().lastFace).toBeNull()
       expect(t.events.filter((e) => e.name === 'sdk:metrics').at(-1)?.payload).toEqual(
-        face ? { t: m.t, face: { present: false } } : { t: m.t }
+        face
+          ? { t: m.t, validationCode: 1, face: { present: false } }
+          : { t: m.t, validationCode: 1 }
       )
       expect(t.events.filter((e) => e.name === 'sdk:validation')).toHaveLength(0)
       for (let sec = 0; sec < 25; sec++) {
@@ -435,10 +456,35 @@ describe('capture messages', () => {
     h.handlers['capture:metrics'](m, { sender: h.wc })
     expect(engine.diagnostics().lastFace).toBeNull()
     h.handlers['capture:metrics'](
-      { ...m, pulse: { value: 60, confidence: 90, stable: true } },
+      { ...m, t: m.t + 1, pulse: { value: 60, confidence: 90, stable: true } },
       { sender: h.wc }
     )
-    expect(engine.diagnostics().lastFace).toBe(m.t)
+    expect(engine.diagnostics().lastFace).toBe(m.t + 1)
+    await t.sensing.stop()
+    engine.dispose()
+  })
+
+  it('uses raw framing codes for vitals-only presence before hints and returns without capture restart', async () => {
+    const t = setup()
+    const engine = createStateEngine({ bus: t.bus, privacy: t.privacy })
+    await t.sensing.startContinuous()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(engine.current().away).toBe(true)
+    let wasAway = true
+    t.bus.on('state:updated', (s) => {
+      if (wasAway && !s.away) void t.sensing.startReturnCheck()
+      wasAway = s.away
+    })
+    h.handlers['capture:validation']({ t: Date.now(), code: 7, hint: 'Chest' }, { sender: h.wc })
+    for (let sec = 0; sec < 3; sec++) {
+      h.handlers['capture:metrics']({ t: Date.now(), face: { present: true } }, { sender: h.wc })
+      expect(engine.current().away).toBe(sec !== 2)
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(t.sensing.phase()).toBe('return-check')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(t.sensing.phase()).toBe('continuous')
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start'])
     await t.sensing.stop()
     engine.dispose()
   })

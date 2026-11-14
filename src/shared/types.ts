@@ -55,6 +55,8 @@ export interface FaceSnapshot {
 export interface MetricsSnapshot {
   /** Epoch ms when the snapshot was produced. */
   t: number
+  /** Raw SDK validation for this frame; presence uses it before hint smoothing. */
+  validationCode?: number
   pulse?: Reading
   breathing?: Reading
   hrv?: HrvReading

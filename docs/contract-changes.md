@@ -135,3 +135,10 @@ Format:
 - Change: optional `SongScores.scorer?: number`, the scoring version that produced the scores (missing = version 1). The privacy song schema accepts it as an optional positive integer.
 - Why: Job F made scoring per-track and rubric-based; AI scores from older versions are redone once in the background while learned adjustments and votes stay untouched.
 - Status: applied in surrelsaga/ovra-scoring (requested by the coordinator)
+
+## 2026-11-15 — presence — raw validation on snapshots
+
+- File: src/shared/types.ts
+- Change: optional `MetricsSnapshot.validationCode: number`, the raw SDK validation code for the frame.
+- Why: framing codes prove presence before hint smoothing, including vitals-only mode; empty face objects alone do not.
+- Status: applied in surrelsaga/ovra-presence (requested by the coordinator)

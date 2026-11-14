@@ -52,3 +52,4 @@ Read PLAN.md fully before starting any task. It is the source of truth for what 
 
 ## When you finish
 Write a short report: what works, what's stubbed, and anything that needs Daniel.
+- **Record smart workarounds (2026-11-15):** every non-obvious decision or workaround (especially ones that adapt to SDK limits) goes into `docs/decisions.md`, and reliability ones also into `docs/reliability.md`, with the reason. Daniel uses them for the DEV post. Workers list them in their report under "Workarounds for the post"; the coordinator records them.

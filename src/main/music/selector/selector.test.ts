@@ -9,6 +9,7 @@ import {
   pickSong,
   steadyEnergy
 } from '.'
+import { musicConfig } from '../config'
 
 const song = (id: string, s?: Partial<SongScores>, extra: Partial<Song> = {}): Song => ({
   id: `spotify:track:${id}`,
@@ -147,6 +148,20 @@ describe('pickSong', () => {
     )
   })
 
+  it('treats the same title by the same lead artist under another id as already played', () => {
+    const single = song('single', { energy: 1 }, { title: 'That Should Be Me' })
+    const album = song(
+      'album',
+      { energy: 1 },
+      { title: 'That Should Be Me', artist: 'a,\u00a0Rascal Flatts' }
+    )
+    const other = song('other', { energy: 2 })
+    const played = new Map([[single.id, 0]])
+    expect(pickSong([single, album, other], 'settle', { ...ctx, rng: () => 0, played })?.id).toBe(
+      other.id
+    )
+  })
+
   it('keeps outside picks to at most one in ten, and only when own songs are far', () => {
     const mine = song('mine', { energy: 5, mood: 'dark' }, { origin: 'mine' })
     const outside = song('outside', { energy: 1 }, { origin: 'fallback' })
@@ -244,6 +259,20 @@ describe('activity music lean', () => {
       expect(pickSong([heavy, light], target, context)?.id).toBe(light.id)
       expect(pickSong([heavy], target, context)?.id).toBe(heavy.id)
       expect(fits(heavy, target, context)).toBe(true)
+    }
+  )
+
+  it.each(['focus', 'reading', 'creative'] as const)(
+    'good mood still prefers bright songs with %s',
+    (activity) => {
+      const { min } = musicConfig.activityLean[activity]
+      const neutral = song('neutral', { energy: min, vocals: 'instrumental' })
+      const bright = song('bright', { energy: min, vocals: 'instrumental', mood: 'bright' })
+      const context = { ...ctx, rng: () => 0, activity }
+      expect(pickSong([neutral, bright], baseTarget('good', activity), context)?.id).toBe(bright.id)
+      // Focused keeps the activity lean only: no mood preference.
+      const focused = baseTarget('focused', activity)
+      expect(pickSong([neutral, bright], focused, context)?.id).toBe(neutral.id)
     }
   )
 

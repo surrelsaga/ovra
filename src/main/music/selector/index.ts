@@ -166,7 +166,11 @@ export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): nu
   let distance = Math.max(min - energy, energy - max, 0)
   const calm = target === 'settle' || target === 'ease-down'
   if (calm && e?.mood === 'dark') distance += c.darkPenalty
-  if ((lean ? lean.bright : target === 'lift' || target === 'let-it-ride') && e?.mood !== 'bright')
+  // Good mood keeps it bright whatever the activity; otherwise the lean decides.
+  if (
+    (target === 'let-it-ride' || (lean ? lean.bright : target === 'lift')) &&
+    e?.mood !== 'bright'
+  )
     distance += c.moodPenalty
   if (lean && e) distance += lean.vocals[e.vocals]
   if (isUnsure(s)) distance += calm ? c.unsurePenaltyCalm : c.unsurePenalty
@@ -185,8 +189,14 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
   const playable = songs.filter((s) => s.playable !== false)
   const own = playable.filter((s) => s.origin !== 'fallback')
   const outside = playable.filter((s) => s.origin === 'fallback')
+  // Same title by the same lead artist under another id (single, album, feat. version) counts as heard.
+  const key = (s: Song): string =>
+    `${s.title}\n${s.artist.split(',')[0]}`.normalize('NFKC').toLowerCase().trim()
+  const heard = new Set(
+    playable.filter((s) => s.id === ctx.currentId || ctx.played?.has(s.id)).map(key)
+  )
   const available = (pool: Song[]): Song[] => {
-    const fresh = pool.filter((s) => s.id !== ctx.currentId && !ctx.played?.has(s.id))
+    const fresh = pool.filter((s) => !heard.has(key(s)))
     if (fresh.length) return fresh
     // Exhaustion: replay the longest-ago song, including the current song in a one-song library.
     const older = pool.filter((s) => s.id !== ctx.currentId)

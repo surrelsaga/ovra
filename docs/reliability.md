@@ -227,3 +227,11 @@ holds, max calibration wait). Dev tools (monitor, harness, video source) run the
 - **Decided 2026-11-14 (decision 39).** Implementation not started; Daniel picks the order.
 - **Superseded once built:** decision 26 (already replaced by 29), the presence part of 29 (by 5.4),
   and calibration bars in `src/main/state/config.ts` and `src/main/session/config.ts`.
+
+## 9. Implementation notes (workarounds, for the post)
+
+- **Missing data never picks music (Job 5, decision 40).** Before the first real mood, music stays on Steady with the activity's lean; it never picks Boost or Calm from missing data. The first real mood switches at once (skipping the 3 min gap once). A dropout keeps the last known mood.
+- **"Visible but unmeasurable" counts as present (Job 2, decision 41).**
+  - **The rule:** codes 7/12/13–17 on a *fresh* SDK frame mean someone is there. We trust the SDK's raw code, not an empty face object (which it also sends for an empty chair).
+  - **Frozen feeds:** freshness uses the SDK's own frame timestamps, so a repeated or frozen frame can't fake presence.
+  - **Returning:** coming back no longer restarts the SDK. The return check is a logical phase on the same running stream, so the 12/30/60 s warm-ups aren't thrown away.

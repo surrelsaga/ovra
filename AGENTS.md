@@ -24,8 +24,9 @@ Read PLAN.md fully before starting any task. It is the source of truth for what 
 - API keys come from `.env`. Never commit `.env`, keys, or `test-media/`. Never print keys in logs.
 - `.env` and `test-media/` are git-ignored, so they don't exist in worktrees or copies of the repo.
   If you're not in the main repo folder, use the absolute paths the orchestrator gives you.
-- **Presage credits are limited.** Never run anything that uses the SmartSpectra SDK (sensing or e2e harness,
-  dev video source, spike scripts, live camera) without asking Daniel first. Test with unit tests and mocks.
+- **SDK runs are allowed (2026-11-14):** the SmartSpectra SDK, sensing/e2e harnesses, the dev video source and the
+  live camera may be used for testing. Still prefer unit tests and mocks for logic, and the dev video source over the
+  live camera when a recording covers the case. Camera rules below (no frames to disk, no uploads) still apply.
 - **Leave Daniel's Spotify as you found it.** Prefer mocks. Any test that touches the real Spotify app must save its
   state first (volume, track, playing/paused, shuffle, repeat) and restore it when done, also on errors and Ctrl+C.
   Never launch Spotify if it isn't running.

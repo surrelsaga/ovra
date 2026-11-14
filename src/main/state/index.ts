@@ -23,8 +23,16 @@ import {
   type WindowEval
 } from './classifier'
 import { resolveConfig } from './config'
+import { describeWindow, whyLine, type Why } from './why'
 
 export { buildBaseline, classify, evaluateWindow } from './classifier'
+
+/** Extras for the orb's why line and the dev monitor. In memory only. */
+export interface StateExplain {
+  why(): Why | undefined
+  /** Coarse line for the latest window, numbered so the monitor logs each one once. */
+  lastWindow(): { n: number; line: string } | null
+}
 
 export interface StateDeps {
   bus: Bus
@@ -33,7 +41,7 @@ export interface StateDeps {
 
 const MAX_HISTORY = 100
 
-export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
+export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & StateExplain {
   const cfg = (): ReturnType<typeof resolveConfig> =>
     resolveConfig(privacy.getSettings().thresholdOverrides)
 
@@ -60,6 +68,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   let manualAway = false
   let paused = false
   let lastEval = 0
+  let windows = 0
   let timer: ReturnType<typeof setInterval> | undefined
 
   const current = (): StateUpdate => {
@@ -106,6 +115,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     if (!ev) return
     history = [...history, ev].slice(-MAX_HISTORY)
     ;({ situation, confidence, trend } = classify(history, mode, situation, c))
+    windows++
   }
 
   function onFace(t: number): void {
@@ -258,6 +268,29 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   return {
     reset,
     current,
+    why() {
+      if (!baseline || paused || away) return undefined
+      const c = cfg()
+      if (phase === 'continuous') {
+        const gapMs = Date.now() - (lastFace ?? phaseStart)
+        if (gapMs >= c.whyAwaySoonSec * 1000)
+          return {
+            text: `Can't see you · away in ${Math.max(0, Math.ceil(c.awayNoFaceSec - gapMs / 1000))} s`,
+            progress: Math.min(1, gapMs / (c.awayNoFaceSec * 1000)),
+            moving: true
+          }
+      }
+      return whyLine(history, situation, mode, c)
+    },
+    lastWindow() {
+      const w = history[history.length - 1]
+      if (!w) return null
+      const why = whyLine(history, situation, mode, cfg())
+      return {
+        n: windows,
+        line: `${describeWindow(w)} situation=${situation ?? '-'} why=${JSON.stringify(why?.text ?? '')}`
+      }
+    },
     diagnostics: () => {
       const activePulses = buf.filter((s) => s.pulse?.stable)
       const pulses = phase === 'calibration' ? activePulses : null

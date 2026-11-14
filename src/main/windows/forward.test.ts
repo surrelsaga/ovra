@@ -298,3 +298,58 @@ it('keeps the target before the first track, recovers the song from music status
   expect(fw.orb().nowPlaying).toBeUndefined()
   fw.dispose()
 })
+
+describe('demo badge, why line and demo hints', () => {
+  afterEach(() => vi.useRealTimers())
+  const state = {
+    t: 1,
+    situation: 'tense' as const,
+    confidence: 1,
+    seatedMinutes: 0,
+    away: false,
+    trend: 'steady' as const
+  }
+
+  it('shows the badge only in demo sessions and forwards the why line', () => {
+    vi.useFakeTimers()
+    const bus = createBus()
+    const shell = fakeShell()
+    let why: OrbView['why'] = { text: 'Close to your usual', moving: false }
+    const fw = bindForwarding(bus, shell, undefined, () => why)
+    bus.emit('session:started', session('calibrating'))
+    expect(fw.orb().demo).toBeUndefined()
+    bus.emit('session:status', session('ended'))
+    const demo = session('calibrating')
+    bus.emit('session:started', { ...demo, config: { ...demo.config, demo: true } })
+    bus.emit('session:status', session('running'))
+    expect(fw.orb().demo).toBe(true)
+    bus.emit('state:updated', state)
+    expect(fw.orb().why).toEqual({ text: 'Close to your usual', moving: false })
+    why = { text: "Can't see you · away in 9 s", progress: 0.4, moving: true }
+    vi.advanceTimersByTime(windowsConfig.whyTickMs)
+    expect(fw.orb().why).toEqual(why)
+    bus.emit('session:status', session('ended'))
+    expect(fw.orb().demo).toBeUndefined()
+    expect(fw.orb().why).toBeUndefined()
+    fw.dispose()
+  })
+
+  it('queues demo hints after state bubbles and re-shows an interrupted hint', () => {
+    vi.useFakeTimers()
+    const bus = createBus()
+    const fw = bindForwarding(bus, fakeShell())
+    const hint = 'Demo: try 40 s of squats off camera, then sit down.'
+    bus.emit('state:updated', state) // "You seem a bit tense."
+    bus.emit('orb:bubble', { text: hint, ttlMs: 15_000 })
+    expect(fw.orb().bubble).toBe('You seem a bit tense.')
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
+    expect(fw.orb().bubble).toBe(hint)
+    bus.emit('orb:bubble', { text: 'Easing into calmer songs.' })
+    expect(fw.orb().bubble).toBe('Easing into calmer songs.')
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
+    expect(fw.orb().bubble).toBe(hint)
+    vi.advanceTimersByTime(15_000)
+    expect(fw.orb().bubble).toBeUndefined()
+    fw.dispose()
+  })
+})

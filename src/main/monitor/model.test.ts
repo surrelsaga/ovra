@@ -47,7 +47,11 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
     const model = createMonitorModel(
       {
         bus,
-        state: { current: () => state, diagnostics: () => diagnostics },
+        state: {
+          current: () => state,
+          diagnostics: () => diagnostics,
+          lastWindow: () => ({ n: 1, line: 'signal=tense rule="pulse up, pulse only"' })
+        },
         sensing: { phase: () => 'continuous' },
         session: { current: () => session },
         music: {
@@ -85,6 +89,8 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
       source: 'state:baseline-ready'
     })
     bus.emit('state:updated', state)
+    bus.emit('state:updated', state)
+    expect(log.mock.calls.filter(([line]) => line.includes('window signal=tense'))).toHaveLength(1)
     const snapshot = model.snapshot()
     expect(snapshot).toMatchObject({
       processing: 'kRunning',

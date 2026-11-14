@@ -285,4 +285,33 @@ describe('song pill and camera status', () => {
     view.unmount()
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it('shows the why line only while moving or hovered, and the Demo badge only in demo', () => {
+    vi.useFakeTimers()
+    const bridge = installFakeBridge()
+    const { container } = render(<App />)
+    const app = container.querySelector('.orb-app') as HTMLElement
+    const line = (): HTMLElement | null => screen.queryByTestId('why-line')
+
+    bridge.push('push:orb', { ...base, why: { text: 'Close to your usual', moving: false } })
+    expect(line()).toBeNull()
+    expect(screen.queryByText('Demo')).toBeNull()
+    fireEvent.mouseMove(moon())
+    expect(line()).toHaveTextContent('Close to your usual')
+    fireEvent.mouseMove(app)
+    act(() => vi.advanceTimersByTime(orbConfig.hoverGraceMs + 1))
+    expect(line()).toBeNull()
+
+    bridge.push('push:orb', {
+      ...base,
+      demo: true,
+      why: { text: 'Pulse above your usual · 20 of 30 s', progress: 0.66, moving: true }
+    })
+    expect(line()).toHaveTextContent('Pulse above your usual · 20 of 30 s')
+    expect(line()?.querySelector('.why__bar i')).toHaveStyle({ width: '66%' })
+    expect(screen.getByText('Demo')).toBeInTheDocument()
+
+    bridge.push('push:orb', { ...base, away: true, why: { text: 'x', moving: true } })
+    expect(line()).toBeNull()
+  })
 })

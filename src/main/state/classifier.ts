@@ -102,6 +102,8 @@ export interface WindowEval {
   t: number
   signal: WindowSignal
   pulseDelta: number
+  /** Breathing vs baseline; unset without breathing or while talking. */
+  breathingDelta?: number
   /** No breathing or RMSSD to back up the pulse. */
   pulseOnly: boolean
   nearTense?: boolean
@@ -166,6 +168,7 @@ export function evaluateWindow(
     t: snaps[snaps.length - 1].t,
     signal: tense ? 'tense' : low ? 'low' : steady ? 'steady' : 'unclear',
     pulseDelta: pd,
+    breathingDelta: bd,
     nearTense:
       pd >= cfg.tensePulsePct - cfg.streakBandPct &&
       (tenseBackers.length === 0 || tenseBackers.some(Boolean)),
@@ -188,7 +191,7 @@ export interface Classification {
 }
 
 /** Trailing qualifying windows; borderline windows preserve but do not advance the hold. */
-function streak(
+export function streak(
   history: WindowEval[],
   signal: 'tense' | 'low'
 ): { count: number; duration: number } {

@@ -4,7 +4,7 @@ import type { Situation, TargetWord } from '@shared/types'
 export const windowsConfig = {
   main: { width: 1100, height: 720, minWidth: 900, minHeight: 600 },
   /** Orb window holds the pixel moon (88 px disk, 128 px with ring), bubble, now-playing chip and the hover bar under them. */
-  orb: { width: 220, height: 278, margin: 24 },
+  orb: { width: 220, height: 302, margin: 24 },
   moveCard: { width: 360, height: 480, gap: 8 },
   /** Background colour for windows before the renderer paints (matches --bg). */
   background: '#0b0c0f',
@@ -13,6 +13,10 @@ export const windowsConfig = {
   /** How often the breath value is pushed to the orb. */
   breathTickMs: 100,
   bubbleTtlMs: 7_000,
+  /** Bubbles starting with this are demo hints: they wait for the bubble to be free. */
+  demoHintPrefix: 'Demo:',
+  /** How often the why line is refreshed (the away countdown moves every second). */
+  whyTickMs: 1_000,
   cameraTeachLimit: 3,
   /** Wait this long after the last drag before saving the orb position. */
   orbSaveDelayMs: 400,

@@ -53,6 +53,8 @@ export const stateConfig = {
   presenceSizeRatio: 1.6,
   wakeFaceSec: 3,
   wakeWindowSec: 4,
+  /** Why line: "Can't see you" shows after this long without presence evidence. */
+  whyAwaySoonSec: 5,
 
   // Continuous mode.
   continuousUpdateSec: 30,

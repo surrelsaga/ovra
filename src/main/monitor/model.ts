@@ -13,7 +13,10 @@ import { createMonitorCounters } from './aggregate'
 export interface MonitorDeps {
   bus: Bus
   sensing: Pick<SensingService, 'phase'>
-  state: Pick<StateEngine, 'current' | 'diagnostics'>
+  state: Pick<StateEngine, 'current' | 'diagnostics'> & {
+    /** Coarse classifier decision for the latest window (signal, rule, hold progress). */
+    lastWindow?: () => { n: number; line: string } | null
+  }
   session: Pick<SessionService, 'current'>
   music: Pick<MusicService, 'status'>
 }
@@ -34,6 +37,7 @@ export function createMonitorModel(
   let lastChange: MonitorSnapshot['session']['lastChange'] = null
   let away = deps.state.current().away
   let loggedValidation: number | null = null
+  let loggedWindow = 0
   const announce = (text: string): void => log(`[monitor] ${text}`)
   const setPhase = (next: typeof phase): void => {
     if (phase === next) return
@@ -67,6 +71,9 @@ export function createMonitorModel(
       lastUpdated = s.t
       if (s.away !== away) announce(s.away ? 'away' : 'returned')
       away = s.away
+      const w = deps.state.lastWindow?.()
+      if (w && w.n !== loggedWindow) announce(`window ${w.line}`)
+      loggedWindow = w?.n ?? loggedWindow
     }),
     bus.on('state:baseline-ready', (r) =>
       announce(

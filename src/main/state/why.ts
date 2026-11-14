@@ -1,0 +1,107 @@
+// Why line (decision 34) and the monitor's per-window line. Coarse words and time steps only:
+// never a vitals value, never stored or sent.
+import type { CameraMode, OrbView, Situation } from '@shared/types'
+import { streak, type WindowEval } from './classifier'
+import type { StateConfig } from './config'
+
+export type Why = NonNullable<OrbView['why']>
+
+/** "20 of 30 s" for holds under a minute, else "1 of 3 min". Whole steps, rounded down. */
+function steps(doneMs: number, needMin: number): string {
+  const needSec = needMin * 60
+  if (needSec < 60) return `${Math.min(needSec, Math.floor(doneMs / 10_000) * 10)} of ${needSec} s`
+  return `${Math.min(needMin, Math.floor(doneMs / 60_000))} of ${needMin} min`
+}
+
+function hold(
+  history: WindowEval[],
+  signal: 'tense' | 'low',
+  mode: CameraMode,
+  checkins: number,
+  minutes: number
+): { label: string; progress: number } {
+  const s = streak(history, signal)
+  if (mode === 'checkins')
+    return {
+      label: `${Math.min(s.count, checkins)} of ${checkins} check-ins`,
+      progress: Math.min(1, s.count / checkins)
+    }
+  return {
+    label: steps(s.duration, minutes),
+    progress: Math.min(1, s.duration / (minutes * 60_000))
+  }
+}
+
+/** What Ovra is reading from the window history. Undefined before the first window. */
+export function whyLine(
+  history: WindowEval[],
+  situation: Situation | null,
+  mode: CameraMode,
+  cfg: StateConfig
+): Why | undefined {
+  const last = history[history.length - 1]
+  if (!last) return undefined
+  const up = last.signal === 'tense' || !!last.nearTense
+  const down = last.signal === 'low' || !!last.nearLow
+
+  if (situation === 'tense' && last.signal === 'tense') {
+    const s = streak(history, 'tense')
+    return {
+      text: `Pulse above your usual · ${steps(s.duration, cfg.crashingTenseMin)}`,
+      progress: Math.min(1, s.duration / (cfg.crashingTenseMin * 60_000)),
+      moving: true
+    }
+  }
+  if (situation === 'tense' || situation === 'crashing')
+    return {
+      text: up ? 'Pulse above your usual' : 'Pulse above your usual · settling',
+      moving: true
+    }
+  if (situation === 'low')
+    return {
+      text: down ? 'Pulse below your usual' : 'Pulse below your usual · settling',
+      moving: true
+    }
+
+  if (up && streak(history, 'tense').count > 0) {
+    const h = hold(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)
+    return { text: `Pulse above your usual · ${h.label}`, progress: h.progress, moving: true }
+  }
+  if (down && streak(history, 'low').count > 0) {
+    const h = hold(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin)
+    return { text: `Pulse below your usual · ${h.label}`, progress: h.progress, moving: true }
+  }
+  const bd = last.breathingDelta
+  if (bd !== undefined && bd <= cfg.lowBreathingPct)
+    return { text: 'Breathing slower than usual', moving: true }
+  if (bd !== undefined && bd >= cfg.tenseBreathingPct)
+    return { text: 'Breathing faster than usual', moving: true }
+  if (last.signal === 'unclear')
+    return {
+      text:
+        last.pulseDelta > 0 ? 'Pulse a little above your usual' : 'Pulse a little below your usual',
+      moving: true
+    }
+  return { text: 'Close to your usual', moving: false }
+}
+
+/** Monitor line for one window: signal, which rule decided it, flags. No values. */
+export function describeWindow(w: WindowEval): string {
+  const rule =
+    w.signal === 'tense'
+      ? w.pulseOnly
+        ? 'pulse up, pulse only'
+        : 'pulse up, backed by breathing or HRV'
+      : w.signal === 'low'
+        ? 'pulse down (breathing or blinking agrees)'
+        : w.signal === 'steady'
+          ? w.happyMajority
+            ? 'near usual, happy most of the window'
+            : 'near usual'
+          : w.nearTense
+            ? 'near the tense bar, hold paused'
+            : w.nearLow
+              ? 'near the low bar, hold paused'
+              : 'between bars'
+  return `signal=${w.signal} rule="${rule}"${w.negativeMajority ? ' negative-face' : ''}`
+}

@@ -135,6 +135,8 @@ export default function App(): React.JSX.Element {
     return () => clearTimeout(timer)
   }, [cameraNote.on, cameraNote.text])
   const cameraTip = cameraLabel(view, now)
+  // Why line: only while something is moving, or on hover. Never a vitals value (decision 34).
+  const why = view.why && !view.away && (view.why.moving || hover) ? view.why : null
 
   useEffect(() => {
     if (!view.away && !view.nextCheckAt) return
@@ -179,6 +181,7 @@ export default function App(): React.JSX.Element {
         {...drag}
       >
         <MoonOrb {...view} />
+        {view.demo && <span className="demo-badge">Demo</span>}
         <span className="camera-tooltip" role="tooltip" id="moon-camera-tip">
           {cameraTip}
         </span>
@@ -244,6 +247,16 @@ export default function App(): React.JSX.Element {
             </span>
           </p>
         ) : null}
+        {why && (
+          <p className="why" data-hit data-testid="why-line">
+            {why.text}
+            {why.progress !== undefined && (
+              <span className="why__bar" aria-hidden>
+                <i style={{ width: `${Math.round(Math.min(1, why.progress) * 100)}%` }} />
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       <div

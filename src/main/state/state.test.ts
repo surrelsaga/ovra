@@ -387,6 +387,27 @@ describe('state engine', () => {
     expect(runObserved(true)).toEqual(runObserved(false))
   })
 
+  it('why line: away countdown in seconds, nothing once away or before a baseline', () => {
+    const { bus, engine, phase, wait } = setup('continuous')
+    expect(engine.why()).toBeUndefined()
+    phase('calibration', 90, { pulse: 60 })
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    for (let i = 0; i < 40; i++) {
+      wait(1000)
+      bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
+    }
+    expect(engine.why()).toEqual({ text: 'Close to your usual', moving: false })
+    expect(engine.lastWindow()?.line).toBe(
+      'signal=steady rule="near usual" situation=focused why="Close to your usual"'
+    )
+    wait(8000)
+    expect(engine.why()).toMatchObject({ text: "Can't see you · away in 12 s", moving: true })
+    wait(13_000)
+    expect(engine.current().away).toBe(true)
+    expect(engine.why()).toBeUndefined()
+    engine.dispose()
+  })
+
   it('uses threshold overrides from settings', () => {
     overrides = { tensePulsePct: 0.3 }
     const { updates, phase, wait } = setup()

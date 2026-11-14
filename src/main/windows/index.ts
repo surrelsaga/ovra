@@ -4,7 +4,7 @@ import { is } from '@electron-toolkit/utils'
 import { readdir } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { Bus, MoveCardView, PrivacyService, WindowsService } from '@shared/types'
+import type { Bus, MoveCardView, OrbView, PrivacyService, WindowsService } from '@shared/types'
 import { handle, push } from '../ipc'
 import { loadPage, preloadPath, testMediaDir } from '../paths'
 import { windowsConfig as cfg } from './config'
@@ -29,6 +29,8 @@ export interface WindowsDeps {
   privacy: PrivacyService
   /** E2e runs keep the real renderers loaded without taking desktop focus. */
   background?: boolean
+  /** The state engine's why line for the orb. */
+  why?: () => OrbView['why']
 }
 
 /** WindowsService plus the bits the IPC handlers and the harness need. */
@@ -207,7 +209,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
             if (!deps.background) card.showInactive()
           }
         },
-        privacy
+        privacy,
+        deps.why
       )
     },
     orbMoved({ x, y }) {

@@ -112,3 +112,10 @@ Format:
 - Change: optional `Song.origin: 'mine' | 'fallback' | 'heard'`, `Song.playlists: string[]`, `Song.playable: boolean`; optional `PlaylistLink.trackCount`, `totalCount`, `fetchedAt`, `readError`; optional `LearnedAdjustments.liftVotes`, `goodVotes`.
 - Why: read pasted playlists before playback, retain playlist context and rank songs using local positive votes while loading older saved libraries.
 - Status: applied in surrelsaga/ovra-music (requested by the coordinator)
+
+## 2026-11-14 — demo mode and why line
+
+- File: src/shared/types.ts
+- Change: optional `SessionConfig.demo?: boolean`; optional `OrbView.why?: { text: string; progress?: number; moving: boolean }` (`moving` false = show on hover only) and `OrbView.demo?: boolean`.
+- Why: demo mode (decision 28) and the why line (decision 34). Coarse words only, never vitals values.
+- Status: applied on main by the coordinator

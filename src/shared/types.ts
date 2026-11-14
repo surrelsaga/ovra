@@ -256,6 +256,8 @@ export interface SessionConfig {
   cameraMode: CameraMode
   checkinIntervalMin: CheckinIntervalMin
   music: boolean
+  /** Demo mode: same sensing and thresholds, shorter waits, bubble hints. Never stored as a setting. */
+  demo?: boolean
 }
 
 export type SessionStatus = 'calibrating' | 'running' | 'on-break' | 'ended'
@@ -525,6 +527,10 @@ export interface OrbView {
   nowPlaying?: { name: string; artist: string; word: TargetWord | null }
   /** Check-in mode, camera off: when the next check-in should start (estimate). Unset when unknown. */
   nextCheckAt?: number
+  /** Why line: coarse words about what Ovra reads now (no numbers of vitals); progress 0–1 toward a change. */
+  why?: { text: string; progress?: number; moving: boolean }
+  /** Demo session: shows the Demo badge. */
+  demo?: boolean
 }
 
 // ---------------------------------------------------------------------------

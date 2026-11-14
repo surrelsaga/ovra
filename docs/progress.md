@@ -104,3 +104,9 @@ face/telemetry consent changes restart capture, nudges during calibration, music
 - Presence evidence + borderline holds (Job A, decisions 29–30), music from playlists (Job B, decision 31), privacy audit and doc (Job E, decision 32). 386 tests, typecheck, lint and build pass.
 - **Needs Daniel:** OK to run the real Spotify check (`npx tsx --tsconfig tsconfig.node.json src/main/music/dev/spotify-check.ts '<playlist link>'`; saves and restores Spotify state); later the ~15 min live test (credits).
 - **Next:** Job C (activities, one-time music pop-up, Privacy "Stored on this Mac", Last.fm consent, SDK cache delete) and Job D (why line, demo mode with bubble hints) after the mockups are approved.
+
+## Activities, music help, privacy screen, why line, demo mode — merged (2026-11-14)
+
+- Job C (decisions 32–33): five activities with legacy migration and per-activity music lean, Demo mode switch (15 min, continuous), one-time playlist pop-up, Privacy "Stored on this Mac" with Show in Finder, Last.fm behind AI consent, SDK cache removed on Delete everything.
+- Job D (decisions 28, 34, 35): why line, demo pace + bubble hints, monitor decisions, `docs/demo.md`.
+- 426 tests, typecheck, lint and build pass. **Needs Daniel:** real Spotify check; ~15 min live test (credits) following `docs/demo.md`.

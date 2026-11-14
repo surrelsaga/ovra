@@ -85,6 +85,9 @@ export function createMusic(deps: MusicDeps): MusicService {
   let settleFade: Promise<void> | null = null
   let cancelSettleFade: (() => void) | null = null
   const played = new Map<string, number>()
+  const unavailableSongs = new Set<string>()
+  let verifyTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingPick: { id: string; previousId?: string } | null = null
   const fallbackLinks = new Map<string, number>()
   let picks = 0
   let fallbackPicks = 0
@@ -265,22 +268,68 @@ export function createMusic(deps: MusicDeps): MusicService {
         }
       }
       if (g !== generation || session !== activeSession || leaveAlone) return
-      const song = pickSong(library.songs(), target, context)
+      const song = pickSong(
+        library.songs().filter((s) => !unavailableSongs.has(s.id)),
+        target,
+        context
+      )
       const link = library.playlists()[0]
       const uri = song?.id ?? link?.uri
       if (!uri) return
       const contextUri =
         song?.playlists?.[0] ?? link?.uri ?? parsePlaylistUrl(FALLBACK_PLAYLISTS[target][0])!.uri
+      const previousId = nowPlaying?.id ?? (await controller.current())?.id
+      if (g !== generation || session !== activeSession || leaveAlone) return
       if (play) play.endedByApp = true
-      if (target === 'settle') await fadePlay(uri, contextUri, activeSession, g)
-      else await controller.play(uri, contextUri)
+      try {
+        if (target === 'settle') await fadePlay(uri, contextUri, activeSession, g)
+        else await controller.play(uri, contextUri)
+      } catch (error) {
+        if (g !== generation || session !== activeSession) return
+        if (!song) throw error
+        unavailableSongs.add(song.id)
+        verifyTimer = setTimeout(() => {
+          if (g === generation) safe(playNext())
+        }, 0)
+        return
+      }
       if (g !== generation || session !== activeSession) return
       if (song) played.set(song.id, now())
       picks++
       if (song?.origin === 'fallback') fallbackPicks++
+      if (verifyTimer) clearTimeout(verifyTimer)
+      pendingPick = song && process.platform !== 'win32' ? { id: song.id, previousId } : null
+      if (song && pendingPick)
+        verifyTimer = setTimeout(() => safe(verifyPick(song.id, g)), musicConfig.controller.pollMs)
     } finally {
       if (picking === g) picking = -1
     }
+  }
+
+  async function verifyPick(id: string, g: number): Promise<void> {
+    verifyTimer = null
+    const pending = pendingPick
+    const actual = await controller.current()
+    if (
+      !pending ||
+      pendingPick !== pending ||
+      pending.id !== id ||
+      g !== generation ||
+      !session ||
+      leaveAlone ||
+      !actual ||
+      actual.isAd ||
+      actual.state !== 'playing'
+    )
+      return
+    pendingPick = null
+    if (library.resolve(actual).id === id) return
+    // Spotify can reject an exact pick; avoid retrying that track for the rest of this session.
+    unavailableSongs.add(id)
+    played.delete(id)
+    picks--
+    if (library.get(id)?.origin === 'fallback') fallbackPicks--
+    await playNext()
   }
 
   function evaluate(): void {
@@ -340,6 +389,11 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (!session) return
     const g = generation
     t = library.resolve(t)
+    if (pendingPick && t.id !== pendingPick.previousId) {
+      pendingPick = null
+      if (verifyTimer) clearTimeout(verifyTimer)
+      verifyTimer = null
+    }
     available = true
     const prev = nowPlaying
     nowPlaying = t
@@ -363,6 +417,9 @@ export function createMusic(deps: MusicDeps): MusicService {
   async function stopInternal(): Promise<void> {
     await abortSettleFade()
     generation++
+    if (verifyTimer) clearTimeout(verifyTimer)
+    verifyTimer = null
+    pendingPick = null
     finishPlay()
     stopPolling?.()
     stopPolling = null
@@ -457,6 +514,10 @@ export function createMusic(deps: MusicDeps): MusicService {
       await ready
       scorer.reset()
       fallbackLinks.clear()
+      unavailableSongs.clear()
+      if (verifyTimer) clearTimeout(verifyTimer)
+      verifyTimer = null
+      pendingPick = null
       play = null
       await library.clear()
       emitStatus()
@@ -476,6 +537,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       remainingSec = undefined
       hintShown = false
       played.clear()
+      unavailableSongs.clear()
       picks = 0
       fallbackPicks = 0
       nowPlaying = null

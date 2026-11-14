@@ -30,6 +30,20 @@ class FakeController implements MusicController {
   play = async (uri: string, context?: string): Promise<void> => {
     this.calls.push(`play ${uri}`)
     this.contexts.push(context)
+    if (uri.startsWith('spotify:track:')) {
+      this.startedAt = Date.now()
+      this.np = {
+        id: uri,
+        uri,
+        name: uri,
+        artist: 'a',
+        album: '',
+        durationMs: 200_000,
+        positionMs: 0,
+        state: 'playing',
+        isAd: false
+      }
+    }
   }
   pause = async (): Promise<void> => void this.calls.push('pause')
   resume = async (): Promise<void> => void this.calls.push('resume')
@@ -377,7 +391,7 @@ describe('music service', () => {
     await failed.music.startSession(session())
     await vi.advanceTimersByTimeAsync(3 * MIN)
     failed.state('crashing')
-    await vi.advanceTimersByTimeAsync(5000)
+    await vi.advanceTimersByTimeAsync(20_000)
     expect(failed.controller.volume).toBe(60)
   })
 
@@ -593,5 +607,35 @@ it('a pending old pick cannot block playback in a new session', async () => {
   resolve(true)
   await old
   expect(t.controller.calls).toHaveLength(1)
+  await t.music.stopSession()
+})
+
+it('repicks if Spotify did not start the requested song after one poll', async () => {
+  const t = await setup({ songs: [song('steady', { energy: 3 }), song('calm', { energy: 1 })] })
+  t.controller.start('spotify:track:outside')
+  const play = t.controller.play
+  t.controller.play = async (uri, context) => {
+    if (uri === 'spotify:track:steady') t.controller.calls.push(`play ${uri}`)
+    else await play(uri, context)
+  }
+  await t.music.startSession(session())
+  expect(t.controller.calls).toEqual(['play spotify:track:steady'])
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(t.controller.calls).toEqual(['play spotify:track:steady', 'play spotify:track:calm'])
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(t.controller.calls).toHaveLength(2)
+  await t.music.stopSession()
+})
+
+it('tries another song after a playback command fails', async () => {
+  const t = await setup({ songs: [song('steady', { energy: 3 }), song('calm', { energy: 1 })] })
+  const play = t.controller.play
+  t.controller.play = async (uri, context) => {
+    if (uri === 'spotify:track:steady') throw new Error('unavailable')
+    await play(uri, context)
+  }
+  await t.music.startSession(session())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(t.controller.calls).toEqual(['play spotify:track:calm'])
   await t.music.stopSession()
 })

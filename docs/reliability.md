@@ -15,6 +15,11 @@ Presage SmartSpectra reads vitals from an ordinary webcam:
 | HRV (RMSSD) | timing between individual beats | ~60 s | 50 (about ±5 ms) |
 | Face (expressions, blinks, head roll) | face landmarks | instant | n/a |
 
+**Breathing is the least reliable of the three.** Presage's docs say it needs the upper chest in view
+and a still camera, and can still fail with the chest visible if clothing is very dark or the lighting
+is poor. So Ovra leans on breathing as little as it reasonably can: it may add confidence, but it
+never decides or blocks a situation on its own.
+
 Presage's own guidance (measurement-quality and model-card pages) asks for even front lighting, the
 face centred and facing the camera, the **upper chest in view**, a still camera and a still person. A
 clinical or research setup can demand all of that. Ovra can't: it is a calm companion for people who
@@ -143,24 +148,29 @@ Sources:
 
 ### 5.3 Situations
 
-In every rule, **pulse decides**. Breathing and HRV, when available, only **back up** a call (raising
-confidence from 0.6 to 0.9) or **veto** it when they clearly point the other way.
+In every rule, **pulse decides**. HRV, when available, **backs up** a call (confidence 0.6 → 0.9)
+or **vetoes** it when it clearly points the other way. Breathing is used even less (see §1): it can
+only add confidence, never decide, block or veto.
 
 | Situation | Old rule | New rule |
 |---|---|---|
-| **Focused** | Δpulse within ±8% and Δbreathing within ±15% (if present) | Δpulse within ±8%. Breathing outside ±15% only lowers confidence, it doesn't block |
+| **Focused** | Δpulse within ±8% and Δbreathing within ±15% (if present) | Δpulse within ±8%. Breathing ignored |
 | **Good** | Focused + happy is the top expression in more than half the face frames | same, but needs at least 10 s of face frames with expressions. Without them it's just Focused |
-| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+10%**. Backers: RMSSD ≤ −15% or Δbreathing ≥ **+15%**. **Veto:** RMSSD ≥ +15% or Δbreathing ≤ −15% (body says relaxed). Held **3 min** (demo 30 s) |
+| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+10%**. Backers: RMSSD ≤ −15% (or Δbreathing ≥ +15%, confidence only). **Veto:** RMSSD ≥ +15% (body says relaxed). Held **3 min** (demo 30 s) |
 | **Crashing out** | tense held 10 min (demo 2), or Δpulse ≥ +20% with an angry/sad/disgust majority | same |
-| **Low** | Δpulse ≤ −8% **and** Δbreathing ≤ −15% when breathing exists; or blink rate ≥ +50% with Δpulse ≤ −4%. Held 2 min (demo 30 s) | Δpulse ≤ **−8%**, or blink rate ≥ +50% with Δpulse ≤ −4%. Slower breathing backs it up. **Veto:** Δbreathing ≥ +15%. Held **2 min** (demo 30 s) |
+| **Low** | Δpulse ≤ −8% **and** Δbreathing ≤ −15% when breathing exists; or blink rate ≥ +50% with Δpulse ≤ −4%. Held 2 min (demo 30 s) | Δpulse ≤ **−8%**, or blink rate ≥ +50% with Δpulse ≤ −4%. Breathing ignored. Held **2 min** (demo 30 s) |
 | **Near miss** | within 3% of the tense/low bar pauses the hold | same |
 | **No read** | window skipped; the next real window could reset holds | **pauses** holds, like a near miss |
 
 Why the backers changed from "required" to "optional":
-- Breathing needs the chest, which is code 7. HRV needs 60 s of clean beats, which code 12 breaks.
+- Breathing needs the chest (code 7) plus decent clothing contrast and light. HRV needs 60 s of clean
+  beats, which code 12 breaks.
 - So in real use they're absent most of the time. Under the old rules, when they *did* show up, a single
   noisy breathing value could block a clear pulse signal.
-- Now they can only strengthen a call, or stop one when they clearly disagree.
+- Now HRV can strengthen or stop a call, and breathing can only add confidence.
+
+**Same in every mode.** Demo mode uses these exact rules and bars; it only shortens waits (windows,
+holds, max calibration wait). Dev tools (monitor, harness, video source) run the same code.
 
 ### 5.4 Presence and away
 
@@ -186,7 +196,23 @@ Why the backers changed from "required" to "optional":
   still-sitting reference.
 - **While padded,** breathing is ignored, since the chest isn't really in view.
 
-## 6. For the DEV post (short version)
+## 6. Session-tab camera and orb button labels (queued UI task)
+
+- **Camera in the Session tab during a session.**
+  - **What:** the preview the Session tab already shows before a session stays available during one,
+    so people can check their framing themselves.
+  - **How:** a second `getUserMedia` on the same camera in the main window, shown in a `<video>`.
+    It's display only: no frames are copied, saved or sent.
+  - **Cost:** small. Chromium shares the camera between the two streams, and drawing a `<video>` is done
+    on the GPU. The stream stops when the tab is hidden or the window is closed, so it costs nothing
+    when nobody's looking. Don't send frames over IPC from the capture window; that would be slow.
+- **Orb control labels.**
+  - **What:** hovering a button in the orb's control row (camera, music, end, main window) shows a
+    short label.
+  - **Why custom:** the buttons already have `title`, but native tooltips don't appear in the
+    frameless, unfocused orb window, so it needs a small CSS tooltip.
+
+## 7. For the DEV post (short version)
 
 > Presage reads your pulse from the colour of your skin and your breathing from your chest, through
 > an ordinary webcam. That's magic, and also fragile: a slouch hides the chest (code 7), laughing or
@@ -196,7 +222,7 @@ Why the backers changed from "required" to "optional":
 > as backup; a mood only after minutes of agreement; and when the signal drops, Ovra holds still and
 > says so instead of guessing.
 
-## 7. Status
+## 8. Status
 
 - **Decided 2026-11-14 (decision 39).** Implementation not started; Daniel picks the order.
 - **Superseded once built:** decision 26 (already replaced by 29), the presence part of 29 (by 5.4),

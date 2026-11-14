@@ -134,8 +134,9 @@ Music resumes and check-ins carry on.
 End the session and start another with Camera **The whole session**. The ring stays on (phase
 `continuous`); the read-out updates every ~3 s and a new scenario takes over within ~15–25 s.
 
-- **Away**: after ~8 s with no face the orb goes to away by itself, the away card shows, Spotify
+- **Away**: after ~8 s without presence evidence in fast mode (20 s at normal pace), the orb goes to away by itself, the away card shows, Spotify
   pauses. Back to **Calm**: the orb wakes, a 10 s return check runs, then the return result shows.
+- Away deliberately emits face objects without landmark geometry or pulse, matching the SDK's empty-face behavior. A bare object cannot keep the session present. Calm returns with steady pulse, which wakes immediately; face-only returns need evidence in 3 of the last 4 one-second buckets.
 - Repeat step 5 here; actions register right away.
 
 ### 8. Pause / resume

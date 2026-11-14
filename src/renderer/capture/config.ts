@@ -7,6 +7,8 @@ export const captureConfig = {
   maxFramingPad: 0.6,
   /** Max MetricsSnapshot sends to main per second (the SDK emits ~28/s). */
   maxSendsPerSec: 4,
+  /** Coarse in-memory face box; landmarks never leave capture. */
+  faceBoxStep: 0.01,
   /** How long to wait for the SDK to report idle after stop(). */
   idleWaitMs: 2000,
   idlePollMs: 50

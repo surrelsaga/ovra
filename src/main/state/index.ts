@@ -4,6 +4,7 @@ import type {
   Baseline,
   Bus,
   CameraMode,
+  FaceSnapshot,
   MetricsSnapshot,
   PrivacyService,
   SensingPhase,
@@ -13,7 +14,14 @@ import type {
   Trend
 } from '@shared/types'
 import { ValidationCode } from '@shared/types'
-import { buildBaseline, classify, evaluateWindow, hasFace, type WindowEval } from './classifier'
+import {
+  buildBaseline,
+  classify,
+  evaluateWindow,
+  hasFace,
+  median,
+  type WindowEval
+} from './classifier'
 import { resolveConfig } from './config'
 
 export { buildBaseline, classify, evaluateWindow } from './classifier'
@@ -38,7 +46,9 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   let phaseStart = 0
   let buf: MetricsSnapshot[] = []
   let sawFace = false
-  let noFaceFound = false
+  let validationCode: number = ValidationCode.ok
+  let calibratedFace: Pick<FaceSnapshot, 'center' | 'size'> | undefined
+  let wakeBuckets = new Set<number>()
   let history: WindowEval[] = []
   let situation: Situation | null = null
   let confidence = 0
@@ -73,6 +83,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   const reset = (): void => {
     stopTimer()
     baseline = null
+    calibratedFace = undefined
     baselineFailure = null
     calibrationPulseCount = calibrationPulseSpanSec = 0
     phase = null
@@ -83,7 +94,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     trend = 'steady'
     seatedSince = null
     lastFace = null
-    noFaceFound = false
+    validationCode = ValidationCode.ok
+    wakeBuckets.clear()
     away = manualAway = paused = false
   }
 
@@ -104,7 +116,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     lastFace = t
   }
 
-  // Continuous mode: away after N s with no face data, and a periodic update.
+  // Continuous mode: away after N s without presence evidence, and a periodic update.
   function tick(): void {
     if (paused || phase !== 'continuous') return
     const now = Date.now()
@@ -130,7 +142,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
     phaseStart = lastEval = Date.now()
     buf = []
     sawFace = false
-    noFaceFound = false
+    validationCode = ValidationCode.ok
+    wakeBuckets.clear()
     lastFace = null // the camera was off before this; that gap isn't a seated gap
     if (p === 'continuous') {
       stopTimer()
@@ -139,14 +152,27 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
   })
 
   bus.on('sdk:validation', (v) => {
-    if (phase) noFaceFound = v.code === ValidationCode.noFaceFound
+    if (!phase) return
+    validationCode = v.code
+    if (v.code === ValidationCode.noFaceFound || v.code === ValidationCode.multipleFaces)
+      wakeBuckets.clear()
   })
 
   bus.on('sdk:metrics', (s) => {
-    if (!phase || noFaceFound || !hasFace(s, privacy.canUseFace())) return
+    if (!phase || paused || validationCode === ValidationCode.noFaceFound) return
+    const c = cfg()
+    const pulse = !!s.pulse?.stable && Number.isFinite(s.pulse.value)
+    const face =
+      validationCode !== ValidationCode.multipleFaces &&
+      hasFace({ t: s.t, face: s.face }, privacy.canUseFace(), c, calibratedFace)
+    if (!pulse && !face) return
     onFace(s.t)
     buf.push(s)
-    if (away && !manualAway) {
+    const bucket = Math.floor(s.t / 1000)
+    wakeBuckets = new Set([...wakeBuckets].filter((b) => b > bucket - c.wakeWindowSec))
+    if (face) wakeBuckets.add(bucket)
+    // shortcut: a persistent false box at the calibrated seat can wake; revisit if live testing shows it.
+    if (away && !manualAway && (pulse || wakeBuckets.size >= c.wakeFaceSec)) {
       away = false
       emit()
     }
@@ -170,6 +196,17 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
         ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
         : 0
       baseline = 'baseline' in r ? r.baseline : null
+      const faces = snaps.filter((s) => hasFace({ t: s.t, face: s.face }, privacy.canUseFace(), c))
+      calibratedFace =
+        baseline && faces.length
+          ? {
+              center: {
+                x: median(faces.map((s) => s.face!.center!.x))!,
+                y: median(faces.map((s) => s.face!.center!.y))!
+              },
+              size: median(faces.map((s) => s.face!.size!))!
+            }
+          : undefined
       baselineFailure = 'reason' in r ? r.reason : null
       bus.emit(
         'state:baseline-ready',
@@ -197,6 +234,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
 
   bus.on('privacy:changed', () => {
     if (privacy.canUseFace()) return
+    calibratedFace = undefined
+    wakeBuckets.clear()
     if (baseline) delete baseline.blinkRate
     buf = buf.map((s) => {
       const vitals = { ...s }
@@ -208,6 +247,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine {
 
   bus.on('privacy:camera-paused', () => {
     paused = true
+    wakeBuckets.clear()
   })
   bus.on('privacy:camera-resumed', () => {
     paused = false

@@ -3,6 +3,8 @@
 import type { decodeMetrics } from '@smartspectra/node-sdk/messages'
 import type { Expression, FaceSnapshot, HrvReading, MetricsSnapshot, Reading } from '@shared/types'
 
+import { captureConfig } from './config'
+
 type Metrics = ReturnType<typeof decodeMetrics>
 type Point = { x?: number | null; y?: number | null }
 
@@ -55,21 +57,26 @@ export function faceBox(
   let maxX = -Infinity
   let maxY = -Infinity
   for (const p of points) {
-    if (p.x == null || p.y == null) continue
+    if (p.x == null || p.y == null || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue
     minX = Math.min(minX, p.x)
     maxX = Math.max(maxX, p.x)
     minY = Math.min(minY, p.y)
     maxY = Math.max(maxY, p.y)
   }
-  if (minX === Infinity) return undefined
+  if (minX === Infinity || frame.width <= 0 || frame.height <= 0) return undefined
+  const round = (v: number): number =>
+    Math.round(v / captureConfig.faceBoxStep) * captureConfig.faceBoxStep
   return {
-    center: { x: (minX + maxX) / 2 / frame.width, y: (minY + maxY) / 2 / frame.height },
-    size: (maxY - minY) / frame.height
+    center: {
+      x: round((minX + maxX) / 2 / frame.width),
+      y: round((minY + maxY) / 2 / frame.height)
+    },
+    size: round((maxY - minY) / frame.height)
   }
 }
 
 function reduceFace(face: NonNullable<Metrics['face']>, frame: FrameSize): FaceSnapshot {
-  const points = face.landmarks?.at(-1)?.value ?? []
+  const points = face.landmarks?.findLast((d) => d.value?.length)?.value ?? []
   const out: FaceSnapshot = { present: true }
   if (face.blinking?.length) out.blinking = face.blinking.some((d) => !!d.detected)
   if (face.talking?.length) out.talking = face.talking.some((d) => !!d.detected)
@@ -116,7 +123,7 @@ export function reduceMetrics(m: Metrics, frame: FrameSize, t: number): MetricsS
 
 /**
  * Merge a newer snapshot into the pending (throttled) one: latest values win,
- * blinking/talking are OR-ed so short blinks between sends aren't lost.
+ * geometry is kept from the latest landmarks, blinking/talking and presence are OR-ed.
  */
 export function mergeSnapshots(
   prev: MetricsSnapshot | null,
@@ -125,9 +132,11 @@ export function mergeSnapshots(
   if (!prev) return next
   const out: MetricsSnapshot = { ...prev, ...next }
   if (prev.face || next.face) {
-    const face: FaceSnapshot = { ...prev.face, ...next.face, present: !!next.face?.present }
-    for (const key of ['headRollDeg', 'center', 'size'] as const)
-      if (next.face?.[key] === undefined) delete face[key]
+    const face: FaceSnapshot = {
+      ...prev.face,
+      ...next.face,
+      present: !!(prev.face?.present || next.face?.present)
+    }
     if (prev.face?.blinking || next.face?.blinking) face.blinking = true
     if (prev.face?.talking || next.face?.talking) face.talking = true
     out.face = face

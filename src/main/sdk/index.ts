@@ -97,7 +97,9 @@ export function createSensing(deps: SensingDeps): SensingService {
       }
       // Raw no-face overrides presence immediately; only the displayed hint is debounced.
       if (validationCode === ValidationCode.noFaceFound)
-        m = face ? { ...m, face: { ...m.face, present: false } } : { t: m.t }
+        m = face ? { t: m.t, face: { present: false } } : { t: m.t }
+      else if (validationCode === ValidationCode.multipleFaces && m.face)
+        m = { ...m, face: { present: false } }
       if (calibration && !noFaceFound && hasFace(m, face) && m.pulse?.stable) {
         calibration.measurableAt ??= Date.now()
         calibration.pulses.push({ t: m.t, pulse: m.pulse })

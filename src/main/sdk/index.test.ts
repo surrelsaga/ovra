@@ -405,7 +405,7 @@ describe('capture messages', () => {
       h.handlers['capture:metrics'](m, { sender: h.wc })
       expect(engine.diagnostics().lastFace).toBeNull()
       expect(t.events.filter((e) => e.name === 'sdk:metrics').at(-1)?.payload).toEqual(
-        face ? { ...m, face: { present: false } } : { t: m.t }
+        face ? { t: m.t, face: { present: false } } : { t: m.t }
       )
       expect(t.events.filter((e) => e.name === 'sdk:validation')).toHaveLength(0)
       for (let sec = 0; sec < 25; sec++) {
@@ -421,6 +421,27 @@ describe('capture messages', () => {
       engine.dispose()
     }
   )
+
+  it('raw code 2 blocks landmark presence before hint debounce without discarding pulse', async () => {
+    const t = setup()
+    vi.spyOn(t.privacy, 'canUseFace').mockReturnValue(true)
+    const engine = createStateEngine({ bus: t.bus, privacy: t.privacy })
+    await t.sensing.startContinuous()
+    h.handlers['capture:validation'](
+      { t: Date.now(), code: 2, hint: 'Multiple faces' },
+      { sender: h.wc }
+    )
+    const m = { t: Date.now(), face: { present: true, center: { x: 0.5, y: 0.5 }, size: 0.4 } }
+    h.handlers['capture:metrics'](m, { sender: h.wc })
+    expect(engine.diagnostics().lastFace).toBeNull()
+    h.handlers['capture:metrics'](
+      { ...m, pulse: { value: 60, confidence: 90, stable: true } },
+      { sender: h.wc }
+    )
+    expect(engine.diagnostics().lastFace).toBe(m.t)
+    await t.sensing.stop()
+    engine.dispose()
+  })
 
   it('forwards metrics and only emits validation codes that persist', async () => {
     const { sensing, events } = setup()

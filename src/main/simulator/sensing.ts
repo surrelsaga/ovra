@@ -27,7 +27,7 @@ export function synthSnapshot(
   t: number,
   action: ActiveAction | null = null
 ): MetricsSnapshot {
-  if (scenario === 'away') return { t, face: { present: false } }
+  if (scenario === 'away') return { t, face: { present: true } }
   const p = cfg.profiles[scenario]
   const b = cfg.baseline
   const a = cfg.actions

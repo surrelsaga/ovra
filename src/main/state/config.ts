@@ -18,6 +18,8 @@ export const stateConfig = {
   focusedPulsePct: 0.08,
   focusedBreathingPct: 0.15,
   tensePulsePct: 0.1,
+  /** Near misses pause a hold; they do not add qualifying time or check-ins. */
+  streakBandPct: 0.03,
   tenseRmssdDropPct: 0.15,
   tenseBreathingPct: 0.2,
   tenseHoldCheckins: 2,
@@ -44,6 +46,13 @@ export const stateConfig = {
   // Seated time and away.
   seatedGapSec: 60,
   awayNoFaceSec: 20,
+  presenceMinFaceSize: 0.12,
+  presenceMaxFaceSize: 0.8,
+  presenceMinCenter: 0.1,
+  presenceMaxCenterShift: 0.25,
+  presenceSizeRatio: 1.6,
+  wakeFaceSec: 3,
+  wakeWindowSec: 4,
 
   // Continuous mode.
   continuousUpdateSec: 30,

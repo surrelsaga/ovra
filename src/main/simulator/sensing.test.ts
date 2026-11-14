@@ -10,7 +10,7 @@ import {
 } from '@shared/types'
 import { createBus } from '../bus'
 import { createStateEngine } from '../state'
-import { createSimulatedSensing } from './sensing'
+import { createSimulatedSensing, synthSnapshot } from './sensing'
 import { simConfig } from './config'
 
 const T = simConfig.fast.timing
@@ -200,6 +200,10 @@ describe('scenarios through the real state engine (fast mode)', () => {
       const s = await situationFor(scenario, mode)
       expect([mode, s.situation, s.away]).toEqual([mode, expected, false])
     }
+  })
+
+  it('away emits SDK-style ghost face objects without pulse or landmark geometry', () => {
+    expect(synthSnapshot('away', 0, 123)).toEqual({ t: 123, face: { present: true } })
   })
 
   it('away → away=true in continuous mode', async () => {

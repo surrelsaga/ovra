@@ -13,7 +13,6 @@ import {
 import { buildBaseline, classify, evaluateWindow, type WindowEval } from './classifier'
 import { resolveConfig, stateConfig as cfg } from './config'
 import { createStateEngine } from '.'
-import { reduceMetrics } from '../../renderer/capture/reduce'
 
 const MIN = 60_000
 const r = (
@@ -232,6 +231,42 @@ describe('classifier', () => {
     expect(evaluateWindow(w, full, cfg)).toBeNull()
   })
 
+  it.each([
+    { high: 67.2, near: 65.4, clear: 60, expected: 'tense' },
+    { high: 54, near: 55.8, clear: 60, expected: 'low' }
+  ])(
+    'pauses $expected holds near the threshold, resets on a clear miss',
+    ({ high, near, clear, expected }) => {
+      const c = { ...cfg, tenseHoldMin: 2, lowHoldMin: 2 }
+      const history = [high, near, high, high].map((pulse, i) =>
+        evaluateWindow(stream(i * MIN, 60, { pulse }), pulseOnly, c)!
+      )
+      expect(classify(history.slice(0, 2), 'continuous', 'focused', c).situation).toBe('focused')
+      // Near window did not add a minute: another qualifying window is still needed.
+      expect(classify(history.slice(0, 3), 'continuous', 'focused', c).situation).toBe('focused')
+      expect(classify(history, 'continuous', 'focused', c).situation).toBe(expected)
+      history[1] = evaluateWindow(stream(MIN, 60, { pulse: clear }), pulseOnly, c)!
+      expect(classify(history, 'continuous', 'focused', c).situation).toBe('focused')
+    }
+  )
+
+  it('near windows preserve check-in counts without counting as qualifying check-ins', () => {
+    const history = [67.2, 65.4, 67.2].map((pulse, i) =>
+      evaluateWindow(stream(i * 5 * MIN, 90, { pulse }), pulseOnly, cfg)!
+    )
+    expect(classify(history.slice(0, 2), 'checkins', 'focused', cfg).situation).toBe('focused')
+    expect(classify(history, 'checkins', 'focused', cfg).situation).toBe('tense')
+  })
+
+  it('does not pause a tense hold when secondary vitals clearly contradict it', () => {
+    const history = [
+      { pulse: 68, rmssd: 70 },
+      { pulse: 65.4, rmssd: 90 },
+      { pulse: 68, rmssd: 70 }
+    ].map((o, i) => evaluateWindow(stream(i * 5 * MIN, 90, o), full, cfg)!)
+    expect(classify(history, 'checkins', 'focused', cfg).situation).toBe('focused')
+  })
+
   it('reports trend from pulse change', () => {
     const res = run(pulseOnly, checkins({ pulse: 60 }, { pulse: 63 }))
     const history = [60, 63].map((p, i) =>
@@ -390,58 +425,149 @@ describe('state engine', () => {
     expect(engine.current().situation).toBeNull()
   })
 
-  it('stays present and seated through 40 s of framing hints and 50% landmark loss', () => {
-    const { bus, engine, updates } = setup('continuous')
+  const seatedFace = { present: true, center: { x: 0.5, y: 0.5 }, size: 0.4 }
+
+  it('stays seated for 10 min with sparse pulse and short landmark gaps', () => {
+    const { bus, engine } = setup('continuous')
     vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
     bus.emit('sdk:checkin-started', { phase: 'continuous' })
-    for (let sec = 0; sec < 80; sec++) {
-      const code = sec < 40 ? 0 : sec % 2 === 0 ? 7 : 17
-      bus.emit('sdk:validation', { t: Date.now(), code, hint: 'Adjust framing' })
-      const face = sec < 40 || sec % 2 === 0 ? { landmarks: [{ value: [{ x: 1, y: 1 }] }] } : {}
-      bus.emit(
-        'sdk:metrics',
-        reduceMetrics({ face } as never, { width: 100, height: 100 }, Date.now())
-      )
+    for (let sec = 0; sec < 600; sec++) {
+      bus.emit('sdk:metrics', {
+        t: Date.now(),
+        ...(sec % 3 === 0 ? { pulse: r(60) } : {}),
+        face: sec % 10 < 3 ? seatedFace : { present: true }
+      })
       vi.advanceTimersByTime(1000)
       expect(engine.current().away).toBe(false)
     }
-    expect(updates.every((u) => !u.away)).toBe(true)
-    expect(engine.current().seatedMinutes).toBeCloseTo(80 / 60)
+    expect(engine.current().seatedMinutes).toBeCloseTo(10)
     engine.dispose()
   })
 
-  it.each(['validation 1', 'no face object', 'no payloads'])(
-    'goes away after 20 s with %s, returns on a face, and resets seated time after a long gap',
+  it('stays present on plausible landmarks alone with brief gaps', () => {
+    const { bus, engine } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    for (let sec = 0; sec < 90; sec++) {
+      if (sec % 5 === 0) bus.emit('sdk:metrics', { t: Date.now(), face: seatedFace })
+      vi.advanceTimersByTime(1000)
+      expect(engine.current().away).toBe(false)
+    }
+    engine.dispose()
+  })
+
+  it.each(['ghost face', 'no payloads', 'unstable pulse', 'breathing only', 'validation 1'])(
+    'goes away at 20 s without evidence (%s) and wakes immediately on steady pulse',
     (missing) => {
       const { bus, engine } = setup('continuous')
       vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
       bus.emit('sdk:checkin-started', { phase: 'continuous' })
-      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
-      const start = Date.now()
+      bus.emit('sdk:metrics', { t: Date.now(), face: seatedFace })
       if (missing === 'validation 1')
-        bus.emit('sdk:validation', { t: start, code: 1, hint: 'No face found' })
-      for (let sec = 0; sec < 25; sec++) {
+        bus.emit('sdk:validation', { t: Date.now(), code: 1, hint: '' })
+      for (let tick = 0; tick < 80; tick++) {
         if (missing !== 'no payloads')
           bus.emit('sdk:metrics', {
             t: Date.now(),
-            pulse: r(60),
-            ...(missing === 'validation 1' ? { face: { present: true } } : {})
+            face: missing === 'validation 1' ? seatedFace : { present: true },
+            ...(missing === 'unstable pulse' ? { pulse: r(60, false) } : {}),
+            ...(missing === 'validation 1' ? { pulse: r(60) } : {}),
+            ...(missing === 'breathing only' ? { breathing: r(14) } : {})
           })
-        vi.advanceTimersByTime(1000)
-        expect(engine.current().away).toBe(sec >= 19)
+        vi.advanceTimersByTime(250)
+        expect(engine.current().away).toBe(tick === 79)
       }
       bus.emit('sdk:validation', { t: Date.now(), code: 0, hint: '' })
-      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
+      bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
       expect(engine.current().away).toBe(false)
-      expect(engine.current().seatedMinutes).toBeCloseTo(25 / 60)
-      bus.emit('sdk:validation', { t: Date.now(), code: 1, hint: 'No face found' })
-      vi.advanceTimersByTime(65_000)
-      bus.emit('sdk:validation', { t: Date.now(), code: 17, hint: 'Face the camera' })
-      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true } })
-      expect(engine.current()).toMatchObject({ away: false, seatedMinutes: 0 })
       engine.dispose()
     }
   )
+
+  it.each([
+    { center: { x: 0.5, y: 0.5 }, size: 0.1 },
+    { center: { x: 0.5, y: 0.5 }, size: 0.9 },
+    { center: { x: 0.05, y: 0.5 }, size: 0.4 },
+    { center: { x: 0.9, y: 0.5 }, size: 0.4 },
+    { center: { x: 0.5, y: 0.5 }, size: 0.15 },
+    { center: { x: NaN, y: 0.5 }, size: 0.4 }
+  ])('rejects small, offset or implausible faces relative to calibration: %o', (box) => {
+    const { bus, engine, phase } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    phase('calibration', 30, { pulse: 60, face: seatedFace })
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    for (let sec = 0; sec < 30; sec++) {
+      bus.emit('sdk:metrics', { t: Date.now(), face: { present: true, ...box } })
+      vi.advanceTimersByTime(1000)
+    }
+    expect(engine.current().away).toBe(true)
+    expect(engine.diagnostics().lastFace).toBeNull()
+    engine.dispose()
+  })
+
+  it('wakes only after evidence in 3 of the last 4 distinct one-second buckets', () => {
+    const { bus, engine } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    vi.advanceTimersByTime(20_000)
+    const face = (): void => bus.emit('sdk:metrics', { t: Date.now(), face: seatedFace })
+    for (let i = 0; i < 20; i++) face()
+    vi.advanceTimersByTime(1000)
+    face()
+    expect(engine.current().away).toBe(true)
+    vi.advanceTimersByTime(4000) // old buckets must expire
+    face()
+    vi.advanceTimersByTime(1000)
+    face()
+    expect(engine.current().away).toBe(true)
+    vi.advanceTimersByTime(2000) // one missing second is allowed
+    face()
+    expect(engine.current().away).toBe(false)
+    engine.dispose()
+  })
+
+  it('code 2 blocks landmark evidence but allows steady pulse, code 1 blocks both', () => {
+    const { bus, engine } = setup('continuous')
+    vi.spyOn(privacy, 'canUseFace').mockReturnValue(true)
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    bus.emit('sdk:validation', { t: Date.now(), code: 2, hint: 'Multiple faces' })
+    for (let sec = 0; sec < 25; sec++) {
+      bus.emit('sdk:metrics', { t: Date.now(), face: seatedFace })
+      vi.advanceTimersByTime(1000)
+    }
+    expect(engine.current().away).toBe(true)
+    bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60), face: seatedFace })
+    expect(engine.current().away).toBe(false)
+    bus.emit('sdk:validation', { t: Date.now(), code: 1, hint: 'No face' })
+    const lastFace = engine.diagnostics().lastFace
+    vi.advanceTimersByTime(1000)
+    bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60), face: seatedFace })
+    expect(engine.diagnostics().lastFace).toBe(lastFace)
+    engine.dispose()
+  })
+
+  it('vitals-only ignores landmarks and camera-off or paused time never triggers away', () => {
+    const { bus, engine, phase } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    vi.advanceTimersByTime(60_000)
+    expect(engine.current().away).toBe(false)
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    for (let sec = 0; sec < 20; sec++) {
+      bus.emit('sdk:metrics', { t: Date.now(), face: seatedFace })
+      vi.advanceTimersByTime(1000)
+    }
+    expect(engine.current().away).toBe(true)
+    bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
+    bus.emit('privacy:camera-paused', {})
+    vi.advanceTimersByTime(60_000)
+    expect(engine.current().away).toBe(false)
+    bus.emit('privacy:camera-resumed', {})
+    vi.advanceTimersByTime(19_000) // a short stand/stretch is not away
+    expect(engine.current().away).toBe(false)
+    bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
+    expect(engine.current().away).toBe(false)
+    engine.dispose()
+  })
 
   it('continuous: periodic updates, away after 20 s without face, seated reset after 60 s', () => {
     const { bus, engine, updates, phase } = setup('continuous')

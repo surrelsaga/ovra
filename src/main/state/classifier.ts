@@ -3,11 +3,12 @@ import type {
   Baseline,
   CameraMode,
   Expression,
+  FaceSnapshot,
   MetricsSnapshot,
   Situation,
   Trend
 } from '@shared/types'
-import type { StateConfig } from './config'
+import { stateConfig, type StateConfig } from './config'
 
 export function median(xs: number[]): number | undefined {
   if (xs.length === 0) return undefined
@@ -16,10 +17,35 @@ export function median(xs: number[]): number | undefined {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** Without face consent, vitals are the only available presence signal. */
-export function hasFace(s: MetricsSnapshot, faceEnabled: boolean): boolean {
-  if (s.face) return s.face.present
-  return !faceEnabled && (s.pulse !== undefined || s.breathing !== undefined || s.hrv !== undefined)
+/** Pulse or a plausible landmark-derived box; a bare SDK face object proves nothing. */
+export function hasFace(
+  s: MetricsSnapshot,
+  faceEnabled: boolean,
+  cfg: StateConfig = stateConfig,
+  calibrated?: Pick<FaceSnapshot, 'center' | 'size'>
+): boolean {
+  if (s.pulse?.stable && Number.isFinite(s.pulse.value)) return true
+  const f = s.face
+  if (!faceEnabled || !f?.present || !f.center || f.size === undefined) return false
+  const { x, y } = f.center
+  if (
+    ![x, y, f.size].every(Number.isFinite) ||
+    f.size < cfg.presenceMinFaceSize ||
+    f.size > cfg.presenceMaxFaceSize ||
+    x < cfg.presenceMinCenter ||
+    x > 1 - cfg.presenceMinCenter ||
+    y < cfg.presenceMinCenter ||
+    y > 1 - cfg.presenceMinCenter
+  )
+    return false
+  return (
+    !calibrated?.center ||
+    calibrated.size === undefined ||
+    (Math.abs(x - calibrated.center.x) <= cfg.presenceMaxCenterShift &&
+      Math.abs(y - calibrated.center.y) <= cfg.presenceMaxCenterShift &&
+      f.size >= calibrated.size / cfg.presenceSizeRatio &&
+      f.size <= calibrated.size * cfg.presenceSizeRatio)
+  )
 }
 
 const stablePulse = (snaps: MetricsSnapshot[]): MetricsSnapshot[] =>
@@ -78,6 +104,8 @@ export interface WindowEval {
   pulseDelta: number
   /** No breathing or RMSSD to back up the pulse. */
   pulseOnly: boolean
+  nearTense?: boolean
+  nearLow?: boolean
   happyMajority: boolean
   negativeMajority: boolean
 }
@@ -138,6 +166,15 @@ export function evaluateWindow(
     t: snaps[snaps.length - 1].t,
     signal: tense ? 'tense' : low ? 'low' : steady ? 'steady' : 'unclear',
     pulseDelta: pd,
+    nearTense:
+      pd >= cfg.tensePulsePct - cfg.streakBandPct &&
+      (tenseBackers.length === 0 || tenseBackers.some(Boolean)),
+    nearLow:
+      (pd <= cfg.lowPulsePct + cfg.streakBandPct &&
+        (bd === undefined || bd <= cfg.lowBreathingPct)) ||
+      (blinkD !== undefined &&
+        blinkD >= cfg.lowBlinkPct &&
+        pd <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
     pulseOnly: bd === undefined && rd === undefined,
     happyMajority: frac((e) => e === 'happy') > cfg.faceMajorityFrac,
     negativeMajority: frac((e) => NEGATIVE.includes(e)) > cfg.faceMajorityFrac
@@ -150,24 +187,38 @@ export interface Classification {
   trend: Trend
 }
 
-/** Trailing run of windows with this signal: how many, and since when. */
-function streak(history: WindowEval[], signal: WindowSignal): { count: number; since: number } {
-  let i = history.length
-  while (i > 0 && history[i - 1].signal === signal) i--
-  return { count: history.length - i, since: history[i]?.start ?? 0 }
+/** Trailing qualifying windows; borderline windows preserve but do not advance the hold. */
+function streak(
+  history: WindowEval[],
+  signal: 'tense' | 'low'
+): { count: number; duration: number } {
+  let count = 0
+  let duration = 0
+  for (let i = 0; i < history.length; i++) {
+    const w = history[i]
+    if (w.signal === signal) {
+      duration += count ? w.t - history[i - 1].t : w.t - w.start
+      count++
+    } else if (!(
+      (w.signal === 'unclear' || w.signal === 'steady') &&
+      (signal === 'tense' ? w.nearTense : w.nearLow)
+    )) {
+      count = duration = 0
+    }
+  }
+  return { count, duration }
 }
 
 function held(
   history: WindowEval[],
-  signal: WindowSignal,
+  signal: 'tense' | 'low',
   mode: CameraMode,
   checkins: number,
   minutes: number
 ): boolean {
   const s = streak(history, signal)
   if (s.count === 0) return false
-  if (mode === 'checkins') return s.count >= checkins
-  return history[history.length - 1].t - s.since >= minutes * 60_000
+  return mode === 'checkins' ? s.count >= checkins : s.duration >= minutes * 60_000
 }
 
 /**
@@ -192,7 +243,7 @@ export function classify(
 
   let situation: Situation | null = null
   if (held(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)) {
-    const tenseMin = (last.t - streak(history, 'tense').since) / 60_000
+    const tenseMin = streak(history, 'tense').duration / 60_000
     const crashing =
       tenseMin >= cfg.crashingTenseMin ||
       (last.pulseDelta >= cfg.crashingPulsePct && last.negativeMajority)

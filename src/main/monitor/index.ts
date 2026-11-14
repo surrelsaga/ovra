@@ -30,6 +30,7 @@ export function startMonitor(deps: MonitorDeps): BrowserWindow | null {
     push(win, 'push:monitor', snapshot)
     if (snapshot.t - lastLogAt >= cfg.logEveryMs) {
       console.log(formatMonitor(snapshot))
+      console.log(`[monitor] ${model.runLine()}`)
       lastLogAt = snapshot.t
     }
   }

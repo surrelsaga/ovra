@@ -2,7 +2,7 @@
 
 Run `npm run dev:monitor` from the checkout that contains your `.env`. The normal app opens alongside an always-on-top **Sensing monitor** window. Give camera consent and start a session as usual; the monitor never starts the camera itself. Clear the dev video source in Settings to use the live camera. In a worktree, point `OVRA_ENV_PATH` at the main checkout's `.env` instead of copying keys. The flag is ignored in packaged builds.
 
-Daniel performs the live run. The monitor changes no sensing, calibration, face, away, session, music or classifier decisions. It records counts and flags in memory and prints them to the terminal. It never displays or logs pulse values, breathing rates, HRV values, expression scores or landmarks, and it never saves frames or diagnostic data. Existing consent and telemetry settings still apply.
+Daniel performs the live run. The monitor changes no sensing, calibration, face, away, session, music or classifier decisions. It records counts and flags in memory and prints them to the terminal. It never displays or logs pulse values (except the coarse per-run median below), breathing rates, HRV values, expression scores or landmarks, and it never saves frames or diagnostic data. Existing consent and telemetry settings still apply.
 
 ## The window
 
@@ -36,6 +36,12 @@ Every five seconds a single `[monitor]` line contains the window's data:
 - `music`, `track`, `artist`, `target`, `leave`: current music status.
 
 Extra `[monitor]` lines announce phase changes, the app's existing debounced validation changes, baseline results, away/returned, and session status changes. Raw validation counts remain unsmoothed in the regular line and window. Quotes and newlines in hint/track text are escaped so each record stays on one terminal line. No API key or raw measurement is included.
+
+## Padded live frame A/B (reliability §5.6)
+
+Next to the regular line, every five seconds a `[monitor] run phase=… seconds=… code0=…% steadyPulse=…s medianPulse=…` line covers the current sensing phase (one run); a final copy marked `(ended)` prints when the phase changes. `code0` is the share of raw validation callbacks at code 0 (one per frame, so roughly share of time), `steadyPulse` counts one-second buckets with at least one stable pulse reading, and `medianPulse` is the median of stable pulse snapshots, whole bpm. This median is the only measured value the monitor prints; it exists for the A/B, stays in the terminal and is never saved (a whole-bpm histogram in memory, dropped at the next phase).
+
+Padding is off by default (`liveScale: 1` in `src/renderer/capture/config.ts`). For a padded run set the dev override when launching: `RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor`. The capture renderer then opens the camera itself and draws it at that scale, padded at the bottom, into the same 1280×720 canvas as the dev video source. Breathing readings are dropped from snapshots while padded.
 
 ## What to look for
 

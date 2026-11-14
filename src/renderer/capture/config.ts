@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // Owner: Agent A. Tunable numbers for the capture renderer.
 export const captureConfig = {
   /** Dev video source canvas size and frame rate (what the SDK sees). */
@@ -5,6 +6,13 @@ export const captureConfig = {
   height: 720,
   fps: 30,
   maxFramingPad: 0.6,
+  /**
+   * Live camera drawn at this scale inside the canvas, padded at the bottom like the dev video
+   * source (decision 7), so the SDK's chest check (code 7) stops blocking pulse. 1 = off (SDK
+   * opens the camera itself). Breathing is dropped while padded. Dev override for the A/B:
+   * RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor
+   */
+  liveScale: Number(import.meta.env.RENDERER_VITE_OVRA_LIVE_SCALE || 1),
   /** Max MetricsSnapshot sends to main per second (the SDK emits ~28/s). */
   maxSendsPerSec: 4,
   /** Coarse in-memory face box; landmarks never leave capture. */

@@ -9,6 +9,7 @@ import {
   type StateEngine
 } from '@shared/types'
 import { createMonitorCounters } from './aggregate'
+import { createRunStats } from './run'
 
 export interface MonitorDeps {
   bus: Bus
@@ -25,7 +26,7 @@ export interface MonitorDeps {
 export function createMonitorModel(
   deps: MonitorDeps,
   log: (line: string) => void = console.log
-): { snapshot(): MonitorSnapshot; dispose(): void } {
+): { snapshot(): MonitorSnapshot; runLine(): string; dispose(): void } {
   const { bus } = deps
   const counters = createMonitorCounters(Date.now())
   let phase = deps.sensing.phase()
@@ -38,9 +39,13 @@ export function createMonitorModel(
   let away = deps.state.current().away
   let loggedValidation: number | null = null
   let loggedWindow = 0
+  let run = createRunStats(Date.now())
   const announce = (text: string): void => log(`[monitor] ${text}`)
+  const runLine = (): string => `run phase=${phase} ${run.line(Date.now())}`
   const setPhase = (next: typeof phase): void => {
     if (phase === next) return
+    if (phase !== 'idle') announce(`${runLine()} (ended)`)
+    run = createRunStats(Date.now())
     phase = next
     counters.phase(phase, Date.now())
     if (next !== 'idle') {
@@ -53,8 +58,12 @@ export function createMonitorModel(
     bus.on('monitor:diag', (d) => {
       counters.add(d)
       if (d.phase !== phase) return
+      run.diag(d)
       processing = d.processing
       validation = d.validation
+    }),
+    bus.on('sdk:metrics', (m) => {
+      if (phase !== 'idle') run.metrics(m)
     }),
     bus.on('monitor:capture-status', (s) => {
       capture = s.status
@@ -134,6 +143,7 @@ export function createMonitorModel(
         }
       }
     },
+    runLine,
     dispose: () => offs.forEach((off) => off())
   }
 }

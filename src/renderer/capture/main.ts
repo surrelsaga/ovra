@@ -36,27 +36,20 @@ function fileUrl(path: string): string {
 }
 
 /**
- * Dev video source: hidden <video> → 1280×720 canvas (scaled down, black padding at the bottom
- * so the SDK's chest check passes) → captureStream. Frames stay in memory.
+ * Draws a playing <video> into a 1280×720 canvas, scaled down with black padding at the bottom
+ * so the SDK's chest check passes, and returns the canvas stream. Frames stay in memory.
  */
-async function fileStream(
-  path: string,
-  framingPad: number
-): Promise<{ stream: MediaStream; cleanup: () => void }> {
-  const video = document.createElement('video')
-  video.muted = true
-  video.loop = true
-  video.playsInline = true
-  video.src = fileUrl(path)
-  await video.play()
-
+function paddedStream(
+  video: HTMLVideoElement,
+  pad: number
+): { stream: MediaStream; cleanup: () => void } {
   const canvas = document.createElement('canvas')
   canvas.width = cfg.width
   canvas.height = cfg.height
   const g = canvas.getContext('2d')
   if (!g) throw new Error('No 2D canvas context')
-  const pad = Math.min(cfg.maxFramingPad, Math.max(0, framingPad))
-  const h = Math.round(cfg.height * (1 - pad))
+  const p = Math.min(cfg.maxFramingPad, Math.max(0, pad))
+  const h = Math.round(cfg.height * (1 - p))
   const w = Math.round((video.videoWidth * h) / video.videoHeight)
   // Fixed-rate frames (repeating the last decoded frame if decoding lags) keep the SDK's
   // frame-rate check happy when the machine is busy.
@@ -68,15 +61,57 @@ async function fileStream(
     g.drawImage(video, (cfg.width - w) / 2, 0, w, h)
     track.requestFrame()
   }, 1000 / cfg.fps)
-
   return {
     stream,
     cleanup: () => {
       clearInterval(timer)
       video.pause()
+      video.srcObject = null
       video.removeAttribute('src')
       video.load()
     }
+  }
+}
+
+async function playingVideo(setup: (v: HTMLVideoElement) => void): Promise<HTMLVideoElement> {
+  const video = document.createElement('video')
+  video.muted = true
+  video.loop = true
+  video.playsInline = true
+  setup(video)
+  await video.play()
+  return video
+}
+
+/** Dev video source: a test-media file through the padded canvas. */
+async function fileStream(
+  path: string,
+  framingPad: number
+): Promise<{ stream: MediaStream; cleanup: () => void }> {
+  return paddedStream(await playingVideo((v) => (v.src = fileUrl(path))), framingPad)
+}
+
+/**
+ * Padded live camera (reliability §5.6): same canvas as the dev source. The raw camera stream is
+ * returned too so stop() ends its tracks.
+ */
+async function paddedCamera(
+  scale: number
+): Promise<{ streams: MediaStream[]; stream: MediaStream; cleanup: () => void }> {
+  const cam = await navigator.mediaDevices.getUserMedia({
+    video: {
+      width: { ideal: cfg.width },
+      height: { ideal: cfg.height },
+      frameRate: { ideal: cfg.fps },
+      facingMode: 'user'
+    }
+  })
+  try {
+    const p = paddedStream(await playingVideo((v) => (v.srcObject = cam)), 1 - scale)
+    return { ...p, streams: [cam, p.stream] }
+  } catch (err) {
+    for (const t of cam.getTracks()) t.stop()
+    throw err
   }
 }
 
@@ -106,6 +141,7 @@ async function start(req: CaptureStartRequest): Promise<void> {
   let diagnostics = req.diagnostics ? emptyDiagnostics(req.phase) : null
   let currentValidation: ValidationEvent | null = null
   let lastCode: number | null = null
+  const padded = req.source.kind === 'camera' && cfg.liveScale < 1
   const a: Active = {
     sdk,
     streams: [],
@@ -139,6 +175,8 @@ async function start(req: CaptureStartRequest): Promise<void> {
     // SDK frame timestamps are epoch microseconds; receipt time would hide a frozen stream.
     const snapshot = reduceMetrics(raw, frame, timestampUs / 1000)
     if (lastCode !== null) snapshot.validationCode = lastCode
+    // ponytail: the chest isn't really in a padded frame, so its breathing isn't trusted.
+    if (padded) delete snapshot.breathing
     if (diagnostics) addPayload(diagnostics, raw, snapshot)
     pending = mergeSnapshots(pending, snapshot)
   })
@@ -168,8 +206,13 @@ async function start(req: CaptureStartRequest): Promise<void> {
       a.streams.push(f.stream)
       a.cleanup = f.cleanup
       sdk.useMediaStream(f.stream)
+    } else if (padded) {
+      const c = await paddedCamera(cfg.liveScale)
+      a.streams.push(...c.streams)
+      a.cleanup = c.cleanup
+      sdk.useMediaStream(c.stream)
     }
-    // Camera source: the SDK acquires the camera itself and reports it via 'streamAvailable'.
+    // Unpadded camera: the SDK acquires the camera itself and reports it via 'streamAvailable'.
     await sdk.start()
     if (active === a) ovra.send('capture:status', 'running')
   } catch (err) {

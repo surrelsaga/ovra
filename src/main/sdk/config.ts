@@ -1,7 +1,8 @@
 // Owner: Agent A. Tunable sensing numbers.
 export const sensingConfig = {
-  calibrationMs: 90_000,
-  /** Hard cap including time spent positioning and waiting for steady readings. */
+  /** Framing check: the calibration clock starts once the SDK's OK code has held this long (or on Skip). */
+  framingHoldMs: 3_000,
+  /** Hard cap including the framing check and waiting for steady readings. */
   calibrationMaxMs: 180_000,
   checkinMs: 90_000,
   returnCheckMs: 30_000,
@@ -20,7 +21,6 @@ export type SensingConfig = typeof sensingConfig
 /** Dev harness (`npm run harness:sensing`): short phases so a run per test video stays quick. */
 export const harnessConfig = {
   overrides: {
-    calibrationMs: 45_000,
     checkinMs: 20_000,
     checkinIntervalMs: 30_000,
     returnCheckMs: 20_000

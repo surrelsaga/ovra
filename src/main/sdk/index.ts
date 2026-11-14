@@ -14,7 +14,7 @@ import type {
   SensingService
 } from '@shared/types'
 import { ValidationCode } from '@shared/types'
-import { buildBaseline, hasFace } from '../state/classifier'
+import { buildBaseline, hasFace, steadyPulseSec } from '../state/classifier'
 import { resolveConfig } from '../state/config'
 import { onCapture, push } from '../ipc'
 import { loadPage, preloadPath } from '../paths'
@@ -58,7 +58,15 @@ export function createSensing(deps: SensingDeps): SensingService {
   let phaseDeadline: number | undefined
   let validationCode: number | null = null
   let noFaceFound = false
-  let calibration: { measurableAt: number | null; pulses: MetricsSnapshot[] } | null = null
+  /**
+   * Framing check, then the calibration clock: okSince = when the smoothed code turned OK, clockAt =
+   * when the clock started (OK held framingHoldMs, or Skip). Only steady pulse after clockAt counts.
+   */
+  let calibration: {
+    okSince: number | null
+    clockAt: number | null
+    pulses: MetricsSnapshot[]
+  } | null = null
   let faceEnabled = privacy.canUseFace()
   let telemetryEnabled = privacy.get().telemetry
 
@@ -82,6 +90,7 @@ export function createSensing(deps: SensingDeps): SensingService {
     const ev = smoother.poll(Date.now())
     if (ev) {
       noFaceFound = ev.code === ValidationCode.noFaceFound
+      if (calibration) calibration.okSince = ev.code === ValidationCode.ok ? Date.now() : null
       bus.emit('sdk:validation', ev)
     }
   }
@@ -106,8 +115,9 @@ export function createSensing(deps: SensingDeps): SensingService {
       else if (code === ValidationCode.multipleFaces && m.face)
         m = { ...m, face: { present: false } }
       if (calibration && !noFaceFound && hasFace(m, face) && m.pulse?.stable) {
-        calibration.measurableAt ??= Date.now()
-        calibration.pulses.push({ t: m.t, pulse: m.pulse })
+        // A steady pulse only comes with code 0, so it also proves framing if no OK code arrived.
+        if (calibration.clockAt === null) calibration.okSince ??= Date.now()
+        else calibration.pulses.push({ t: m.t, pulse: m.pulse })
       }
       bus.emit('sdk:metrics', m)
     })
@@ -125,7 +135,6 @@ export function createSensing(deps: SensingDeps): SensingService {
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
       validationCode = v.code
-      if (calibration && v.code === ValidationCode.ok) calibration.measurableAt ??= Date.now()
       smoother.push(v, Date.now())
       setTimeout(flushValidation, cfg.hintPersistMs)
     })
@@ -259,12 +268,24 @@ export function createSensing(deps: SensingDeps): SensingService {
     }
   }
 
+  const stateCfg = (): ReturnType<typeof resolveConfig> =>
+    resolveConfig(privacy.getSettings().thresholdOverrides)
+
+  /** Starts the clock once OK has held, then reports seconds of steady pulse toward the bar. */
   function emitProgress(): void {
+    const c = calibration
+    if (!c) return
+    if (c.clockAt === null && c.okSince !== null && Date.now() - c.okSince >= cfg.framingHoldMs)
+      c.clockAt = Date.now()
     const progress =
-      calibration?.measurableAt == null
+      c.clockAt === null
         ? 0
-        : Math.min(1, (Date.now() - calibration.measurableAt) / cfg.calibrationMs)
-    bus.emit('sdk:calibration-progress', { progress, hint: smoother.hint() })
+        : Math.min(1, steadyPulseSec(c.pulses) / stateCfg().baselineMinPulseSec)
+    bus.emit('sdk:calibration-progress', {
+      progress,
+      hint: smoother.hint(),
+      framing: c.clockAt === null
+    })
   }
 
   async function endTimed(g: number): Promise<void> {
@@ -319,7 +340,7 @@ export function createSensing(deps: SensingDeps): SensingService {
       smoother.reset()
       validationCode = null
       noFaceFound = false
-      calibration = phase === 'calibration' ? { measurableAt: null, pulses: [] } : null
+      calibration = phase === 'calibration' ? { okSince: null, clockAt: null, pulses: [] } : null
       bus.emit('sdk:checkin-started', { phase })
       push(w, 'push:capture-start', req)
 
@@ -333,18 +354,10 @@ export function createSensing(deps: SensingDeps): SensingService {
         emitProgress()
         progressTimer = setInterval(() => {
           emitProgress()
-          if (
-            calibration?.measurableAt == null ||
-            Date.now() - calibration.measurableAt < cfg.calibrationMs
-          )
-            return
-          // Reuse the state's readiness rules so insufficient readings get until the hard cap.
-          const result = buildBaseline(
-            calibration.pulses,
-            resolveConfig(privacy.getSettings().thresholdOverrides),
-            Date.now()
-          )
-          if ('baseline' in result) endTimed(g).catch(report)
+          if (calibration?.clockAt == null) return
+          // Reuse the state's bar so insufficient readings get until the hard cap.
+          if ('baseline' in buildBaseline(calibration.pulses, stateCfg(), Date.now()))
+            endTimed(g).catch(report)
         }, cfg.progressEveryMs)
       }
     } catch (err) {
@@ -410,6 +423,12 @@ export function createSensing(deps: SensingDeps): SensingService {
         bus.emit('sdk:checkin-ended', { phase: 'return-check' })
         bus.emit('sdk:checkin-started', { phase: 'continuous' })
       }, cfg.returnCheckMs)
+    },
+
+    skipFraming() {
+      if (calibration?.clockAt !== null) return
+      calibration.clockAt = Date.now()
+      emitProgress()
     },
 
     async stop() {

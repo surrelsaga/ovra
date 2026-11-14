@@ -291,6 +291,7 @@ code {
 .calibration__meta {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }

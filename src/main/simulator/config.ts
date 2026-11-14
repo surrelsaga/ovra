@@ -92,7 +92,8 @@ export const simConfig = {
     resultHideSec: 10
   },
   normalTiming: {
-    calibrationMs: sensingConfig.calibrationMs,
+    // Framing check plus the 30 s steady-pulse bar.
+    calibrationMs: 35_000,
     checkinMs: sensingConfig.checkinMs,
     checkinIntervalMs: null,
     returnCheckMs: sensingConfig.returnCheckMs

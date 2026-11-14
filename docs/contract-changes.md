@@ -142,3 +142,13 @@ Format:
 - Change: optional `MetricsSnapshot.validationCode: number`, the raw SDK validation code for the frame.
 - Why: framing codes prove presence before hint smoothing, including vitals-only mode; empty face objects alone do not.
 - Status: applied in surrelsaga/ovra-presence (requested by the coordinator)
+
+## 2026-11-15 — reliability: calibration framing check, failure choices
+
+- File: src/shared/types.ts
+- Change: optional `Session.calibrationFailed?: string` (plain-words reason; the session stays `calibrating` and waits).
+- Change: new `CalibrationAction = 'skip-framing' | 'retry' | 'start-anyway'` and invoke `'session:calibration': { req: { action: CalibrationAction }; res: void }` with its `IPC_INVOKE_CHANNELS` entry.
+- Change: optional `framing?: boolean` on `'sdk:calibration-progress'` and `'push:calibration'` (true until the calibration clock starts).
+- Change: `SensingService.skipFraming(): void` and `SessionService.calibrationChoice(action: 'retry' | 'start-anyway'): Promise<void>` (interface additions; the simulator and monitor harness fakes got no-op `skipFraming`).
+- Why: docs/reliability.md §5.1 (decision 39): framing check with Skip, and Try again / Start anyway instead of running blind.
+- Status: applied in surrelsaga/ovra-rules (requested by the coordinator)

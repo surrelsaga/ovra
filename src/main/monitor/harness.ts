@@ -45,6 +45,7 @@ export async function runHarness(): Promise<void> {
     startContinuous: async () => begin('continuous'),
     startCheckins: () => {},
     startReturnCheck: async () => begin('return-check'),
+    skipFraming: () => {},
     async stop() {
       const previous = phase
       phase = 'idle'

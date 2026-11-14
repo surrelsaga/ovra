@@ -6,7 +6,8 @@ export const mainConfig = {
   customMin: { min: 10, max: 480, default: 90 },
   checkinIntervals: [3, 5, 10] as const,
   nudgeIntervalsMin: [15, 20, 30, 45],
-  calibrationSec: 90,
+  /** Seconds of steady pulse calibration needs (state baselineMinPulseSec). */
+  calibrationSec: 30,
   demoLengthMin: 15,
   activityLengthMin: {
     focus: 60,

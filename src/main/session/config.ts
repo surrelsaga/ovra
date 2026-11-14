@@ -15,8 +15,8 @@ export const sessionConfig = {
     unwind: 45
   } satisfies Record<Activity, number>,
   bubbleTtlMs: 8000,
-  baselineFailedBubble:
-    "I couldn't get a steady read while getting to know you, so this session runs on the timer, music and regular breaks.",
+  /** "Start anyway" after a failed calibration: the baseline builds from in-session steady pulse. */
+  startAnywayBubble: "I'll get to know you as we go. Until then, music follows what you're doing.",
   cameraFailedBubble:
     "The camera didn't start, so this session runs on the timer, music and regular breaks.",
   /**
@@ -31,12 +31,10 @@ export const sessionConfig = {
       tenseHoldMin: 0.5,
       lowHoldMin: 0.5,
       crashingTenseMin: 2,
-      awayNoFaceSec: 15,
-      // Shorter calibration, so a stricter floor of steady readings.
-      baselineMinPulseReadings: 10,
-      baselineMinPulseSpanSec: 30
+      awayNoFaceSec: 15
     },
-    sensing: { calibrationMs: 45_000, calibrationMaxMs: 120_000, returnCheckMs: 20_000 },
+    /** Same calibration bar as real mode; only the max wait is shorter. */
+    sensing: { calibrationMaxMs: 90_000, returnCheckMs: 20_000 },
     musicTargetGap: { minTargetChangeMs: 20_000 },
     nudgeMinIntervalMin: 1,
     /** Seated nudges, minutes. */

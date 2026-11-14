@@ -32,9 +32,6 @@ export async function runHarness(): Promise<void> {
   const application = await startApp({
     background: true,
     sensingConfig: {
-      calibrationMs: basename(video).startsWith('leave-and-return')
-        ? cfg.awayCalibrationMs
-        : cfg.calibrationMs,
       checkinMs: cfg.checkinMs,
       checkinIntervalMs: cfg.checkinIntervalMs,
       returnCheckMs: cfg.returnCheckMs

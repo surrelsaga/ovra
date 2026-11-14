@@ -170,6 +170,8 @@ export function createSimulatedSensing(
 
   const service: SimulatedSensing = {
     startCalibration: () => run('calibration', timing().calibrationMs),
+    // ponytail: synthetic data has no framing to check.
+    skipFraming: () => {},
 
     startCheckins(intervalMin) {
       privacy.assertCameraConsent()

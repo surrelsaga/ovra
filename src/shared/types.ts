@@ -272,7 +272,12 @@ export interface Session {
   status: SessionStatus
   /** True when sensing runs this session (camera consent given and started). False if the camera was declined. */
   sensingEnabled: boolean
+  /** Calibration failed (plain-words reason); the session waits on Try again or Start anyway. */
+  calibrationFailed?: string
 }
+
+/** The calibration screen's choices: Skip (framing check), Try again or Start anyway (after a failure). */
+export type CalibrationAction = 'skip-framing' | 'retry' | 'start-anyway'
 
 export interface SessionTick {
   sessionId: string
@@ -616,8 +621,8 @@ export interface BusEvents {
   'sdk:metrics': MetricsSnapshot
   'sdk:validation': ValidationEvent
   'sdk:error': SdkError
-  /** Calibration progress, 0–1, with the current hint for the user. */
-  'sdk:calibration-progress': { progress: number; hint: string | null }
+  /** Calibration progress, 0–1, with the current hint for the user. framing = clock not started yet. */
+  'sdk:calibration-progress': { progress: number; hint: string | null; framing?: boolean }
 
   'state:updated': StateUpdate
   /** Baseline built. Payload is only a flag — the baseline itself stays in the state module. */
@@ -683,6 +688,7 @@ export interface IpcInvoke {
   'session:start': { req: SessionConfig; res: Session }
   'session:end': { req: void; res: SessionSummary | null }
   'session:current': { req: void; res: Session | null }
+  'session:calibration': { req: { action: CalibrationAction }; res: void }
 
   'camera:pause': { req: void; res: void }
   'camera:resume': { req: void; res: void }
@@ -732,7 +738,7 @@ export interface IpcPush {
   'push:session': Session | null
   'push:session-tick': SessionTick
   'push:session-summary': SessionSummary
-  'push:calibration': { progress: number; hint: string | null }
+  'push:calibration': { progress: number; hint: string | null; framing?: boolean }
   /** SDK failure (e.g. credits exhausted) so the main window can show a calm fallback message. */
   'push:sdk-error': SdkError
   'push:state': StateUpdate
@@ -775,6 +781,7 @@ export const IPC_INVOKE_CHANNELS = [
   'session:start',
   'session:end',
   'session:current',
+  'session:calibration',
   'camera:pause',
   'camera:resume',
   'music:status',
@@ -889,6 +896,8 @@ export interface SensingService {
   startCheckins(intervalMin: CheckinIntervalMin): void
   startContinuous(): Promise<void>
   startReturnCheck(): Promise<void>
+  /** Framing check "Skip": start the calibration clock now. No-op outside the framing check. */
+  skipFraming(): void
   /** Stops capture and any schedule. Camera off. */
   stop(): Promise<void>
   pause(): Promise<void>
@@ -911,6 +920,8 @@ export interface SessionService {
   start(config: SessionConfig): Promise<Session>
   end(source?: SessionEndSource): Promise<SessionSummary | null>
   current(): Session | null
+  /** After a failed calibration: run it again, or start without a baseline (it builds in-session). */
+  calibrationChoice(action: 'retry' | 'start-anyway'): Promise<void>
 }
 
 /** src/main/music */

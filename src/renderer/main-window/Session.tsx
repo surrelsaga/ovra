@@ -1,9 +1,10 @@
 // Owner: Agent E. Session tab: new session, calibration, running.
 import { useEffect, useState } from 'react'
-import { Play, Square } from 'lucide-react'
+import { Play, RotateCcw, Square } from 'lucide-react'
 import type {
   Activity,
   AppSettings,
+  CalibrationAction,
   CameraMode,
   MusicStatus,
   PrivacySettings,
@@ -188,7 +189,12 @@ export function Calibration({
   const [preview, setPreview] = useState<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState(false)
   const devVideo = ovra().isDev ? settings.devVideoSource : null
-  const previewEnabled = session.status === 'calibrating' && session.sensingEnabled
+  const failed = session.calibrationFailed
+  // The camera is off while Ovra waits on Try again or Start anyway, so is the preview.
+  const previewEnabled = session.status === 'calibrating' && session.sensingEnabled && !failed
+  const framing = cal.framing === true
+  const choose = (action: CalibrationAction): void =>
+    void ovra().invoke('session:calibration', { action })
   useEffect(() => {
     if (!previewEnabled || devVideo || !navigator.mediaDevices?.getUserMedia) return
     let stream: MediaStream | null = null
@@ -212,6 +218,32 @@ export function Calibration({
     }
   }, [previewEnabled, devVideo])
   const secLeft = Math.ceil((1 - cal.progress) * mainConfig.calibrationSec)
+  if (failed)
+    return (
+      <section className="page page--center" aria-labelledby="calibration-title">
+        <MoonOrb mood="dim" listening={false} away={false} size={128} />
+        <h1 id="calibration-title">Getting to know today’s you</h1>
+        <div className="calibration-hint" role="alert">
+          <p className="muted">I couldn’t get a steady read this time.</p>
+          <p className="calibration-hint__text">{failed}</p>
+          <p className="muted">
+            Even light on your face and a still moment usually help. Or start now, and I’ll get to
+            know you as we go.
+          </p>
+        </div>
+        <div className="page__actions">
+          <Button variant="primary" icon={<RotateCcw />} onClick={() => choose('retry')}>
+            Try again
+          </Button>
+          <Button icon={<Play />} onClick={() => choose('start-anyway')}>
+            Start anyway
+          </Button>
+        </div>
+        <Button variant="ghost" onClick={() => void ovra().invoke('session:end')}>
+          Cancel session
+        </Button>
+      </section>
+    )
   return (
     <section className="page page--center" aria-labelledby="calibration-title">
       <MoonOrb mood="calm" listening calibration={cal.progress} away={false} size={128} />
@@ -262,8 +294,14 @@ export function Calibration({
       <div className="calibration">
         <Progress value={cal.progress} label="Calibration progress" />
         <div className="calibration__meta">
-          <span>{cal.progress === 0 ? 'Finding your position' : 'Getting to know you'}</span>
-          <span>{secLeft > 0 ? `About ${secLeft} s left` : 'Almost done'}</span>
+          <span>{framing ? 'Finding your position' : 'Getting to know you'}</span>
+          {framing ? (
+            <button type="button" className="text-link" onClick={() => choose('skip-framing')}>
+              Skip
+            </button>
+          ) : (
+            <span>{secLeft > 0 ? `About ${secLeft} s of steady reading left` : 'Almost done'}</span>
+          )}
         </div>
         {session.config.music && music.scoringQueue > 0 && (
           <p className="muted small">

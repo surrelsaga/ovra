@@ -45,6 +45,7 @@ function setup(camera = true) {
     startCheckins: vi.fn(),
     startContinuous: vi.fn(async () => {}),
     startReturnCheck: vi.fn(async () => {}),
+    skipFraming: vi.fn(),
     stop: vi.fn(async () => {}),
     pause: vi.fn(async () => {}),
     resume: vi.fn(async () => {}),
@@ -111,13 +112,46 @@ describe('session', () => {
     expect(t.sensing.startCheckins).not.toHaveBeenCalled()
   })
 
-  it('baseline failure still runs and tells the user', async () => {
+  it('baseline failure waits for the user and never runs blind', async () => {
     const t = setup()
     await t.svc.start(cfg)
-    t.bus.emit('state:baseline-ready', { ok: false, reason: 'too few' })
-    expect(t.svc.current()?.status).toBe('running')
-    expect(t.sensing.startCheckins).toHaveBeenCalled()
-    expect(t.seen['orb:bubble']?.[0].text).toBe(sessionConfig.baselineFailedBubble)
+    await t.svc.calibrationChoice('start-anyway') // nothing failed yet: ignored
+    expect(t.svc.current()?.status).toBe('calibrating')
+    t.bus.emit('state:baseline-ready', {
+      ok: false,
+      reason: 'I only got 4 of 30 s of steady pulse.'
+    })
+    expect(t.svc.current()).toMatchObject({
+      status: 'calibrating',
+      calibrationFailed: 'I only got 4 of 30 s of steady pulse.'
+    })
+    expect(t.sensing.startCheckins).not.toHaveBeenCalled()
+    expect(t.seen['orb:bubble']).toBeUndefined()
+  })
+
+  it('Try again resets the state and re-runs calibration', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('state:baseline-ready', { ok: false, reason: 'x' })
+    await t.svc.calibrationChoice('retry')
+    expect(t.svc.current()?.calibrationFailed).toBeUndefined()
+    expect(t.svc.current()?.status).toBe('calibrating')
+    expect(t.state.reset).toHaveBeenCalledTimes(2)
+    expect(t.sensing.startCalibration).toHaveBeenCalledTimes(2)
+    t.bus.emit('state:baseline-ready', { ok: true })
+    expect(t.statuses().at(-1)).toBe('running')
+    expect(t.sensing.startCheckins).toHaveBeenCalledWith(5)
+  })
+
+  it('Start anyway runs the session and says the baseline builds as we go', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('state:baseline-ready', { ok: false, reason: 'x' })
+    await t.svc.calibrationChoice('start-anyway')
+    expect(t.svc.current()).toMatchObject({ status: 'running', calibrationFailed: undefined })
+    expect(t.sensing.startCheckins).toHaveBeenCalledWith(5)
+    expect(t.state.reset).toHaveBeenCalledOnce() // the engine keeps the failure, so it builds in-session
+    expect(t.seen['orb:bubble']?.[0].text).toBe(sessionConfig.startAnywayBubble)
   })
 
   it('camera declined: straight to running without sensing', async () => {

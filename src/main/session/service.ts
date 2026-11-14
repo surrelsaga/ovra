@@ -114,10 +114,16 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
   function listen(): (() => void)[] {
     return [
-      bus.on('state:baseline-ready', ({ ok }) => {
+      bus.on('state:baseline-ready', ({ ok, reason }) => {
         if (session?.status !== 'calibrating') return
-        setStatus('running', ok ? 'baseline built' : 'baseline failed', 'state:baseline-ready')
-        if (!ok) bubble(sessionConfig.baselineFailedBubble)
+        // Never run blind: wait for Try again or Start anyway on the calibration screen.
+        if (!ok)
+          return update(
+            { calibrationFailed: reason ?? "I couldn't get a steady read." },
+            'baseline failed',
+            'state:baseline-ready'
+          )
+        setStatus('running', 'baseline built', 'state:baseline-ready')
         startSchedule(session)
       }),
       bus.on('state:updated', (u) => {
@@ -185,6 +191,32 @@ export function createSessionService(deps: SessionDeps): SessionService {
     if (remainingSec === 0) void end('length elapsed')
   }
 
+  /** Calibration, or the camera-failed fallback if sensing can't start. */
+  async function calibrate(): Promise<void> {
+    try {
+      await sensing.resume()
+      await sensing.startCalibration()
+    } catch (e) {
+      warn('startCalibration')(e)
+      recordCameraMode = 'off'
+      disableSensing('sensing unavailable', 'startCalibration')
+      bubble(sessionConfig.cameraFailedBubble)
+    }
+  }
+
+  async function calibrationChoice(action: 'retry' | 'start-anyway'): Promise<void> {
+    const s = session
+    if (s?.status !== 'calibrating' || !s.calibrationFailed) return
+    if (action === 'start-anyway') {
+      update({ status: 'running', calibrationFailed: undefined }, 'start anyway', 'ipc/user')
+      bubble(sessionConfig.startAnywayBubble)
+      return startSchedule(s)
+    }
+    update({ calibrationFailed: undefined }, 'calibration retry', 'ipc/user')
+    state.reset()
+    await calibrate()
+  }
+
   async function start(input: SessionConfig): Promise<Session> {
     if (session || ending) throw new Error('A session is already running')
     const config = normalizeConfig(input, privacy)
@@ -212,15 +244,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
     if (sensingEnabled) {
       state.reset()
-      try {
-        await sensing.resume()
-        await sensing.startCalibration()
-      } catch (e) {
-        warn('startCalibration')(e)
-        recordCameraMode = 'off'
-        disableSensing('sensing unavailable', 'startCalibration')
-        bubble(sessionConfig.cameraFailedBubble)
-      }
+      await calibrate()
     }
     return session
   }
@@ -281,5 +305,5 @@ export function createSessionService(deps: SessionDeps): SessionService {
     void end('delete-all', true)
   })
 
-  return { start, end, current: () => session }
+  return { start, end, current: () => session, calibrationChoice }
 }

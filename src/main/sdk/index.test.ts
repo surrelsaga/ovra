@@ -122,7 +122,6 @@ function setup(
     privacy,
     getApiKey: () => (opts.key === undefined ? 'test-key' : opts.key),
     config: {
-      calibrationMs: 10_000,
       checkinMs: 5_000,
       returnCheckMs: 3_000,
       hintPersistMs: 1_000,
@@ -272,24 +271,27 @@ describe('phases and check-in scheduler', () => {
     warn.mockRestore()
   })
 
-  it('calibration emits progress and ends on time', async () => {
-    const { sensing, events, names } = setup({ config: { calibrationMs: 20_000 } })
+  it('calibration: framing check, then ends after 30 s of steady pulse', async () => {
+    const { sensing, events, names } = setup()
     await sensing.startCalibration()
     expect(sensing.phase()).toBe('calibration')
-    for (let i = 0; i < 20; i++) {
+    h.handlers['capture:validation']({ t: Date.now(), code: 0, hint: '' }, { sender: h.wc })
+    const progress = (): unknown[] =>
+      events.filter((e) => e.name === 'sdk:calibration-progress').map((e) => e.payload)
+    for (let i = 0; i < 45 && sensing.phase() === 'calibration'; i++) {
       h.handlers['capture:metrics'](
         { t: Date.now(), pulse: { value: 60, stable: true } },
         { sender: h.wc }
       )
       await vi.advanceTimersByTimeAsync(1000)
+      // OK shows after 1 s (hint persist) and must hold 3 s before the clock starts.
+      if (i === 2) expect(progress().at(-1)).toEqual({ progress: 0, hint: null, framing: true })
     }
-    const progress = events
-      .filter((e) => e.name === 'sdk:calibration-progress')
-      .map((e) => e.payload)
-    expect(progress.length).toBeGreaterThanOrEqual(10)
-    expect(progress.at(-1)).toEqual({ progress: 1, hint: null })
+    expect(progress().at(-1)).toEqual({ progress: 1, hint: null, framing: false })
+    expect(progress().filter((p) => (p as { framing: boolean }).framing).length).toBeLessThan(6)
     expect(names().filter((n) => n !== 'sdk:metrics')).toEqual([
       'sdk:checkin-started:calibration',
+      'sdk:validation',
       'sdk:checkin-ended:calibration'
     ])
     expect(sensing.phase()).toBe('idle')
@@ -591,19 +593,19 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     )
   }
 
-  it('keeps progress at zero through 45 s of hints, then builds after 90 measurable seconds', async () => {
+  it('shows the SDK hint through 45 s of framing, then builds after 30 s of steady pulse', async () => {
     const t = replay()
     await t.sensing.startCalibration()
     for (const code of [16, 7, 17, 15, 12]) {
       validation(code, `position ${code}`)
       await vi.advanceTimersByTimeAsync(9000)
       expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual(
-        { progress: 0, hint: `position ${code}` }
+        { progress: 0, hint: `position ${code}`, framing: true }
       )
     }
     expect(t.ready).toEqual([])
     validation(0, '')
-    for (let sec = 0; sec < 90; sec++) {
+    for (let sec = 0; sec < 60 && t.sensing.phase() === 'calibration'; sec++) {
       // 30 face payloads/s, with pulse in only one payload/s after a 10 s warmup.
       for (let frame = 0; frame < 30; frame++) {
         const m: MetricsSnapshot = { t: Date.now(), face: { present: true } }
@@ -611,20 +613,21 @@ describe('calibration live-pattern replay (mock capture only)', () => {
         h.handlers['capture:metrics'](m, { sender: h.wc })
       }
       await vi.advanceTimersByTimeAsync(1000)
-      if (sec === 44) {
-        expect(t.sensing.phase()).toBe('calibration') // total elapsed 90 s
+      if (sec === 24) {
+        // Pulse from second 10: 15 of 30 steady seconds, counted only once the clock runs.
+        expect(t.sensing.phase()).toBe('calibration')
         expect(t.ready).toEqual([])
         expect(
           t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload
-        ).toEqual({ progress: 0.5, hint: null })
+        ).toEqual({ progress: 0.5, hint: null, framing: false })
       }
     }
     expect(t.sensing.phase()).toBe('idle')
     expect(t.ready).toEqual([{ ok: true }])
     expect(t.engine.diagnostics()).toMatchObject({
       baseline: true,
-      pulseCount: 80,
-      pulseSpanSec: 79
+      pulseCount: 30,
+      pulseNeeded: 30
     })
     expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toHaveLength(1)
     await t.sensing.stop()
@@ -642,12 +645,11 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     expect(t.ready).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
     expect(t.sensing.phase()).toBe('idle')
-    expect(t.ready).toEqual([
-      { ok: false, reason: expect.stringContaining('too few steady pulse readings') }
-    ])
+    expect(t.ready).toEqual([{ ok: false, reason: 'I only got 0 of 30 s of steady pulse.' }])
     expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
       progress: 0,
-      hint: 'Place more of the chest in view.'
+      hint: 'Place more of the chest in view.',
+      framing: true
     })
     expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toHaveLength(1)
     await t.sensing.stop()
@@ -663,12 +665,33 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     expect(t.sensing.phase()).toBe('calibration')
     expect(t.ready).toEqual([])
     await vi.advanceTimersByTimeAsync(90_000)
-    expect(t.ready).toEqual([{ ok: false, reason: expect.stringContaining('too few') }])
+    expect(t.ready).toEqual([{ ok: false, reason: expect.stringContaining('of 30 s') }])
     await t.sensing.stop()
     t.engine.dispose()
   })
 
-  it('can start the measurable clock from a steady pulse without a validation callback', async () => {
+  it('Skip starts the clock without waiting for the framing check', async () => {
+    const t = replay()
+    await t.sensing.startCalibration()
+    validation(7, 'Place more of the chest in view.')
+    await vi.advanceTimersByTimeAsync(10_000)
+    t.sensing.skipFraming()
+    expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
+      progress: 0,
+      hint: 'Place more of the chest in view.',
+      framing: false
+    })
+    for (let sec = 0; sec < 40 && t.sensing.phase() === 'calibration'; sec++) {
+      pulse()
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(t.ready).toEqual([{ ok: true }])
+    t.sensing.skipFraming() // no-op outside calibration
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('can start the clock from a steady pulse without a validation callback', async () => {
     const t = replay()
     await t.sensing.startCalibration()
     await vi.advanceTimersByTimeAsync(45_000)

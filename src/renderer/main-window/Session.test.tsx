@@ -30,6 +30,9 @@ const settings: AppSettings = {
   musicStartHelpShown: false
 }
 
+const calls = (bridge: ReturnType<typeof installFakeBridge>): unknown[] =>
+  bridge.invokes.filter((i) => i.channel === 'session:calibration').map((i) => i.req)
+
 describe('calibration preview', () => {
   it('counts only the remaining queue and hides music progress when it is empty', () => {
     const bridge = installFakeBridge()
@@ -136,6 +139,42 @@ describe('calibration preview', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Couldn’t start the camera check. Your session will keep running with timed breaks.'
     )
+  })
+
+  it('framing check: shows the SDK hint and a Skip that starts the clock', () => {
+    const bridge = installFakeBridge()
+    render(<Calibration session={session('calibrating')} settings={settings} />)
+    bridge.push('push:calibration', { progress: 0, hint: 'Lean back a little.', framing: true })
+    expect(screen.getByText('Finding your position')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    expect(calls(bridge)).toEqual([{ action: 'skip-framing' }])
+    bridge.push('push:calibration', { progress: 0.5, hint: null, framing: false })
+    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+    expect(screen.getByText('About 15 s of steady reading left')).toBeInTheDocument()
+  })
+
+  it('failed calibration: plain reason, Try again and Start anyway, camera preview off', () => {
+    const bridge = installFakeBridge()
+    const getUserMedia = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia }
+    })
+    render(
+      <Calibration
+        session={{
+          ...session('calibrating'),
+          calibrationFailed: 'I only got 12 of 30 s of steady pulse.'
+        }}
+        settings={settings}
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('I only got 12 of 30 s of steady pulse.')
+    expect(getUserMedia).not.toHaveBeenCalled()
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start anyway' }))
+    expect(calls(bridge)).toEqual([{ action: 'retry' }, { action: 'start-anyway' }])
   })
 
   it('does not request media after consent is absent', () => {

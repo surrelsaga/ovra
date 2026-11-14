@@ -31,7 +31,7 @@ code {
 
 .shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
   height: 100vh;
 }
 
@@ -96,7 +96,8 @@ code {
 
 .content {
   position: relative;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: auto;
   padding: 52px var(--space-7) var(--space-7);
 }
 .content__drag,
@@ -118,7 +119,6 @@ code {
 .page--center {
   justify-items: center;
   text-align: center;
-  padding-top: var(--space-7);
   gap: var(--space-4);
   margin: 0 auto;
 }
@@ -219,9 +219,10 @@ code {
 
 /* Onboarding */
 .onboarding {
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
   display: grid;
-  place-content: center;
+  align-content: safe center;
   justify-items: center;
   gap: var(--space-4);
   padding: var(--space-6);
@@ -408,25 +409,38 @@ code {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding-left: var(--space-3);
+  max-width: 100%;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   background: var(--panel-raised);
   font-size: var(--text-sm);
+}
+.chip__text {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.chip__text small {
+  color: var(--text-secondary);
+  font-size: inherit;
 }
 .chip__remove {
   display: grid;
   place-items: center;
   width: var(--touch-target);
-  height: 36px;
+  height: var(--touch-target);
+  flex-shrink: 0;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
 }
 .chip__remove:hover {
+  background: var(--panel-hover);
   color: var(--text);
 }
 .chip__remove svg {

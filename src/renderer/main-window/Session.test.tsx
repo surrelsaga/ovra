@@ -31,6 +31,35 @@ const settings: AppSettings = {
 }
 
 describe('calibration preview', () => {
+  it('counts only the remaining queue and hides music progress when it is empty', () => {
+    const bridge = installFakeBridge()
+    const calibration = session('calibrating')
+    render(
+      <Calibration
+        session={{
+          ...calibration,
+          sensingEnabled: false,
+          config: { ...calibration.config, music: true }
+        }}
+        settings={settings}
+      />
+    )
+    const music = {
+      available: true,
+      leaveAlone: false,
+      target: null,
+      nowPlaying: null,
+      scoredCount: 100,
+      scoringQueue: 100
+    }
+    bridge.push('push:music', music)
+    expect(screen.getByText('Getting to know your music · 100 songs left')).toBeInTheDocument()
+    bridge.push('push:music', { ...music, scoringQueue: 60 })
+    expect(screen.getByText('Getting to know your music · 60 songs left')).toBeInTheDocument()
+    bridge.push('push:music', { ...music, scoringQueue: 0 })
+    expect(screen.queryByText(/Getting to know your music/)).toBeNull()
+  })
+
   it('puts the framing hint in a prominent live status while positioning progress stays at zero', () => {
     const bridge = installFakeBridge()
     render(

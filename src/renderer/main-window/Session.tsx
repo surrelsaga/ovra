@@ -267,7 +267,7 @@ export function Calibration({
         </div>
         {session.config.music && music.scoringQueue > 0 && (
           <p className="muted small">
-            Getting to know your music · {music.scoredCount} sorted, {music.scoringQueue} to go
+            Getting to know your music · {music.scoringQueue} songs left
           </p>
         )}
       </div>

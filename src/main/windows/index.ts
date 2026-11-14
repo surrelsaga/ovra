@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import type { Bus, MoveCardView, OrbView, PrivacyService, WindowsService } from '@shared/types'
 import { handle, push } from '../ipc'
 import { loadPage, preloadPath, testMediaDir } from '../paths'
-import { windowsConfig as cfg } from './config'
+import { mainWindowSize, windowsConfig as cfg } from './config'
 import { bindForwarding, type Forwarder } from './forward'
 import { canGrantPreviewPermission } from './preview-permission'
 
@@ -93,7 +93,8 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   const ensure = (): NonNullable<typeof wins> => {
     if (wins) return wins
     const main = new BrowserWindow({
-      ...cfg.main,
+      ...mainWindowSize(screen.getPrimaryDisplay().workAreaSize),
+      resizable: true,
       show: false,
       title: 'Ovra',
       titleBarStyle: 'hiddenInset',

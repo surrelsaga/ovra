@@ -40,7 +40,8 @@ it('shows read results and errors and polls availability only while Music is mou
     await act(async () => {
       await Promise.resolve()
     })
-    expect(screen.getByText('Read 100 songs · 0 scored so far')).toBeInTheDocument()
+    expect(screen.getByText('Read 100 songs')).toBeInTheDocument()
+    expect(screen.queryByText(/scored so far/)).toBeNull()
     expect(screen.getByText('This playlist is private or empty')).toBeInTheDocument()
     expect(screen.getByText(/Spotify isn’t running/)).toBeInTheDocument()
     bridge.push('push:music', { ...status, available: true })
@@ -57,4 +58,14 @@ it('shows read results and errors and polls availability only while Music is mou
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('shows only songs left while provisional scores are pending and hides progress when done', () => {
+  const bridge = installFakeBridge({ 'music:library': { songs: [], playlists: [] } })
+  render(<Music initialStatus={{ ...status, scoredCount: 100, scoringQueue: 100 }} />)
+  expect(screen.getByText('Getting to know your music · 100 songs left')).toBeInTheDocument()
+  bridge.push('push:music', { ...status, scoredCount: 100, scoringQueue: 60 })
+  expect(screen.getByText('Getting to know your music · 60 songs left')).toBeInTheDocument()
+  bridge.push('push:music', { ...status, scoredCount: 100 })
+  expect(screen.queryByText(/Getting to know your music/)).toBeNull()
 })

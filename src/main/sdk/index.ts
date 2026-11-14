@@ -38,7 +38,8 @@ const PARTITION = 'ovra-capture'
 
 export function createSensing(deps: SensingDeps): SensingService {
   const { bus, privacy } = deps
-  const cfg = { ...sensingConfig, ...deps.config }
+  // Fills the caller's object and keeps reading it, so demo mode can change timings in place.
+  const cfg: SensingConfig = Object.assign(deps.config ?? {}, { ...sensingConfig, ...deps.config })
   const smoother = createValidationSmoother(cfg.hintPersistMs)
 
   let win: BrowserWindow | null = null

@@ -1,8 +1,9 @@
 // Owner: orchestrator / Phase 3 integration. Wires every module together through the bus.
 import { app, session as electronSession, shell } from 'electron'
 import type { AppSettings, Bus, PrivacyService, SensingService } from '@shared/types'
-import type { SensingConfig } from './sdk/config'
-import type { MovesConfig } from './moves/config'
+import { sensingConfig, type SensingConfig } from './sdk/config'
+import { MOVES_CONFIG, type MovesConfig } from './moves/config'
+import { musicConfig } from './music/config'
 import type { TargetGap } from './music/selector'
 import { appConfig } from './config'
 import { installQuitHandler } from './quit'
@@ -15,6 +16,7 @@ import { createMusic, registerMusicIpc } from './music'
 import { createMusicController } from './music/controller'
 import { createMoves, registerMovesIpc } from './moves'
 import { createSessionService, registerSessionIpc } from './session'
+import { bindDemo } from './session/demo'
 import { createWindows, registerWindowsIpc } from './windows'
 import { startMonitor } from './monitor'
 
@@ -37,10 +39,15 @@ export async function startApp(options: AppOptions = {}) {
   const dataDir = app.getPath('userData')
   await restrictPermissions(dataDir).catch(console.error)
   const storage = createStorage(dataDir)
+  // Live config objects; demo mode changes them in place for one session (never written to disk).
+  const overlay = options.settingsOverlay ?? {}
+  const sensingCfg = { ...sensingConfig, ...options.sensingConfig }
+  const movesCfg = options.movesConfig ?? { ...MOVES_CONFIG }
+  const musicGap = options.musicTargetGap ?? { ...musicConfig.switching }
   const privacy = await createPrivacy({
     storage,
     bus,
-    settingsOverlay: options.settingsOverlay,
+    settingsOverlay: overlay,
     // Chromium's own files in userData (cookies, local/session storage, caches). The capture window's
     // session is in-memory only, so it leaves nothing on disk.
     clearBrowserData: async () => {
@@ -62,7 +69,7 @@ export async function startApp(options: AppOptions = {}) {
       bus,
       privacy,
       getApiKey: () => getKey('PRESAGE_API_KEY'),
-      config: options.sensingConfig
+      config: sensingCfg
     })
   const state = createStateEngine({ bus, privacy })
   const music = createMusic({
@@ -71,16 +78,17 @@ export async function startApp(options: AppOptions = {}) {
     privacy,
     controller: createMusicController(),
     getKey,
-    targetGap: options.musicTargetGap
+    targetGap: musicGap
   })
-  const moves = createMoves({ bus, privacy }, options.movesConfig)
+  const moves = createMoves({ bus, privacy }, movesCfg)
+  bindDemo({ bus, privacy, overlay, moves: movesCfg, musicGap, sensing: sensingCfg })
   const session = createSessionService({ bus, privacy, sensing, state, music, moves })
   startMonitor({ bus, sensing, state, session, music })
   registerSessionIpc(session, sensing)
   registerMusicIpc(music)
   registerMovesIpc(moves)
 
-  const windows = createWindows({ bus, privacy, background: options.background })
+  const windows = createWindows({ bus, privacy, background: options.background, why: state.why })
   registerWindowsIpc(windows)
   windows.bindBus()
   windows.showMain()

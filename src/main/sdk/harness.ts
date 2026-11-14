@@ -61,7 +61,7 @@ export async function runHarness(): Promise<void> {
     bus,
     privacy,
     getApiKey: () => getKey('PRESAGE_API_KEY'),
-    config: harnessConfig.overrides
+    config: { ...harnessConfig.overrides }
   })
 
   const phases: PhaseSummary[] = []

@@ -53,7 +53,8 @@ export function normalizeConfig(
     checkinIntervalMin:
       INTERVALS.find((i) => i === input.checkinIntervalMin) ??
       privacy.getSettings().checkinIntervalMin,
-    music: input.music !== false
+    music: input.music !== false,
+    ...(input.demo === true && { demo: true })
   }
 }
 

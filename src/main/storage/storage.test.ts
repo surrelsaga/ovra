@@ -1,9 +1,9 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as fsp from 'node:fs/promises'
 import type { StorageFile } from '@shared/types'
-import { createStorage, RawDataError } from '.'
+import { createStorage, RawDataError, restrictPermissions } from '.'
 
 vi.mock('node:fs/promises', async (orig) => {
   const real = await orig<typeof import('node:fs/promises')>()
@@ -115,5 +115,24 @@ describe('raw data guard', () => {
     await s.write('settings', {
       thresholdOverrides: { tensePulsePct: 0.12, lowBreathingPct: -0.2 }
     })
+  })
+
+  it.skipIf(process.platform === 'win32')('keeps files owner-only (0600)', async () => {
+    const mode = async (f: string): Promise<number> => (await stat(join(dir, f))).mode & 0o777
+    const s = createStorage(dir)
+    await s.write('songs', [])
+    expect(await mode('songs.json')).toBe(0o600)
+
+    // A file left at 0644 by an older build: fixed on startup, and on the next write.
+    await writeFile(join(dir, 'privacy.json'), '{}')
+    await writeFile(join(dir, 'sessions.json.corrupt'), '{')
+    await chmod(join(dir, 'privacy.json'), 0o644)
+    await chmod(join(dir, 'sessions.json.corrupt'), 0o644)
+    await restrictPermissions(dir)
+    expect(await mode('privacy.json')).toBe(0o600)
+    expect(await mode('sessions.json.corrupt')).toBe(0o600)
+    await chmod(join(dir, 'privacy.json'), 0o644)
+    await s.write('privacy', {})
+    expect(await mode('privacy.json')).toBe(0o600)
   })
 })

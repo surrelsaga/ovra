@@ -1,6 +1,6 @@
 // Owner: Agent F (privacy + storage). JSON files in Electron's userData folder.
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Storage, StorageFile } from '@shared/types'
 
@@ -64,6 +64,28 @@ export function serialize(file: StorageFile, data: unknown): string {
   )
 }
 
+/** Owner-only (rw-------). Windows ignores POSIX modes; the user profile folder is already private. */
+const FILE_MODE = 0o600
+
+/**
+ * Makes existing Ovra files owner-only. Files written before this change were 0644. New writes
+ * already land at 0600 (the temp file is created with that mode, then renamed). Run on startup.
+ */
+export async function restrictPermissions(dir: string): Promise<void> {
+  if (process.platform === 'win32') return
+  const files = STORAGE_FILES.flatMap((n) => [
+    join(dir, `${n}.json`),
+    join(dir, `${n}.json.corrupt`)
+  ])
+  await Promise.all(
+    files.map((f) =>
+      chmod(f, FILE_MODE).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== 'ENOENT') throw err
+      })
+    )
+  )
+}
+
 function assertName(name: string): asserts name is StorageFile {
   if (!(STORAGE_FILES as readonly string[]).includes(name)) {
     throw new Error(`storage: unknown file "${name}"`)
@@ -117,7 +139,7 @@ export function createStorage(dir: string): Storage {
         await mkdir(dir, { recursive: true })
         const tmp = join(dir, `.${name}.${randomUUID()}.tmp`)
         try {
-          await writeFile(tmp, text, 'utf8')
+          await writeFile(tmp, text, { encoding: 'utf8', mode: FILE_MODE })
           await rename(tmp, pathOf(name))
         } catch (err) {
           await rm(tmp, { force: true })

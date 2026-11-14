@@ -6,6 +6,8 @@ const cfg = musicConfig
 
 export function baseTarget(situation: Situation | null, activity: Activity): MusicTarget {
   switch (situation) {
+    case null:
+      return 'steady'
     case 'crashing':
       return 'settle'
     case 'tense':
@@ -27,6 +29,7 @@ export function desiredTarget(i: {
 }): MusicTarget {
   const t = baseTarget(i.situation, i.activity)
   if (
+    i.situation !== null &&
     t !== 'settle' &&
     i.remainingSec !== undefined &&
     i.remainingSec <= cfg.switching.windDownSec

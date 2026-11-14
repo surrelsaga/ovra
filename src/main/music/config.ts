@@ -124,7 +124,7 @@ export const musicConfig = {
   }
 } as const
 
-/** Activity defaults when the situation is unknown or Focused. */
+/** Activity defaults when Focused. Unknown stays Steady with the activity's song lean. */
 export const ACTIVITY_DEFAULT_TARGET: Record<Activity, MusicTarget> = {
   focus: 'steady',
   reading: 'steady',

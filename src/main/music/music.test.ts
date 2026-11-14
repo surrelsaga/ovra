@@ -14,6 +14,7 @@ import { createBus } from '../bus'
 import { memoryStorage } from './dev/memory-storage'
 import { readFileSync } from 'node:fs'
 import { createMusic } from '.'
+import { musicConfig } from './config'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
 
@@ -214,10 +215,90 @@ describe('music service', () => {
     expect(controller.calls.at(-1)).toBe('play spotify:track:vocal')
   })
 
-  it('Everyday tasks starts on Lift', async () => {
-    const { music, targets } = await setup()
-    await music.startSession(session({ activity: 'everyday' }))
-    expect(targets()).toEqual(['lift'])
+  describe.each([false, true])('neutral start (demo: %s)', (demo) => {
+    it.each(['focus', 'reading', 'creative', 'everyday', 'unwind'] as const)(
+      '%s keeps its activity lean without Boost or Calm until a situation exists',
+      async (activity) => {
+        const { min, bright } = musicConfig.activityLean[activity]
+        const preferred = song('preferred', {
+          energy: min,
+          mood: bright ? 'bright' : 'neutral',
+          vocals: 'instrumental'
+        })
+        const t = await setup({
+          songs: [song('other', { energy: 5, mood: 'dark', vocals: 'heavy' }), preferred]
+        })
+        await t.music.startSession({ ...session({ activity, demo }), status: 'calibrating' })
+        expect(t.controller.calls).toEqual([`play ${preferred.id}`])
+        // Failed calibration / Start anyway still has no situation; ticks cannot invent one.
+        await vi.advanceTimersByTimeAsync(4 * MIN)
+        t.state(null)
+        t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 240, remainingSec: 600 })
+        expect(t.targets()).toEqual(['steady'])
+        expect(t.music.status().target).toBe('steady')
+        await t.music.stopSession()
+      }
+    )
+
+    it.each([
+      ['focused', 'lift'],
+      ['good', 'let-it-ride'],
+      ['low', 'lift'],
+      ['tense', 'ease-down'],
+      ['crashing', 'settle']
+    ] as const)(
+      'applies the first %s situation before the music gap',
+      async (situation, target) => {
+        const t = await setup({ targetGap: demo ? { minTargetChangeMs: 15_000 } : undefined })
+        await t.music.startSession(session({ activity: 'everyday', demo }))
+        await vi.advanceTimersByTimeAsync(1000)
+        t.state(situation)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(t.targets()).toEqual(['steady', target])
+        if (target === 'settle') expect(t.controller.calls.at(-1)).toBe('play spotify:track:calm')
+        else expect(t.controller.calls).toHaveLength(1)
+        t.state(null)
+        expect(t.music.status().target).toBe(target)
+        await t.music.stopSession()
+      }
+    )
+  })
+
+  it('the first ease-down target still waits for the next track', async () => {
+    const t = await setup()
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:loud', 5000)
+    t.controller.calls = []
+    t.state('tense')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.music.status().target).toBe('ease-down')
+    expect(t.controller.calls).toEqual([])
+    await vi.advanceTimersByTimeAsync(3500)
+    expect(t.controller.calls).toEqual(['play spotify:track:mid'])
+    await t.music.stopSession()
+  })
+
+  it('resets the neutral start and first-situation exception for a new session', async () => {
+    const t = await setup()
+    await t.music.startSession(session())
+    t.state('tense')
+    await t.music.startSession({ ...session(), id: 's2' })
+    expect(t.music.status().target).toBe('steady')
+    t.state('low')
+    expect(t.targets()).toEqual(['steady', 'ease-down', 'steady', 'lift'])
+    await t.music.stopSession()
+  })
+
+  it('holds the last situation through unknown updates after the music gap', async () => {
+    const t = await setup()
+    await t.music.startSession(session())
+    t.state('tense')
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    t.state(null)
+    expect(t.targets()).toEqual(['steady', 'ease-down'])
+    t.state('low')
+    expect(t.targets()).toEqual(['steady', 'ease-down', 'lift'])
+    await t.music.stopSession()
   })
 
   it('hints once when Spotify is not running and carries on', async () => {
@@ -255,18 +336,20 @@ describe('music service', () => {
     expect(controller.calls).toHaveLength(1)
   })
 
-  it('changes the target at most once per 3 min', async () => {
+  it('keeps the 3 minute gap after the first situation', async () => {
     const { music, state, targets, bus } = await setup()
     await music.startSession(session())
-    state('tense')
-    await vi.advanceTimersByTimeAsync(2 * MIN)
-    state('tense')
-    expect(targets()).toEqual(['steady'])
     await vi.advanceTimersByTimeAsync(MIN)
-    bus.emit('session:tick', { sessionId: 's1', elapsedSec: 180, remainingSec: 3000 })
-    expect(targets()).toEqual(['steady', 'ease-down'])
+    state('tense')
+    state('low')
+    await vi.advanceTimersByTimeAsync(2 * MIN)
     state('low')
     expect(targets()).toEqual(['steady', 'ease-down'])
+    await vi.advanceTimersByTimeAsync(MIN)
+    bus.emit('session:tick', { sessionId: 's1', elapsedSec: 240, remainingSec: 3000 })
+    expect(targets()).toEqual(['steady', 'ease-down', 'lift'])
+    state('crashing')
+    expect(targets()).toEqual(['steady', 'ease-down', 'lift'])
   })
 
   it('uses an overridden target-change gap (dev simulator fast mode)', async () => {
@@ -274,6 +357,7 @@ describe('music service', () => {
       targetGap: { minTargetChangeMs: 15_000 }
     })
     await music.startSession(session())
+    state('focused')
     await vi.advanceTimersByTimeAsync(10_000)
     state('tense')
     expect(targets()).toEqual(['steady'])
@@ -413,8 +497,9 @@ describe('music service', () => {
   })
 
   it('winds down in the last 10 minutes', async () => {
-    const { music, bus, targets } = await setup()
+    const { music, bus, targets, state } = await setup()
     await music.startSession(session())
+    state('focused')
     await vi.advanceTimersByTimeAsync(3 * MIN)
     bus.emit('session:tick', { sessionId: 's1', elapsedSec: 3000, remainingSec: 600 })
     expect(targets()).toEqual(['steady', 'wind-down'])

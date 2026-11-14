@@ -73,6 +73,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   let generation = 0
   let session: Session | null = null
   let situation: Situation | null = null
+  let hasSituation = false
   let remainingSec: number | undefined
   let leaveAlone = privacy.getSettings().leaveMusicAlone
   let available = false
@@ -340,6 +341,11 @@ export function createMusic(deps: MusicDeps): MusicService {
   function evaluate(): void {
     if (!session || privacy.get().music !== 'spotify' || leaveAlone) return
     const desired = desiredTarget({ situation, activity: session.config.activity, remainingSec })
+    if (!hasSituation && situation !== null) {
+      hasSituation = true
+      // The neutral starting pick must not delay the first real target.
+      if (desired !== tracker.current()) tracker.reset()
+    }
     const changed = tracker.update(desired, session.config.activity, now())
     if (!changed) return
     bus.emit('music:target-changed', {
@@ -438,7 +444,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   }
 
   bus.on('state:updated', (u) => {
-    situation = u.situation
+    situation = u.situation ?? situation
     if (play && u.situation) play.during.push(u.situation)
     evaluate()
   })
@@ -539,6 +545,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       if (!s.config.music || privacy.get().music !== 'spotify') return emitStatus()
       session = s
       situation = null
+      hasSituation = false
       remainingSec = undefined
       hintShown = false
       played.clear()

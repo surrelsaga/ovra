@@ -41,11 +41,16 @@ describe('targets', () => {
     expect(baseTarget('low', 'focus')).toBe('lift')
     expect(baseTarget('good', 'focus')).toBe('let-it-ride')
   })
-  it('uses activity defaults when focused or unknown', () => {
-    expect(baseTarget(null, 'reading')).toBe('steady')
-    expect(baseTarget(null, 'creative')).toBe('steady')
+  it.each(['focus', 'reading', 'creative', 'everyday', 'unwind'] as const)(
+    'keeps %s neutral before a situation, even near the session end',
+    (activity) => {
+      expect(baseTarget(null, activity)).toBe('steady')
+      expect(desiredTarget({ situation: null, activity, remainingSec: 60 })).toBe('steady')
+    }
+  )
+  it('uses activity defaults when focused', () => {
     expect(baseTarget('focused', 'everyday')).toBe('lift')
-    expect(baseTarget(null, 'unwind')).toBe('let-it-ride')
+    expect(baseTarget('focused', 'unwind')).toBe('let-it-ride')
     expect(baseTarget('tense', 'everyday')).toBe('ease-down')
   })
   it('winds down in the last ~10 min, except when settling', () => {

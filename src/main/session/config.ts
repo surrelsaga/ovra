@@ -37,7 +37,7 @@ export const sessionConfig = {
       baselineMinPulseSpanSec: 30
     },
     sensing: { calibrationMs: 45_000, calibrationMaxMs: 120_000, returnCheckMs: 20_000 },
-    musicTargetGap: { minTargetChangeMs: 20_000, downtimeChangeMultiplier: 1 },
+    musicTargetGap: { minTargetChangeMs: 20_000 },
     nudgeMinIntervalMin: 1,
     /** Seated nudges, minutes. */
     triggers: { neckSeatedMin: 3, standSeatedMin: 4, walkSeatedMin: 5 },

@@ -22,7 +22,7 @@ const session = (demoOn: boolean): Session => ({
   status: 'calibrating',
   sensingEnabled: true,
   config: {
-    activity: 'deep-work',
+    activity: 'focus',
     lengthMin: 15,
     cameraMode: 'continuous',
     checkinIntervalMin: 5,

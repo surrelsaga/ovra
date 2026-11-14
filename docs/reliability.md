@@ -235,3 +235,7 @@ holds, max calibration wait). Dev tools (monitor, harness, video source) run the
   - **The rule:** codes 7/12/13–17 on a *fresh* SDK frame mean someone is there. We trust the SDK's raw code, not an empty face object (which it also sends for an empty chair).
   - **Frozen feeds:** freshness uses the SDK's own frame timestamps, so a repeated or frozen frame can't fake presence.
   - **Returning:** coming back no longer restarts the SDK. The return check is a logical phase on the same running stream, so the 12/30/60 s warm-ups aren't thrown away.
+- **Padded live frame (Job 4, decision 42).**
+  - **The trick:** the same padding that fixed our test videos, behind a switch that's off until measured.
+  - **Breathing:** dropped while padded, because the padding gets past the chest check without the chest really being in view. We won't use a reading we know isn't real.
+  - **The A/B:** compares the share of time at code 0 and the seconds of steady pulse, the exact quantities the new window rule needs.

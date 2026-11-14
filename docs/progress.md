@@ -98,3 +98,9 @@ face/telemetry consent changes restart capture, nudges during calibration, music
 - Calibration clock + face presence (`3a9cd73`): the 90 s window starts at the first good reading, 180 s cap, big hints while positioning; any face object counts as present, so landmark flapping no longer marks a seated user away.
 - Orb pill (`180632b`): song always visible, camera dot, 3 s on/off note, paused badge, satellite lessons on the first three camera turn-ons, tooltips, onboarding satellite, big calibration hints.
 - 335 tests, typecheck, lint and build pass. **Needs Daniel:** 5-minute live check (`npm run dev:monitor`, steps at the end of `docs/monitor.md`).
+
+## Presence, music playlists, privacy — merged (2026-11-14)
+
+- Presence evidence + borderline holds (Job A, decisions 29–30), music from playlists (Job B, decision 31), privacy audit and doc (Job E, decision 32). 386 tests, typecheck, lint and build pass.
+- **Needs Daniel:** OK to run the real Spotify check (`npx tsx --tsconfig tsconfig.node.json src/main/music/dev/spotify-check.ts '<playlist link>'`; saves and restores Spotify state); later the ~15 min live test (credits).
+- **Next:** Job C (activities, one-time music pop-up, Privacy "Stored on this Mac", Last.fm consent, SDK cache delete) and Job D (why line, demo mode with bubble hints) after the mockups are approved.

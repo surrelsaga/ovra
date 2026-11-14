@@ -239,3 +239,11 @@ holds, max calibration wait). Dev tools (monitor, harness, video source) run the
   - **The trick:** the same padding that fixed our test videos, behind a switch that's off until measured.
   - **Breathing:** dropped while padded, because the padding gets past the chest check without the chest really being in view. We won't use a reading we know isn't real.
   - **The A/B:** compares the share of time at code 0 and the seconds of steady pulse, the exact quantities the new window rule needs.
+- **Seconds, not readings (Job 1, decision 43).**
+  - **Why:** the SDK's ~4 results a second arrive in bursts, so "30 readings" can be 8 s of signal. Every bar counts distinct seconds with a steady value.
+  - **No-read windows** stay in the history so holds pause rather than reset.
+  - **Late baselines:** breathing and HRV baselines are only learned from calm (focused) windows, so a stressed minute can't become "your normal".
+  - **Never blind:** a failed calibration offers Try again or Start anyway (rolling baseline), never a blind session.
+- **Self-serve framing (Job 3, decision 44).**
+  - **Preview:** instead of nagging, a display-only camera preview is one click away during a session. It's a second stream of the same camera, shown and never copied.
+  - **Hint:** the SDK's own hint appears only after 2 min stuck on one framing code, once per episode.

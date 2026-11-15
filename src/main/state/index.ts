@@ -176,7 +176,13 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     } else if (refinementPulses.length === 0) {
       // The first evaluation belongs to calibration (or Start anyway), so count it only once.
       refinementPulses = [baseline.pulse]
-    } else if (ev.signal === 'steady' && !ev.nearTense && !ev.nearLow) {
+    } else if (
+      !ev.nearTense &&
+      ((ev.signal === 'steady' && !ev.nearLow) ||
+        (Date.now() - baseline.builtAt < c.baselineSettleMin * 60_000 &&
+          ev.signal !== 'noread' &&
+          ev.signal !== 'tense'))
+    ) {
       refinementPulses.push(median(snaps.flatMap((s) => (s.pulse?.stable ? [s.pulse.value] : [])))!)
       baseline.pulse = median(refinementPulses)!
     }

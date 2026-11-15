@@ -8,6 +8,8 @@ export const stateConfig = {
   baselineFillSec: 60,
   /** Refine pulse from calm windows for this long after the baseline is built, then freeze it. */
   baselineRefineMin: 10,
+  /** Initially learn any readable, non-tense/non-near-tense pulse window. Off in normal mode. */
+  baselineSettleMin: 0,
 
   // One evaluation window (a check-in, or the sliding window in continuous mode).
   /** Below this many seconds of steady pulse the window is "no read": holds pause. */

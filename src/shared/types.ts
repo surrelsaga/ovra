@@ -304,6 +304,8 @@ export interface MoveRecord {
 /** What gets stored for history. Labels and counts only — no vitals. */
 export interface SessionRecord {
   id: string
+  /** Demo sessions use shorter waits. Absent on older and normal records. */
+  demo?: boolean
   activity: Activity
   startedAt: number
   endedAt: number

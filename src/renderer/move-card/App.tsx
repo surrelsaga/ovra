@@ -81,7 +81,7 @@ function Header({ title, onClose }: { title: string; onClose?: () => void }): Re
   )
 }
 
-function NudgeCard({ nudge }: { nudge: Nudge }): React.JSX.Element {
+function NudgeCard({ nudge, demo }: { nudge: Nudge; demo: boolean }): React.JSX.Element {
   const respond = (response: 'go' | 'snooze' | 'skip') => (): void =>
     void ovra().invoke('move:respond', { nudgeId: nudge.id, response })
   return (
@@ -98,7 +98,7 @@ function NudgeCard({ nudge }: { nudge: Nudge }): React.JSX.Element {
           Let&apos;s go
         </Button>
         <div className="actions-row">
-          <Button onClick={respond('snooze')}>5 more min</Button>
+          <Button onClick={respond('snooze')}>{demo ? '1 more min' : '5 more min'}</Button>
           <Button onClick={respond('skip')}>Skip</Button>
         </div>
       </div>
@@ -284,9 +284,12 @@ function ResultCard({ view }: { view: ResultView }): React.JSX.Element {
 
 export default function App(): React.JSX.Element {
   const view = usePush('push:move-card', { kind: 'hidden' })
+  const session = usePush('push:session', null)
   switch (view.kind) {
     case 'nudge':
-      return <NudgeCard key={view.nudge.id} nudge={view.nudge} />
+      return (
+        <NudgeCard key={view.nudge.id} nudge={view.nudge} demo={session?.config.demo === true} />
+      )
     case 'move':
       return <MoveCard view={view} />
     case 'away':

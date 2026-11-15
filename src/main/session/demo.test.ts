@@ -11,7 +11,7 @@ import { sensingConfig } from '../sdk/config'
 import { classify, evaluateWindow, type WindowEval } from '../state/classifier'
 import { resolveConfig, stateConfig, type StateConfig } from '../state/config'
 import { sessionConfig } from './config'
-import { advanceHint, bindDemo } from './demo'
+import { bindDemo } from './demo'
 
 vi.mock('../ipc', () => ({ broadcast: vi.fn(), handle: vi.fn() }))
 
@@ -41,7 +41,7 @@ afterEach(async () => {
 })
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test harness, inferred
-async function setup() {
+async function setup(face = true) {
   const bus = createBus()
   const overlay: Partial<AppSettings> = {}
   const privacy = await createPrivacy({
@@ -52,16 +52,18 @@ async function setup() {
   const moves = { ...MOVES_CONFIG }
   const musicGap = { ...musicConfig.switching }
   const sensing = { ...sensingConfig }
-  bindDemo({ bus, privacy, overlay, moves, musicGap, sensing })
+  await privacy.set({ face: face ? 'vitals-and-face' : 'vitals-only' })
+  const dispose = bindDemo({ bus, privacy, overlay, moves, musicGap, sensing })
   const live = (): Record<string, unknown> => ({
     state: resolveConfig(privacy.getSettings().thresholdOverrides),
     nudge: privacy.getSettings().nudgeMinIntervalMin,
     triggers: moves.triggers,
+    snooze: moves.snoozeMin,
     returnCheck: moves.returnCheck,
     musicGap: { ...musicGap },
     sensing: { ...sensing }
   })
-  return { bus, privacy, live }
+  return { bus, privacy, live, dispose }
 }
 
 describe('demo pace', () => {
@@ -77,7 +79,12 @@ describe('demo pace', () => {
       expect(c[key], key).toBe(want)
     }
     expect(live().sensing).toMatchObject(demo.sensing)
-    expect(live().musicGap).toMatchObject({ minTargetChangeMs: 20_000 })
+    expect(live().musicGap).toMatchObject({
+      minTargetChangeMs: 20_000,
+      windDownSec: 120,
+      switchNow: true
+    })
+    expect(live().snooze).toBe(1)
     expect(live().nudge).toBe(1)
     expect(live().triggers).toMatchObject(demo.triggers)
     expect((live().returnCheck as { durationSec: number }).durationSec).toBe(20)
@@ -92,6 +99,10 @@ describe('demo pace', () => {
     expect(live()).toEqual(normal)
     expect(MOVES_CONFIG.triggers.neckSeatedMin).toBe(45)
     expect(musicConfig.switching.minTargetChangeMs).toBe(3 * 60_000)
+    expect(musicConfig.switching.windDownSec).toBe(600)
+    expect(musicConfig.switching.switchNow).toBe(false)
+    expect(stateConfig.baselineSettleMin).toBe(0)
+    expect(MOVES_CONFIG.snoozeMin).toBe(5)
   })
 
   it("keeps the user's own threshold overrides during a demo", async () => {
@@ -167,58 +178,156 @@ describe('synthetic exercise curve', () => {
   )
 })
 
-describe('demo hints', () => {
-  it('advances only on real events, in order, and skips ahead', () => {
-    expect(advanceHint(0, 'focused')?.hint.text).toBe('Demo: smile or laugh at something funny.')
-    expect(advanceHint(0, 'calibrated')).toMatchObject({ next: 1 })
-    // Crashing early jumps past tense and breathe along.
-    expect(advanceHint(2, 'crashing')?.hint.text).toMatch(/step away/)
-    // Nothing behind the current step re-fires.
-    expect(advanceHint(5, 'focused')).toBeNull()
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test harness
+async function tour(face = true, demoOn = true) {
+  const t = await setup(face)
+  const hints: string[] = []
+  t.bus.on('orb:bubble', (b) => {
+    expect(b.ttlMs).toBe(25_000)
+    hints.push(b.text)
+  })
+  const state = (situation: Situation, away = false): void =>
+    t.bus.emit('state:updated', {
+      t: Date.now(),
+      situation,
+      confidence: 1,
+      seatedMinutes: 0,
+      away,
+      trend: 'steady'
+    })
+  const next = (): void => {
+    vi.advanceTimersByTime(demo.doneDelayMs)
+  }
+  const timeout = (index: number): void => {
+    vi.advanceTimersByTime(demo.steps[index].limitMs!)
+    expect(hints.at(-1)).toBe(demo.steps[index].fallback)
+    next()
+  }
+  t.bus.emit('session:started', session(demoOn))
+  const calibrated = (): void => t.bus.emit('state:baseline-ready', { ok: true })
+  return { ...t, hints, state, next, timeout, calibrated }
+}
+
+describe('demo steps', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  it('records an early low without jumping ahead, then acknowledges it on step 8', async () => {
+    const t = await tour()
+    t.state('low') // even before calibration completes
+    expect(t.hints).toEqual([])
+    t.calibrated()
+    expect(t.hints).toEqual([demo.steps[0].text])
+    t.state('low')
+    expect(t.hints).toHaveLength(1)
+    t.state('focused')
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[1].text)
+    t.timeout(1)
+    expect(t.hints.at(-1)).toBe(demo.steps[2].text)
+    t.bus.emit('move:completed', { moveId: 'neck-stretch', verified: true })
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[3].text)
+    t.timeout(3) // no tense: skip breathing only
+    expect(t.hints.at(-1)).toBe(demo.steps[5].text)
+    t.timeout(5)
+    t.bus.emit('break:returned', { awayMs: 20_000 })
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[7].already)
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[8].text)
+    expect(t.hints.every((h) => h.startsWith('Demo:'))).toBe(true)
+    expect(t.hints.some((h) => h.includes('5/9'))).toBe(false)
   })
 
-  it('shows each hint after its state happens, then allows 150 s for the low step', async () => {
-    vi.useFakeTimers()
-    const { bus } = await setup()
-    const hints: string[] = []
-    bus.on('orb:bubble', (b) => hints.push(b.text))
-    const state = (situation: Situation, away = false): void =>
-      bus.emit('state:updated', {
-        t: 0,
-        situation,
-        confidence: 1,
-        seatedMinutes: 0,
-        away,
-        trend: 'steady'
-      })
-
-    bus.emit('state:baseline-ready', { ok: true })
-    expect(hints).toEqual([]) // not a demo session
-    bus.emit('session:started', session(true))
-    bus.emit('state:baseline-ready', { ok: true })
-    state('focused')
-    state('focused') // repeats don't advance
-    state('good')
-    state('tense')
-    expect(hints).toHaveLength(3)
-    state('focused') // back from tense
-    state('crashing')
-    bus.emit('break:returned', { awayMs: 20_000 })
-    expect(hints.slice(3)).toEqual([
-      'Demo: keep moving for about 2 minutes to see Very stressed.',
-      'Demo: step away from the camera for 20 s, then come back.',
-      'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.'
-    ])
-    vi.advanceTimersByTime(120_000)
-    expect(hints).toHaveLength(6)
-    vi.advanceTimersByTime(29_999)
-    expect(hints).toHaveLength(6)
+  it('times out to an honest fallback, then enters only the next step after 8 s', async () => {
+    const t = await tour()
+    t.calibrated()
+    vi.advanceTimersByTime(90_000 - 1)
+    expect(t.hints).toEqual([demo.steps[0].text])
     vi.advanceTimersByTime(1)
-    expect(hints.at(-1)).toBe('Demo: let the session wind down to see your summary.')
-    expect(hints.every((h) => h.startsWith('Demo:'))).toBe(true)
+    expect(t.hints.at(-1)).toBe(demo.steps[0].fallback)
+    vi.advanceTimersByTime(demo.doneDelayMs - 1)
+    expect(t.hints).toHaveLength(2)
+    vi.advanceTimersByTime(1)
+    expect(t.hints.at(-1)).toBe(demo.steps[1].text)
+  })
 
-    bus.emit('session:status', { ...session(true), status: 'ended' })
-    state('low')
-    expect(hints).toHaveLength(7)
+  it('acknowledges goals seen while finishing the previous step', async () => {
+    const t = await tour()
+    t.calibrated()
+    t.state('good')
+    vi.advanceTimersByTime(demo.doneDelayMs - 1)
+    expect(t.hints).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(t.hints.at(-1)).toBe(demo.steps[1].already)
+    t.bus.emit('move:completed', { moveId: 'breathe', verified: true })
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[2].already)
+    t.state('tense')
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[3].already)
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[4].already)
+  })
+
+  it('skips Good mood with an explanation when face reading is off', async () => {
+    const t = await tour(false)
+    t.calibrated()
+    t.state('focused')
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[1].noFace)
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[2].text)
+  })
+
+  it('visits the whole tour in order with real goals, including move completion and settling', async () => {
+    const t = await tour()
+    t.calibrated()
+    t.state('focused')
+    t.next()
+    t.state('good')
+    t.next()
+    t.bus.emit('move:completed', { moveId: 'neck-stretch', verified: true })
+    t.next()
+    t.state('tense')
+    t.next()
+    t.bus.emit('move:completed', { moveId: 'breathe', verified: true })
+    t.next()
+    t.state('crashing')
+    t.next()
+    t.bus.emit('break:returned', { awayMs: 20_000 })
+    t.next()
+    t.state('low')
+    t.next()
+    expect(t.hints).toEqual(demo.steps.map((s) => s.text))
+    vi.advanceTimersByTime(1_000_000)
+    expect(t.hints).toHaveLength(9)
+  })
+
+  it('starts after successful calibration only, and remains hint-free in normal mode', async () => {
+    const t = await tour(true, false)
+    t.calibrated()
+    t.state('good')
+    vi.advanceTimersByTime(1_000_000)
+    expect(t.hints).toEqual([])
+    t.bus.emit('session:started', session(true))
+    t.bus.emit('state:baseline-ready', { ok: false, reason: 'No steady reading' })
+    expect(t.hints).toEqual([])
+    t.calibrated()
+    expect(t.hints).toEqual([demo.steps[0].text])
+    t.calibrated()
+    expect(t.hints).toHaveLength(1)
+  })
+
+  it.each(['end', 'dispose', 'new normal session'])('clears timers on %s', async (stop) => {
+    const t = await tour()
+    t.calibrated()
+    t.state('focused') // delayed next step is pending
+    if (stop === 'end') t.bus.emit('session:status', { ...session(true), status: 'ended' })
+    else if (stop === 'dispose') t.dispose()
+    else t.bus.emit('session:started', session(false))
+    vi.advanceTimersByTime(1_000_000)
+    t.state('good')
+    expect(t.hints).toHaveLength(1)
   })
 })

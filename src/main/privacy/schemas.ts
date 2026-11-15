@@ -34,6 +34,7 @@ const moveId = z.enum(['breathe', 'neck-stretch', 'stand-stretch', 'walk', 'step
 /** History record: labels and counts only. A record carrying any extra field is rejected. */
 export const sessionRecordSchema = z.strictObject({
   id: z.string().min(1),
+  demo: z.boolean().optional(),
   activity: z.preprocess(
     (value) => {
       switch (value) {

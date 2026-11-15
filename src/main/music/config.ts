@@ -31,7 +31,9 @@ export const musicConfig = {
     /** Spotify may round its volume readback; only larger changes count as user input. */
     settleVolumeTolerance: 2,
     /** Last minutes of a session switch the target to wind-down. */
-    windDownSec: 10 * 60
+    windDownSec: 10 * 60,
+    /** Demo only: start the new target before the current track ends. */
+    switchNow: false
   },
   catalog: {
     embedUrl: 'https://open.spotify.com/embed/playlist/',

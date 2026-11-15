@@ -4,13 +4,13 @@ import type { AppSettings, Bus, PrivacyService, Situation } from '@shared/types'
 import type { MovesConfig } from '../moves/config'
 import type { TargetGap } from '../music/selector'
 import type { SensingConfig } from '../sdk/config'
-import { sessionConfig, type DemoEvent, type DemoHint } from './config'
+import { sessionConfig, type DemoEvent, type DemoStep } from './config'
 
 const demo = sessionConfig.demo
 
 export interface DemoDeps {
   bus: Bus
-  privacy: Pick<PrivacyService, 'getSettings'>
+  privacy: Pick<PrivacyService, 'getSettings' | 'get'>
   /** The live config objects the modules read on every use; changed in place. */
   overlay: Partial<AppSettings>
   moves: MovesConfig
@@ -18,21 +18,13 @@ export interface DemoDeps {
   sensing: SensingConfig
 }
 
-/** Next hint step after `event`, searching from `next` so a later event skips ahead. */
-export function advanceHint(
-  next: number,
-  event: DemoEvent,
-  hints: DemoHint[] = demo.hints
-): { next: number; hint: DemoHint } | null {
-  const i = hints.findIndex((h, j) => j >= next && h.after.includes(event))
-  return i < 0 ? null : { next: i + 1, hint: hints[i] }
-}
-
 export function bindDemo(deps: DemoDeps): () => void {
   const { bus, overlay, moves, musicGap, sensing } = deps
   let restore: (() => void) | null = null
   let active = false
-  let next = 0
+  let index = -1
+  let waiting = false
+  const seen = new Set<DemoEvent>()
   let situation: Situation | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -45,9 +37,13 @@ export function bindDemo(deps: DemoDeps): () => void {
     }
     overlay.thresholdOverrides = { ...deps.privacy.getSettings().thresholdOverrides, ...demo.state }
     overlay.nudgeMinIntervalMin = demo.nudgeMinIntervalMin
+    moves.snoozeMin = demo.snoozeMin
     moves.triggers = { ...moves.triggers, ...demo.triggers }
     moves.returnCheck = { ...moves.returnCheck, durationSec: demo.returnCheckSec }
-    Object.assign(musicGap, demo.musicTargetGap)
+    Object.assign(musicGap, demo.musicTargetGap, {
+      windDownSec: demo.musicWindDownSec,
+      switchNow: demo.musicSwitchNow
+    })
     Object.assign(sensing, demo.sensing)
     return () => {
       // Keys the overlay didn't have must go, not become undefined (that would hide the stored value).
@@ -55,19 +51,54 @@ export function bindDemo(deps: DemoDeps): () => void {
       delete overlay.nudgeMinIntervalMin
       Object.assign(overlay, saved.overlay)
       Object.assign(moves, saved.moves)
+      delete musicGap.windDownSec
+      delete musicGap.switchNow
       Object.assign(musicGap, saved.musicGap)
       Object.assign(sensing, saved.sensing)
     }
   }
 
+  function say(text: string): void {
+    bus.emit('orb:bubble', { text, ttlMs: demo.hintTtlMs })
+  }
+
+  function done(): void {
+    waiting = false
+    clearTimeout(timer)
+    timer = setTimeout(enterNext, demo.doneDelayMs)
+  }
+
+  function enterNext(): void {
+    const steps: DemoStep[] = demo.steps
+    const step = steps[++index]
+    if (!active || !step) return
+    if (step.needs && !seen.has(step.needs)) return enterNext()
+    if (step.goal.some((event) => seen.has(event))) {
+      say(step.already ?? step.text)
+      return done()
+    }
+    if (step.noFace && deps.privacy.get().face !== 'vitals-and-face') {
+      say(step.noFace)
+      return done()
+    }
+    say(step.text)
+    waiting = step.goal.length > 0
+    if (step.limitMs)
+      timer = setTimeout(() => {
+        say(step.fallback!)
+        done()
+      }, step.limitMs)
+  }
+
   function happened(event: DemoEvent): void {
     if (!active) return
-    const step = advanceHint(next, event)
-    if (!step) return
-    next = step.next
-    clearTimeout(timer)
-    if (step.hint.text) bus.emit('orb:bubble', { text: step.hint.text, ttlMs: demo.hintTtlMs })
-    if (step.hint.timeoutMs) timer = setTimeout(() => happened('timeout'), step.hint.timeoutMs)
+    seen.add(event)
+    if (index < 0) {
+      if (event === 'calibrated') enterNext()
+      return
+    }
+    const step: DemoStep | undefined = demo.steps[index]
+    if (waiting && step?.goal.includes(event)) done()
   }
 
   function stop(): void {
@@ -80,7 +111,9 @@ export function bindDemo(deps: DemoDeps): () => void {
   const offs = [
     bus.on('session:started', (s) => {
       stop()
-      next = 0
+      index = -1
+      waiting = false
+      seen.clear()
       situation = null
       active = s.config.demo === true
       if (active) restore = applyPace()
@@ -100,7 +133,10 @@ export function bindDemo(deps: DemoDeps): () => void {
         happened('settled')
       happened(u.situation)
     }),
-    bus.on('move:completed', ({ moveId }) => moveId === 'breathe' && happened('settled')),
+    bus.on('move:completed', ({ moveId }) => {
+      happened('moved')
+      if (moveId === 'breathe') happened('settled')
+    }),
     bus.on('break:returned', () => happened('returned'))
   ]
   return () => {

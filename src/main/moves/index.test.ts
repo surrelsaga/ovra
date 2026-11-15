@@ -12,6 +12,8 @@ import {
 } from '@shared/types'
 import { createBus } from '../bus'
 import { MOVES_CONFIG as cfg } from './config'
+import { sessionConfig } from '../session/config'
+import type { MovesConfig } from './config'
 import { createMoves } from '.'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
@@ -23,6 +25,7 @@ interface SetupOpts {
   face?: boolean
   camera?: boolean
   mode?: 'checkins' | 'continuous'
+  config?: MovesConfig
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -33,7 +36,7 @@ function setup(opts: SetupOpts = {}) {
     canUseFace: () => opts.face ?? true,
     getSettings: () => DEFAULT_SETTINGS
   } as unknown as PrivacyService
-  const moves: MovesService = createMoves({ bus, privacy })
+  const moves: MovesService = createMoves({ bus, privacy }, opts.config)
   const log: { event: BusEventName; payload: unknown }[] = []
   const names: BusEventName[] = [
     'move:nudge',
@@ -355,4 +358,22 @@ describe('breaks and the return check', () => {
       { result: 'unknown', message: 'Welcome back.' }
     ])
   })
+})
+
+it('demo snoozes for one minute and seated timing leaves breathing ahead of stand and walk', () => {
+  const t = setup({
+    config: {
+      ...cfg,
+      triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers },
+      snoozeMin: sessionConfig.demo.snoozeMin
+    }
+  })
+  t.state({ situation: 'tense', seatedMinutes: 10 })
+  expect(t.events('move:nudge').at(-1)?.moveId).toBe('breathe')
+  t.moves.respond(t.nudgeId(), 'snooze')
+  vi.advanceTimersByTime(MIN - 1)
+  expect(t.events('move:nudge')).toHaveLength(1)
+  vi.advanceTimersByTime(1)
+  expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe', 'breathe'])
+  t.moves.stopSession()
 })

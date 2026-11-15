@@ -57,6 +57,7 @@ export function SessionSummaryView(props: {
           {fmtMinutes((r.endedAt - r.startedAt) / 60000)}
           {r.cameraMode === 'off' ? ' · camera off' : ''}
         </p>
+        {r.demo && <p className="muted small">Demo session · shorter waits</p>}
       </header>
       <div className="panel">
         <h2 className="panel__title">How it went</h2>
@@ -148,6 +149,7 @@ export function History(): React.JSX.Element {
                   <span className="muted"> · {fmtMinutes((r.endedAt - r.startedAt) / 60000)}</span>
                 </span>
                 <span className="muted small">{fmtDate(r.startedAt)}</span>
+                {r.demo && <span className="muted small">Demo session · shorter waits</span>}
                 <MoodTimeline points={r.moodTimeline} start={r.startedAt} end={r.endedAt} />
                 <span className="muted small">
                   {doneMoves(r).length} moves done · {r.snoozes} put off

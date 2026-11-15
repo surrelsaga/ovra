@@ -478,3 +478,15 @@ describe('monitor session sources', () => {
     expect(deleted.privacy.saveSession).not.toHaveBeenCalled()
   })
 })
+
+it.each([true, false])(
+  'keeps the demo flag in the saved summary only for demo sessions (%s)',
+  async (demo) => {
+    const t = setup(false)
+    await t.svc.start({ ...cfg, demo })
+    const record = await t.svc.end()
+    expect(record?.demo).toBe(demo ? true : undefined)
+    expect(t.privacy.saveSession).toHaveBeenCalledWith(record)
+    expect(t.seen['session:ended']).toEqual([record])
+  }
+)

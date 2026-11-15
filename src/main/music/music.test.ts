@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs'
 import { createMusic, registerMusicIpc } from '.'
 import { handle } from '../ipc'
 import { musicConfig } from './config'
+import type { TargetGap } from './selector'
+import { sessionConfig } from '../session/config'
 import { SpotifyMacController } from './controller'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
@@ -134,7 +136,7 @@ async function setup(
     fetch?: typeof fetch
     songs?: Song[]
     privacy?: Partial<PrivacySettings>
-    targetGap?: { minTargetChangeMs: number }
+    targetGap?: TargetGap
     leaveAlone?: boolean
   } = {}
 ) {
@@ -664,6 +666,64 @@ describe('music service', () => {
     await vi.advanceTimersByTimeAsync(3 * MIN)
     bus.emit('session:tick', { sessionId: 's1', elapsedSec: 3000, remainingSec: 600 })
     expect(targets()).toEqual(['steady', 'wind-down'])
+  })
+
+  it('demo winds down only in the last 120 s and restores normal timing afterwards', async () => {
+    const gap: TargetGap = {
+      ...musicConfig.switching,
+      windDownSec: sessionConfig.demo.musicWindDownSec
+    }
+    const t = await setup({ targetGap: gap })
+    await t.music.startSession(session({ demo: true, lengthMin: 20 }))
+    t.state('focused')
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    const tick = (remainingSec: number): void =>
+      t.bus.emit('session:tick', {
+        sessionId: 's1',
+        elapsedSec: 1200 - remainingSec,
+        remainingSec
+      })
+    tick(600)
+    expect(t.music.status().target).toBe('steady')
+    tick(121)
+    expect(t.music.status().target).toBe('steady')
+    tick(120)
+    expect(t.music.status().target).toBe('wind-down')
+    await t.music.stopSession()
+    Object.assign(gap, musicConfig.switching)
+    await t.music.startSession(session())
+    t.state('focused')
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    tick(600)
+    expect(t.music.status().target).toBe('wind-down')
+    await t.music.stopSession()
+  })
+
+  it('demo switches on every target change, fading only for Quiet', async () => {
+    const t = await setup({
+      targetGap: {
+        ...sessionConfig.demo.musicTargetGap,
+        switchNow: sessionConfig.demo.musicSwitchNow,
+        windDownSec: sessionConfig.demo.musicWindDownSec
+      }
+    })
+    const volume = vi.spyOn(t.controller, 'setVolume')
+    t.controller.getVolume = async () => t.controller.volume
+    await t.music.startSession(session({ demo: true }))
+    for (const situation of ['tense', 'low', 'good', 'focused'] as const) {
+      const count = t.controller.calls.length
+      t.state(situation)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(t.controller.calls.length, situation).toBe(count + 1)
+      expect(volume).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(20_000)
+    }
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+    expect(t.music.status().target).toBe('settle')
+    expect(volume).toHaveBeenCalled()
+    expect(t.controller.volume).toBe(60)
+    await t.music.stopSession()
   })
 
   it('plays one of the user playlists at start when no song fits', async () => {

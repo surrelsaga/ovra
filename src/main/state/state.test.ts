@@ -599,6 +599,67 @@ describe('state engine', () => {
     expect(engine.lastWindow()?.line).toContain(`signal=${signal}`)
   })
 
+  it.each([54, 57, 66])('demo settle learns a readable non-tense window at %s', (pulse) => {
+    overrides = { baselineRefineMin: 2, baselineSettleMin: 2 }
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 30, { pulse })
+    wait(2 * MIN)
+    // A probe across the old bar proves the usual moved, rather than merely staying Steady.
+    const learned = (60 + pulse) / 2
+    phase('checkin', 30, { pulse: learned * (pulse < 60 ? 1.16 : 1.14) })
+    expect(engine.lastWindow()?.line).toContain(`signal=${pulse < 60 ? 'tense' : 'unclear'}`)
+  })
+
+  it.each([
+    { pulse: 74 }, // tense
+    { pulse: 68 }, // near-tense
+    { pulse: 64.5, rmssd: 72 }, // near backed tense
+    {} // no read
+  ])('demo settle never learns tense, near-tense or unreadable windows: %o', (o) => {
+    overrides = { baselineRefineMin: 2, baselineSettleMin: 2 }
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60, rmssd: 90 })
+    phase('checkin', 30, o)
+    wait(2 * MIN)
+    phase('checkin', 30, { pulse: 70 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it('demo corrects a high start, then still recognizes a real dip after settling', () => {
+    overrides = { ...sessionConfig.demo.state }
+    const { engine, updates, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 71 })
+    phase('checkin', 30, { pulse: 61 })
+    phase('checkin', 30, { pulse: 61 })
+    wait(2 * MIN)
+    phase('checkin', 30, { pulse: 61 })
+    expect(engine.lastWindow()?.line).toContain('signal=steady')
+    expect(last(updates).situation).toBe('focused')
+    phase('checkin', 60, { pulse: 54 })
+    expect(engine.lastWindow()?.line).toContain('signal=low')
+    expect(last(updates).situation).toBe('low')
+  })
+
+  it('settle ends exactly at its deadline, even when calm refinement continues', () => {
+    overrides = { baselineSettleMin: 2 }
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    wait(2 * MIN - 30_000)
+    phase('checkin', 30, { pulse: 54 })
+    phase('checkin', 30, { pulse: 70 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it('normal settle defaults to zero and still rejects low windows', () => {
+    expect(resolveConfig().baselineSettleMin).toBe(0)
+    const { engine, phase } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 30, { pulse: 54 })
+    phase('checkin', 30, { pulse: 70 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
   it('never lets a tense stretch become usual before the tense hold completes', () => {
     const { engine, phase, wait, updates } = setup()
     phase('calibration', 30, { pulse: 60 })

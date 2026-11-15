@@ -464,7 +464,11 @@ export function createMusic(deps: MusicDeps): MusicService & {
 
   function evaluate(): void {
     if (!session || privacy.get().music !== 'spotify' || leaveAlone) return
-    const desired = desiredTarget({ situation, activity: session.config.activity, remainingSec })
+    const desired = desiredTarget(
+      { situation, activity: session.config.activity, remainingSec },
+      deps.targetGap
+    )
+    const previous = tracker.current()
     if (!hasSituation && situation !== null) {
       hasSituation = true
       // The neutral starting pick must not delay the first real target.
@@ -478,8 +482,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
       reason: TARGET_REASON[changed]
     })
     emitStatus()
-    // Only change between tracks, except Settle, which switches right away.
-    if (changed === 'settle') safe(playNext())
+    // Normal sessions wait for the track to end; demo changes are audible right away.
+    if (changed === 'settle' || (previous !== null && deps.targetGap?.switchNow)) safe(playNext())
   }
 
   function scheduleEnd(t: NowPlaying): void {

@@ -293,6 +293,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
     const record: SessionRecord = {
       id: s.id,
+      ...(s.config.demo === true && { demo: true }),
       activity: s.config.activity,
       startedAt: s.startedAt,
       endedAt,

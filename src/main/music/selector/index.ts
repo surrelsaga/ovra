@@ -22,17 +22,20 @@ export function baseTarget(situation: Situation | null, activity: Activity): Mus
 }
 
 /** Wind-down takes over in the last minutes, except when settling is needed. */
-export function desiredTarget(i: {
-  situation: Situation | null
-  activity: Activity
-  remainingSec?: number
-}): MusicTarget {
+export function desiredTarget(
+  i: {
+    situation: Situation | null
+    activity: Activity
+    remainingSec?: number
+  },
+  gap: Pick<TargetGap, 'windDownSec'> = cfg.switching
+): MusicTarget {
   const t = baseTarget(i.situation, i.activity)
   if (
     i.situation !== null &&
     t !== 'settle' &&
     i.remainingSec !== undefined &&
-    i.remainingSec <= cfg.switching.windDownSec
+    i.remainingSec <= (gap.windDownSec ?? cfg.switching.windDownSec)
   ) {
     return 'wind-down'
   }
@@ -238,6 +241,8 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
 
 export interface TargetGap {
   minTargetChangeMs: number
+  windDownSec?: number
+  switchNow?: boolean
 }
 
 /**

@@ -344,3 +344,14 @@ it('defaults simulator camera mode in memory and lets an explicit check-in choic
   expect(privacy.get().cameraMode).toBe('checkins')
   expect((await setup()).privacy.getSettings()).toEqual(DEFAULT_SETTINGS)
 })
+
+it('round-trips demo history alongside older unmarked records', async () => {
+  const { privacy } = await setup()
+  const demo = { ...record('demo'), demo: true }
+  const old = record('old')
+  await privacy.saveSession(demo)
+  await privacy.saveSession(old)
+  const reopened = (await setup()).privacy
+  expect(await reopened.listSessions()).toEqual(expect.arrayContaining([demo, old]))
+  await expect(reopened.saveSession({ ...demo, pulse: 70 } as SessionRecord)).rejects.toThrow()
+})

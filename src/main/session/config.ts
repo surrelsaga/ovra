@@ -31,6 +31,7 @@ export const sessionConfig = {
       continuousWindowSec: 30,
       continuousUpdateSec: 10,
       baselineRefineMin: 2,
+      baselineSettleMin: 2,
       tenseHoldMin: 0.75,
       lowHoldMin: 1,
       noReadForgetMin: 1,
@@ -42,30 +43,81 @@ export const sessionConfig = {
     musicTargetGap: { minTargetChangeMs: 20_000 },
     nudgeMinIntervalMin: 1,
     /** Seated nudges, minutes. */
-    triggers: { neckSeatedMin: 3, standSeatedMin: 4, walkSeatedMin: 5 },
+    triggers: { neckSeatedMin: 3, standSeatedMin: 60, walkSeatedMin: 60 },
     returnCheckSec: 20,
-    hintTtlMs: 15_000,
-    /**
-     * Next-step hints in the orb bubble. Each shows once one of `after` really happened; a later
-     * event skips ahead. Events: calibrated, focused, good, tense, settled (back to focused/good
-     * after tense, or Breathe along done), crashing, returned, low, timeout (`timeoutMs` after the
-     * previous hint).
-     */
-    hints: [
-      { after: ['calibrated'], text: 'Demo: work normally for a minute.' },
-      { after: ['focused'], text: 'Demo: smile or laugh at something funny.' },
-      { after: ['good'], text: 'Demo: try 40 s of squats off camera, then sit down.' },
-      // The breathe-along nudge appears by itself.
-      { after: ['tense'] },
-      { after: ['settled'], text: 'Demo: keep moving for about 2 minutes to see Very stressed.' },
-      { after: ['crashing'], text: 'Demo: step away from the camera for 20 s, then come back.' },
+    snoozeMin: 1,
+    musicWindDownSec: 120,
+    musicSwitchNow: true,
+    hintTtlMs: 25_000,
+    doneDelayMs: 8_000,
+    /** Sequential tour; early events are remembered, never used to jump forward. */
+    steps: [
       {
-        after: ['returned'],
-        text: 'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.',
-        timeoutMs: 150_000
+        text: 'Demo: 1/9 · Work normally for a minute. Look for Steady: a calm blue-white moon.',
+        goal: ['focused', 'good'],
+        limitMs: 90_000,
+        fallback:
+          'Demo: 1/9 · No Steady yet. Your heart rate reads off from when you started. Moving on.',
+        already: "Demo: 1/9 · You've seen Steady already. Next step."
       },
-      { after: ['low', 'timeout'], text: 'Demo: let the session wind down to see your summary.' }
-    ] as DemoHint[]
+      {
+        text: 'Demo: 2/9 · Smile for about 20 s (no big laughs). Look for Good mood: a brighter moon.',
+        goal: ['good'],
+        limitMs: 75_000,
+        fallback:
+          'Demo: 2/9 · No Good mood. It needs Steady plus a smile most of the time. Moving on.',
+        already: "Demo: 2/9 · You've seen Good mood already. Next step.",
+        noFace: 'Demo: 2/9 · Good mood needs face reading, which is off. Skipping.'
+      },
+      {
+        text: "Demo: 3/9 · A stretch card will pop up. Press Let's go and follow it.",
+        goal: ['moved'],
+        limitMs: 120_000,
+        fallback:
+          'Demo: 3/9 · No stretch card yet. Reminders come at most once a minute. Moving on.',
+        already: "Demo: 3/9 · You've done a stretch already. Next step."
+      },
+      {
+        text: 'Demo: 4/9 · Do 40 s of squats off camera, then sit still. Look for Stressed: amber.',
+        goal: ['tense', 'crashing'],
+        limitMs: 180_000,
+        fallback:
+          'Demo: 4/9 · No Stressed. Your heart rate settled too fast. It would play Calm down.',
+        already: "Demo: 4/9 · You've seen Stressed already. Next step."
+      },
+      {
+        text: "Demo: 5/9 · Press Let's go on the breathing card. Breathe with the moon.",
+        goal: ['settled'],
+        limitMs: 150_000,
+        needs: 'tense',
+        fallback:
+          'Demo: 5/9 · Still settling. Ovra goes back to Steady once your heart rate drops.',
+        already: "Demo: 5/9 · You've settled already. Next step."
+      },
+      {
+        text: 'Demo: 6/9 · 60 s of jumping jacks, then sit and frown. Look for Very stressed: red.',
+        goal: ['crashing'],
+        limitMs: 120_000,
+        fallback: 'Demo: 6/9 · No Very stressed (the hardest one). It would fade music to Quiet.',
+        already: "Demo: 6/9 · You've seen Very stressed already. Next step."
+      },
+      {
+        text: 'Demo: 7/9 · Step out of view for 20 s, then come back. Look for the dimmed moon.',
+        goal: ['returned'],
+        limitMs: 120_000,
+        fallback: "Demo: 7/9 · Ovra didn't see you leave. Away needs 15 s out of view. Moving on.",
+        already: "Demo: 7/9 · You've been away and back already. Next step."
+      },
+      {
+        text: 'Demo: 8/9 · Lean back and breathe slowly for 2 min. Tired may not appear.',
+        goal: ['low'],
+        limitMs: 150_000,
+        fallback:
+          'Demo: 8/9 · No Tired. Resting barely lowers heart rate. It would play Pick me up.',
+        already: "Demo: 8/9 · You've seen Tired already: dim moon, Pick me up music."
+      },
+      { text: "Demo: 9/9 · That's the tour. Press End to see your summary.", goal: [] }
+    ] satisfies DemoStep[]
   }
 }
 
@@ -73,16 +125,19 @@ export type DemoEvent =
   | 'calibrated'
   | 'focused'
   | 'good'
+  | 'moved'
   | 'tense'
   | 'settled'
   | 'crashing'
   | 'returned'
   | 'low'
-  | 'timeout'
 
-export interface DemoHint {
-  after: DemoEvent[]
-  text?: string
-  /** Fire `timeout` this long after this hint. */
-  timeoutMs?: number
+export interface DemoStep {
+  text: string
+  goal: DemoEvent[]
+  limitMs?: number
+  fallback?: string
+  already?: string
+  needs?: DemoEvent
+  noFace?: string
 }

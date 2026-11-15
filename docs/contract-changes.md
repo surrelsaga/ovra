@@ -182,3 +182,10 @@ Format:
 - Requested invokes: `simulator:set-speed` (`{ speed: SimSpeed }` → `SimulatorStatus`) and `simulator:switch-music` (`void` → `void`), plus their `IPC_INVOKE_CHANNELS` entries.
 - Why: three speeds cannot be represented by the existing boolean; the panel needs the engine's existing hold progress and a dev-only music trigger without overloading unrelated channels.
 - Status: applied in surrelsaga/ovra-sim with explicit coordinator authorization (msg_eefb82645884).
+
+## 2026-11-16 — demo history marker (Job 19)
+
+- File: `src/shared/types.ts`
+- Change: additive optional `SessionRecord.demo?: boolean`, accepted by the strict privacy schema and inherited by `SessionSummary`.
+- Why: the approved tour must mark History and session summaries “Demo session · shorter waits”; records without the field remain readable and unmarked. Only true is written for new demo sessions; normal records keep their existing shape.
+- Status: applied in `surrelsaga/ovra-tourbuild`, expressly allowed by Job 19 section D. No other shared contracts or dependencies changed.

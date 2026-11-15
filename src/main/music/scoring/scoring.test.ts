@@ -351,6 +351,8 @@ it('can refine a rules score after AI consent changes in the same run', async ()
 
 it('keeps the per-run daily request cap even across explicit rescores', async () => {
   vi.useFakeTimers()
+  // Local midday: the ~2 h run below must not cross midnight, when the daily cap resets.
+  vi.setSystemTime(new Date(2026, 10, 15, 12, 0, 0))
   try {
     const lib = createLibrary(memoryStorage())
     const song = (await lib.learn(

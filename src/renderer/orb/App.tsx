@@ -265,7 +265,7 @@ export default function App(): React.JSX.Element {
         ) : null}
         {why && (
           <p className="why" data-hit data-testid="why-line" title={why.text} aria-label={why.text}>
-            {why.text}
+            <span className="why__text">{why.text}</span>
             {why.progress !== undefined && (
               <span className="why__bar" aria-hidden>
                 <i style={{ width: `${Math.round(Math.min(1, why.progress) * 100)}%` }} />

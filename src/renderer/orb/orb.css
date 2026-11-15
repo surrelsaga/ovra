@@ -147,7 +147,7 @@ body {
 .orb-app__info:empty {
   display: none;
 }
-/* Why line under the pill: one short line and an optional thin bar toward a change. */
+/* Why text gets two lines; the progress bar stays below the text. */
 .why {
   display: grid;
   justify-items: center;
@@ -157,11 +157,15 @@ body {
   color: var(--text-secondary);
   font-size: var(--text-xs);
   text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
   /* Readable on light desktops too. */
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.why__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .why__bar {
   width: 96px;

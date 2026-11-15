@@ -159,3 +159,12 @@ Format:
 - Change: `SensingService.skipFraming(): void` and `SessionService.calibrationChoice(action: 'retry' | 'start-anyway'): Promise<void>` (interface additions; the simulator and monitor harness fakes got no-op `skipFraming`).
 - Why: docs/reliability.md §5.1 (decision 39): framing check with Skip, and Try again / Start anyway instead of running blind.
 - Status: applied in surrelsaga/ovra-rules (requested by the coordinator)
+
+## 2026-11-15 — SDK crash recovery (Job 9)
+
+- File: src/shared/types.ts
+- Change: new bus event `'sdk:reconnecting': { active: boolean; message?: string }`. Active while sensing restarts a dead SDK (the state treats it like a pause: no away, no windows, why line "Camera reconnecting"); inactive once the stream runs again. Giving up is an `sdk:error` with code `'sdk-lost'`, `retryable: false` and a plain message.
+- Change: optional `Session.calibrationSdkFailed?: boolean`. True when calibration failed because the SDK died or couldn't reach Presage; the screen shows that reason instead of the steady-pulse bar and posture advice.
+- Behaviour: raw SDK errors are still forwarded as `sdk:error` (code and message, key redacted) but with `retryable: true`, because sensing now retries them itself. Only `sdk-lost` and `no-api-key` are non-retryable on the bus.
+- Why: Daniel's live runs (decision 48): the SDK sat in kError, Ovra kept `capture=running` and declared away; calibration blamed the user.
+- Status: applied in surrelsaga/ovra-sdkfix2 (allowed by the Job 9 brief)

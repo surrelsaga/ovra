@@ -41,13 +41,21 @@ Extra `[monitor]` lines announce phase changes, the app's existing debounced val
 
 Next to the regular line, every five seconds a `[monitor] run phase=… seconds=… code0=…% steadyPulse=…s medianPulse=…` line covers the current sensing phase (one run); a final copy marked `(ended)` prints when the phase changes. `code0` is the share of raw validation callbacks at code 0 (one per frame, so roughly share of time), `steadyPulse` counts one-second buckets with at least one stable pulse reading, and `medianPulse` is the median of stable pulse snapshots, whole bpm. This median is the only measured value the monitor prints; it exists for the A/B, stays in the terminal and is never saved (a whole-bpm histogram in memory, dropped at the next phase).
 
-Padding is off by default (`liveScale: 1` in `src/renderer/capture/config.ts`). For a padded run set the dev override when launching: `RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor`. The capture renderer then opens the camera itself and draws it at that scale, padded at the bottom, into the same 1280×720 canvas as the dev video source. Breathing readings are dropped from snapshots while padded.
+The shrunk (padded) frame is **on by default** since the live A/B on 2026-11-15 (decision 48: code 0 went from 7–27% to ~75% of frames, and calibration passed): `liveScale: 0.8` in `src/renderer/capture/config.ts`. The capture renderer opens the camera itself and draws it at that scale, padded at the bottom, into the same 1280×720 canvas as the dev video source. Breathing readings are dropped from snapshots while shrunk. To compare against the normal frame, turn it off with the dev override: `RENDERER_VITE_OVRA_LIVE_SCALE=1 npm run dev:monitor` (any other value sets the scale).
 
 A/B steps, from the main checkout (its `.env` is found automatically; in a worktree add `OVRA_ENV_PATH=<main checkout>/.env`). Leave Settings → dev video source empty. Use the same desk, light and seat for both runs, and work normally.
 
-1. **Run A, unpadded:** `npm run dev:monitor`. Start a session in Continuous camera mode. Let calibration finish, then work for 10 min (short variant: 5 min) of the continuous phase. End the session and keep the `[monitor] run phase=continuous … (ended)` line.
-2. **Run B, padded:** quit the app (Cmd+Q), then `RENDERER_VITE_OVRA_LIVE_SCALE=0.8 npm run dev:monitor`. Same session settings and the same length as run A. Keep its `(ended)` line.
-3. **Decide:** keep padding if B's `steadyPulse` is at least 2× A's (compare per minute if the run lengths differ) and B's `medianPulse` is within ±3 bpm of A's. If kept, set the default `liveScale` to `0.8` in `src/renderer/capture/config.ts`. Otherwise leave it at `1`.
+1. **Run A, unpadded:** `RENDERER_VITE_OVRA_LIVE_SCALE=1 npm run dev:monitor`. Start a session in Continuous camera mode. Let calibration finish, then work for 10 min (short variant: 5 min) of the continuous phase. End the session and keep the `[monitor] run phase=continuous … (ended)` line.
+2. **Run B, padded (the default):** quit the app (Cmd+Q), then `npm run dev:monitor`. Same session settings and the same length as run A. Keep its `(ended)` line.
+3. **Decide:** padding stays on if B's `steadyPulse` is at least 2× A's (compare per minute if the run lengths differ) and B's `medianPulse` is within ±3 bpm of A's. Otherwise set the default `liveScale` back to `1`.
+
+## SDK errors and crash recovery
+
+Every SDK error prints once in the dev terminal (`[sensing] SDK error code=… retryable=… message=…`) and as `[monitor] sdk-error code=… message=…`, with the API key redacted if the SDK ever echoes it. A `kError` processing status shows as code `sdk-status`, and the SDK's own "not in a valid state" dropped-frame log as `frames-refused`.
+
+When the SDK dies (a non-retryable error, `kError`, a failed start, or refused frames), sensing restarts the same stream without ending the phase: `[monitor] sdk=reconnecting reason="…"`, then `sdk=reconnected`. It tries up to 3 times, waiting 1, 3 and 5 s (`restartBackoffMs` in `src/main/sdk/config.ts`); a stream that ran 60 s since its last start gets a fresh set. While reconnecting, nothing counts toward away, no windows are judged, and the orb's why line says "Camera reconnecting" (the calibration hint says the same). When the attempts run out: `sdk-error code=sdk-lost`, the orb says why and the session carries on with the timer, music and break reminders. If any error in that run looked like network or auth (SDK codes 2/5/6, or words like "network", "auth", "usage verification"), the reason is "Couldn't reach Presage. Check your internet or VPN." During calibration the failure screen shows that reason with Try again instead of "0 of 30 s".
+
+In a continuous session the calibration stream keeps running into continuous mode (no `capture=starting` between them), so the pulse warm-up isn't repeated. Check-in sessions still turn the camera off after calibration.
 
 ## What to look for
 

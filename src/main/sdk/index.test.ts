@@ -687,6 +687,24 @@ describe('SDK crash recovery (decision 48)', () => {
     await t.sensing.stop()
   })
 
+  it('pauses the calibration cap while the SDK is reconnecting', async () => {
+    const t = setup({ config: { calibrationMaxMs: 10_000 } })
+    await t.sensing.startCalibration()
+    capture('capture:status', 'running')
+    await vi.advanceTimersByTimeAsync(4_000)
+    capture('capture:error', { code: 1, message: 'not in a valid state', retryable: false })
+    await vi.advanceTimersByTimeAsync(sensingConfig.restartBackoffMs[0])
+    // Restart sent but slow to come up: still down, the cap stays paused.
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(t.sensing.phase()).toBe('calibration')
+    capture('capture:status', 'running')
+    // 6 s of the cap were left when the SDK went down.
+    await vi.advanceTimersByTimeAsync(5_900)
+    expect(t.sensing.phase()).toBe('calibration')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(t.sensing.phase()).toBe('idle')
+  })
+
   it('shows "Camera reconnecting" as the calibration hint while the SDK is down', async () => {
     const t = setup()
     await t.sensing.startCalibration()

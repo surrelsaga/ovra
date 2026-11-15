@@ -58,6 +58,9 @@ export function createSensing(deps: SensingDeps): SensingService {
   let stopWaiter: ((stopped: boolean) => void) | null = null
   let listening = false
   let phaseDeadline: number | undefined
+  /** Calibration cap: its timeout callback, and the time left while paused for an SDK restart. */
+  let capFire: (() => void) | null = null
+  let capLeftMs: number | null = null
   let validationCode: number | null = null
   let noFaceFound = false
   /**
@@ -136,7 +139,10 @@ export function createSensing(deps: SensingDeps): SensingService {
       console.warn(
         `[sensing] SDK down; restart ${attempts}/${cfg.restartBackoffMs.length} in ${wait} ms`
       )
-    if (!down) bus.emit('sdk:reconnecting', { active: true, message })
+    if (!down) {
+      pauseCap()
+      bus.emit('sdk:reconnecting', { active: true, message })
+    }
     down = 'waiting'
     const g = gen
     restartTimer = setTimeout(() => {
@@ -238,6 +244,7 @@ export function createSensing(deps: SensingDeps): SensingService {
       upSince = Date.now()
       if (down !== 'starting') return
       down = null
+      resumeCap()
       bus.emit('sdk:reconnecting', { active: false })
     })
   }
@@ -322,6 +329,23 @@ export function createSensing(deps: SensingDeps): SensingService {
     if (phaseTimer) clearTimeout(phaseTimer)
     if (progressTimer) clearInterval(progressTimer)
     phaseTimer = progressTimer = null
+    capFire = null
+    capLeftMs = null
+  }
+
+  /** An outage doesn't eat calibration time: stop the cap while the SDK restarts. */
+  function pauseCap(): void {
+    if (current !== 'calibration' || !phaseTimer || phaseDeadline === undefined) return
+    clearTimeout(phaseTimer)
+    phaseTimer = null
+    capLeftMs = Math.max(0, phaseDeadline - Date.now())
+  }
+
+  function resumeCap(): void {
+    if (capLeftMs === null || !capFire || current !== 'calibration') return
+    phaseDeadline = Date.now() + capLeftMs
+    phaseTimer = setTimeout(capFire, capLeftMs)
+    capLeftMs = null
   }
 
   function clearSchedule(): void {
@@ -378,7 +402,12 @@ export function createSensing(deps: SensingDeps): SensingService {
   function emitProgress(): void {
     const c = calibration
     if (!c) return
-    if (c.clockAt === null && c.okSince !== null && Date.now() - c.okSince >= cfg.framingHoldMs)
+    if (
+      c.clockAt === null &&
+      !down &&
+      c.okSince !== null &&
+      Date.now() - c.okSince >= cfg.framingHoldMs
+    )
       c.clockAt = Date.now()
     const progress =
       c.clockAt === null
@@ -466,10 +495,12 @@ export function createSensing(deps: SensingDeps): SensingService {
 
       if (req.durationMs === undefined) return
       phaseDeadline = Date.now() + req.durationMs
-      phaseTimer = setTimeout(() => {
+      const fire = (): void => {
         if (phase === 'calibration') emitProgress()
         endTimed(g).catch(report)
-      }, req.durationMs)
+      }
+      phaseTimer = setTimeout(fire, req.durationMs)
+      if (phase === 'calibration') capFire = fire
       if (phase === 'calibration') {
         emitProgress()
         progressTimer = setInterval(() => {

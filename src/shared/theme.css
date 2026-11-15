@@ -38,8 +38,8 @@
   --calm: #a9c8ff;
   --focus: #9aa8ff;
   --boost: #ffd27a;
-  /* Away is separate from mood colours and missing-signal grey. */
-  --away: var(--calm);
+  /* Cyan keeps Away distinct from the periwinkle, green and warm mood colours. */
+  --away: #78dce8;
 
   /* Orb moods: core colour, glow colour, pulse period */
   --orb-calm: #dfe9ff;

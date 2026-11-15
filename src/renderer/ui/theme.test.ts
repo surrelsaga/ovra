@@ -19,9 +19,28 @@ const luminance = (hex: string): number =>
       )
     }, 0)
 
-it('gives Away one palette colour, distinct from moods and missing signal, with dark-surface contrast', () => {
+const hue = (hex: string): number => {
+  const [r, g, b] = hex
+    .slice(1)
+    .match(/../g)!
+    .map((c) => parseInt(c, 16))
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const sector =
+    max === r
+      ? (g - b) / (max - min)
+      : max === g
+        ? (b - r) / (max - min) + 2
+        : (r - g) / (max - min) + 4
+  return (sector * 60 + 360) % 360
+}
+
+it('gives Away a distinct hue from every mood, with dark-surface contrast', () => {
   const away = token('--away')
-  expect(away).toBe(token('--calm'))
+  for (const mood of ['--focus', '--ok', '--warn', '--danger']) {
+    const difference = Math.abs(hue(away) - hue(token(mood)))
+    expect(Math.min(difference, 360 - difference)).toBeGreaterThanOrEqual(30)
+  }
   for (const other of ['--focus', '--ok', '--warn', '--danger', '--text-muted', '--border'])
     expect(away).not.toBe(token(other))
   for (const surface of ['--bg', '--panel', '--panel-raised'])

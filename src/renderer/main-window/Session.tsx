@@ -138,7 +138,7 @@ export function NewSession(props: {
         />
         <Toggle
           label="Demo mode"
-          hint="Try the moods in about 15 minutes. Ovra uses your real heart rate and breathing, with the same rules and shorter waits. A mood only appears if the readings match."
+          hint="Try the moods in about 16 minutes. Ovra uses your real heart rate and breathing, with the same rules and shorter waits. A mood only appears if the readings match."
           checked={demo}
           onChange={(enabled) => {
             setDemo(enabled)

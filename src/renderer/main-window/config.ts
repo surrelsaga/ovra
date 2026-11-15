@@ -8,7 +8,7 @@ export const mainConfig = {
   nudgeIntervalsMin: [15, 20, 30, 45],
   /** Seconds of steady pulse calibration needs (state baselineMinPulseSec). */
   calibrationSec: 30,
-  demoLengthMin: 15,
+  demoLengthMin: 20,
   activityLengthMin: {
     focus: 60,
     reading: 60,

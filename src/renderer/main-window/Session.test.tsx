@@ -258,7 +258,7 @@ describe('calibration preview', () => {
 })
 
 describe('new session', () => {
-  it('passes the demo flag, continuous camera and custom 15 minutes through IPC, without saving a setting', async () => {
+  it('passes the demo flag, continuous camera and custom 20 minutes through IPC, without saving a setting', async () => {
     const bridge = installFakeBridge({ 'session:start': session('running') })
     const view = render(
       <NewSession
@@ -272,7 +272,7 @@ describe('new session', () => {
       'false'
     )
     fireEvent.click(screen.getByRole('switch', { name: 'Demo mode' }))
-    expect(screen.getByRole('spinbutton')).toHaveValue(15)
+    expect(screen.getByRole('spinbutton')).toHaveValue(20)
     expect(screen.getByRole('radio', { name: /The whole session/ })).toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     await act(async () => {
@@ -283,7 +283,7 @@ describe('new session', () => {
         channel: 'session:start',
         req: {
           activity: 'focus',
-          lengthMin: 15,
+          lengthMin: 20,
           cameraMode: 'continuous',
           checkinIntervalMin: 5,
           music: true,

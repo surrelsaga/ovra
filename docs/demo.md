@@ -1,7 +1,7 @@
 # Demo mode (judge reference)
 
-Demo mode is a switch on the New session screen. Allow about 16 minutes for the full walk-through,
-with the camera on the whole time. Ovra still reads your real heart rate and breathing with the same SDK and the **same rules**.
+Demo mode is a switch on the New session screen. It presets a 20-minute session, leaving margin for
+the roughly 16-minute walk-through, with the camera on the whole time. Ovra still reads your real heart rate and breathing with the same SDK and the **same rules**.
 The only change is how long it waits before it reacts. Nothing is scripted and you can't force a mood: every
 state below only shows up if your body actually changes.
 
@@ -49,7 +49,7 @@ If a later state shows up early (for example Very stressed right after the squat
 
 The holds now outlast the 30 s demo window, so a short dip cannot confirm Tired by itself. A sustained
 change can take about 100 s after squats to show Stressed, or 100–120 s of rest to show Tired.
-The session preset is still 15 minutes; the full walk-through may need longer and a mood may not appear.
+The 20-minute preset leaves time for the full walk-through; a mood may still not appear.
 
 After a run of no-read windows lasting 1 min (3 min in real use), Stressed, Very stressed and Tired
 become unknown. The span runs from the first trailing no-read window's start to the last one's end,

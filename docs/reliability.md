@@ -186,12 +186,50 @@ holds, max calibration wait). Dev tools (monitor, harness, video source) run the
 
 ### 5.4 Presence and away
 
-- **Present** while the SDK is reporting a face in any form, *including* codes 7, 12, 15, 16 and 17
-  ("I can see you, just not well enough to measure").
-- **Away** only on code 1 (no face), a blank or frozen feed, or 20 s (demo 15 s) without any face
-  object.
+- **Evidence**, per fresh SDK frame (the SDK's own timestamp must move forward):
+  - a **face box** (from landmarks, face consent only) of plausible size near the calibrated seat;
+  - **code 7** (chest not visible: the normal frame's seated code, no landmarks, no pulse);
+  - a **steady pulse**, or another face code (0, 3, 4, 12–17), on a frame *without* a face box.
+- **A box off the seat vetoes its frame.** If the frame's own face box is implausible or away from
+  the calibrated seat, that frame's pulse and code don't count either: the SDK is reading something
+  that isn't you.
+- **Box-less evidence ages out.** With face consent, a steady pulse or a code other than 7 keeps you
+  present for at most **20 s** after the last face box at your seat (or code 7). Without face
+  consent there are no boxes, so codes and pulse count as before. Not applied during calibration.
+- **Away** after 20 s (demo 15 s) without evidence; code 1 clears evidence at once; code 2 blocks
+  face evidence (pulse still counts). Camera off, paused or reconnecting never counts toward away.
+- **Waking:** a steady pulse that passes the rules above, or face evidence in 3 of the last 4 seconds.
 - **On return:** the SDK keeps running (no restart, no fresh warm-up).
-- **To verify:** an empty-chair test, so a "ghost" face object on an empty seat doesn't keep someone present.
+
+**Why (Job 10, 2026-11-15).** In Daniel's 42-min live session he was out of frame for 20+ min and
+away never fired, while the why line kept showing heart-rate lines. A window only shows heart-rate
+text with at least 10 s of steady pulse, so the SDK must have been sending fresh frames with face
+codes and steady pulse from an empty chair. The old rule took any steady pulse or face code as
+presence.
+
+What real SDK runs on the dev video source showed (continuous, face metrics on):
+
+| Clip, frame | Seated | Empty frame |
+|---|---|---|
+| leave-and-return, shrunk (pad 0.4) | code 0, ~30 payloads/s, face box every second (size 0.25–0.28), steady pulse most seconds | code 15 every frame, **0 payloads**; away at exactly 20 s, woke 2 s after return |
+| leave-and-return, normal (pad 0) | codes 7/16, face object every payload, **0 landmarks, no pulse** (same as live code 7) | code 2 every frame, **0 payloads** |
+| calm-working, shrunk | 139 s: a face box in every second (size 0.23–0.35, centre 0.48–0.54, 0.39–0.43), code 0 except 1-frame 17s and a few seconds of 11 | none in the clip |
+
+So on video an empty frame simply stops the SDK, and the old rule already worked. The live ghost
+is something the clips don't contain. The rule above is built from what does separate the cases:
+a seated face gives a box every second with the shrunk frame (the default), and a seated code 7
+gives no box at all. A steady pulse needs code 0, which comes with landmarks, so a ghost pulse
+almost always brings a box we can check against the seat.
+
+**Timing for an empty chair:** no frames, or a ghost box off the seat: away 20 s after you leave
+(demo 15). A ghost with no box (codes 15/17, empty face objects, steady pulse): away within 40 s
+(demo 35). A seated person whose face box disappears for a while (looking down, turning) keeps 40 s
+of grace; code 7 has none of these limits.
+
+**Known limits.** A ghost box *at* the calibrated seat (for example a headrest) still counts, as in
+decision 29. A ghost giving code 7 without a box can't be told apart from a seated code 7. Without
+face consent, ghost codes or pulse still count. The real-room empty-chair test checks which of
+these happens (see the Job 10 report).
 
 ### 5.5 In-session framing hint
 

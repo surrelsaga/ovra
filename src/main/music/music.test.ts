@@ -15,6 +15,7 @@ import { memoryStorage } from './dev/memory-storage'
 import { readFileSync } from 'node:fs'
 import { createMusic } from '.'
 import { musicConfig } from './config'
+import { SpotifyMacController } from './controller'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
 
@@ -447,6 +448,83 @@ describe('music service', () => {
     expect(changed.controller.volume).toBe(44)
   })
 
+  it.each([-2, -1, 1, 2])(
+    'finishes the fade despite volume readback rounding by %i',
+    async (offset) => {
+      const t = await setup()
+      const volumes: number[] = []
+      t.controller.getVolume = async () => t.controller.volume
+      t.controller.setVolume = async (v) => {
+        volumes.push(v)
+        t.controller.volume = v + offset
+      }
+      const play = vi.spyOn(t.controller, 'play')
+      await t.music.startSession(session())
+      await vi.advanceTimersByTimeAsync(3 * MIN)
+      play.mockClear()
+      t.state('crashing')
+      await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+      expect(volumes).toEqual([50, 39, 29, 18, 8, 18, 29, 39, 50, 60])
+      expect(play).toHaveBeenCalledExactlyOnceWith('spotify:track:calm', expect.any(String))
+    }
+  )
+
+  it.each([500, 3000])(
+    'preserves a real user volume change at %i ms throughout cleanup',
+    async (elapsed) => {
+      const t = await setup()
+      t.controller.getVolume = async () => t.controller.volume
+      const setVolume = vi.spyOn(t.controller, 'setVolume')
+      await t.music.startSession(session())
+      await vi.advanceTimersByTimeAsync(3 * MIN)
+      t.state('crashing')
+      await vi.advanceTimersByTimeAsync(elapsed)
+      t.controller.volume += 3
+      const userVolume = t.controller.volume
+      setVolume.mockClear()
+      await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+      await t.music.stopSession()
+      expect(t.controller.volume).toBe(userVolume)
+      expect(setVolume).not.toHaveBeenCalled()
+    }
+  )
+
+  it('restores a rounded volume when the fade is cancelled', async () => {
+    const t = await setup()
+    t.controller.getVolume = async () => t.controller.volume
+    const setVolume = vi.spyOn(t.controller, 'setVolume').mockImplementation(async (v) => {
+      t.controller.volume = v - 1
+    })
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(500)
+    await t.music.stopSession()
+    expect(setVolume).toHaveBeenLastCalledWith(60)
+  })
+
+  it.each([
+    { applied: false, failedVolume: 50 },
+    { applied: true, failedVolume: 50 },
+    { applied: false, failedVolume: 39 },
+    { applied: true, failedVolume: 39 }
+  ])(
+    'restores after a failed volume command ($failedVolume, applied: $applied)',
+    async ({ applied, failedVolume }) => {
+      const t = await setup()
+      t.controller.getVolume = async () => t.controller.volume
+      const setVolume = vi.spyOn(t.controller, 'setVolume').mockImplementation(async (v) => {
+        if (applied || v !== failedVolume) t.controller.volume = v - 1
+        if (v === failedVolume) throw new Error('volume command failed')
+      })
+      await t.music.startSession(session())
+      await vi.advanceTimersByTimeAsync(3 * MIN)
+      t.state('crashing')
+      await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+      expect(setVolume).toHaveBeenLastCalledWith(60)
+    }
+  )
+
   it.each(['break', 'leave-alone', 'delete', 'privacy'] as const)(
     'restores volume when a Settle fade is aborted by %s',
     async (reason) => {
@@ -494,6 +572,20 @@ describe('music service', () => {
     failed.state('crashing')
     await vi.advanceTimersByTimeAsync(20_000)
     expect(failed.controller.volume).toBe(60)
+  })
+
+  it('plays without changing volume when AppleScript returns an empty answer', async () => {
+    const t = await setup()
+    const mac = new SpotifyMacController(async () => '')
+    t.controller.getVolume = () => mac.getVolume()
+    const setVolume = vi.spyOn(t.controller, 'setVolume')
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+    expect(t.controller.calls).toEqual(['play spotify:track:calm'])
+    expect(setVolume).not.toHaveBeenCalled()
+    expect(t.controller.volume).toBe(60)
   })
 
   it('winds down in the last 10 minutes', async () => {

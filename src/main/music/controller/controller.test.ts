@@ -72,12 +72,39 @@ describe('SpotifyMacController', () => {
     const { c, scripts } = make('42')
     expect(await c.getVolume?.()).toBe(42)
     expect(scripts[0]).toContain('if application "Spotify" is running then')
-    expect(scripts[0]).toContain('get sound volume')
+    expect(scripts[0]).toContain('return sound volume')
     expect(await make('missing').c.getVolume?.()).toBeNull()
     const failed = new SpotifyMacController(async () => {
       throw new Error('not running')
     })
     expect(await failed.getVolume?.()).toBeNull()
+  })
+
+  it.each(['', '   ', '\n', 'missing', 'NaN', 'Infinity', '-1', '101'])(
+    'treats volume output %j as unknown',
+    async (out) => {
+      expect(await make(out).c.getVolume()).toBeNull()
+    }
+  )
+
+  it.each(['0', '100', ' 42 \n'])('accepts a known volume of %j', async (out) => {
+    const { c, scripts } = make(out)
+    expect(await c.getVolume()).toBe(Number(out))
+    expect(scripts[0]).toContain('to return sound volume')
+  })
+
+  it.each([
+    '',
+    ' ',
+    '\ttrue\tfalse\t0\tstopped',
+    ' \ttrue\tfalse\t0\tstopped',
+    '60\ttrue\tfalse\t\tstopped'
+  ])('refuses to change playback when saved state is incomplete: %j', async (out) => {
+    const { c, scripts } = make(out)
+    const action = vi.fn()
+    await expect(c.withPlaybackRestored(action)).rejects.toThrow('Could not save Spotify state')
+    expect(action).not.toHaveBeenCalled()
+    expect(scripts).toHaveLength(1)
   })
 
   it('guards every command so a closed Spotify is never launched', async () => {

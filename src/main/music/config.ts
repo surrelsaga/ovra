@@ -20,6 +20,8 @@ export const musicConfig = {
     settleFadeMs: 2500,
     settleFadeSteps: 5,
     settleVolumeFloor: 8,
+    /** Spotify may round its volume readback; only larger changes count as user input. */
+    settleVolumeTolerance: 2,
     /** Last minutes of a session switch the target to wind-down. */
     windDownSec: 10 * 60
   },

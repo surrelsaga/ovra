@@ -94,12 +94,13 @@ export class SpotifyMacController implements MusicController {
     const v = Number(volume)
     const pos = Number(position?.replace(',', '.'))
     if (
-      !volume ||
+      !volume?.trim() ||
       !Number.isFinite(v) ||
       v < 0 ||
       v > 100 ||
       !['true', 'false'].includes(shuffle) ||
       !['true', 'false'].includes(repeat) ||
+      !position?.trim() ||
       !Number.isFinite(pos) ||
       pos < 0 ||
       !['playing', 'paused', 'stopped'].includes(state)
@@ -168,8 +169,9 @@ export class SpotifyMacController implements MusicController {
   async getVolume(): Promise<number | null> {
     try {
       const out = await this.run(
-        `${IF_RUNNING}\n  tell application "Spotify" to get sound volume\nend if\nreturn ""`
+        `${IF_RUNNING}\n  tell application "Spotify" to return sound volume\nend if\nreturn ""`
       )
+      if (!out.trim()) return null
       const volume = Number(out.trim())
       return Number.isFinite(volume) && volume >= 0 && volume <= 100 ? volume : null
     } catch {

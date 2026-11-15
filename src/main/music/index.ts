@@ -132,14 +132,19 @@ export function createMusic(deps: MusicDeps): MusicService {
     contextUri: string | undefined,
     activeSession: Session,
     g: number
-  ): Promise<void> {
-    if (settleFade) return
+  ): Promise<boolean> {
+    if (settleFade) return false
     const getVolume = controller.getVolume
-    if (!getVolume) return controller.play(uri, contextUri)
+    if (!getVolume) {
+      await controller.play(uri, contextUri)
+      return true
+    }
     let cancelled = false
     let userChanged = false
+    let switched = false
     let initial: number | null = null
     let lastSet = 0
+    let attemptedVolume: number | null = null
     let timer: ReturnType<typeof setTimeout> | undefined
     let finishWait: (() => void) | undefined
     cancelSettleFade = () => {
@@ -165,20 +170,29 @@ export function createMusic(deps: MusicDeps): MusicService {
       try {
         initial = await getVolume.call(controller).catch(() => null)
         if (initial === null || cancelled) {
-          if (initial === null && !cancelled) await controller.play(uri, contextUri)
+          if (initial === null && !cancelled) {
+            await controller.play(uri, contextUri)
+            switched = true
+          }
           return
         }
         lastSet = initial
         const floor = Math.min(initial, musicConfig.switching.settleVolumeFloor)
         const change = async (volume: number): Promise<boolean> => {
           const actual = await getVolume.call(controller).catch(() => null)
-          if (actual !== null && actual !== lastSet) {
+          if (
+            actual !== null &&
+            Math.abs(actual - lastSet) > musicConfig.switching.settleVolumeTolerance
+          ) {
             userChanged = true
             return false
           }
           if (!stillCurrent()) return false
+          // A command can take effect in Spotify even if its reply fails.
+          attemptedVolume = volume
           await controller.setVolume(volume)
           lastSet = volume
+          attemptedVolume = null
           return true
         }
         for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
@@ -190,6 +204,7 @@ export function createMusic(deps: MusicDeps): MusicService {
           if (!stillCurrent()) return
         }
         await controller.play(uri, contextUri)
+        switched = true
         for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
           if (!stillCurrent()) return
           const volume = floor + ((initial - floor) * step) / musicConfig.switching.settleFadeSteps
@@ -200,9 +215,14 @@ export function createMusic(deps: MusicDeps): MusicService {
       } catch {
         // Restore the user's level below even when playback or a volume command fails.
       } finally {
-        if (initial !== null && !userChanged && lastSet !== initial) {
+        if (initial !== null && !userChanged && (lastSet !== initial || attemptedVolume !== null)) {
           const actual = await getVolume.call(controller).catch(() => null)
-          if (actual === null || actual === lastSet)
+          if (
+            actual === null ||
+            Math.abs(actual - lastSet) <= musicConfig.switching.settleVolumeTolerance ||
+            (attemptedVolume !== null &&
+              Math.abs(actual - attemptedVolume) <= musicConfig.switching.settleVolumeTolerance)
+          )
             await controller.setVolume(initial).catch(() => {})
         }
         if (settleFade === promise) {
@@ -214,6 +234,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     const promise = run()
     settleFade = promise
     await promise
+    return switched
   }
 
   async function abortSettleFade(): Promise<void> {
@@ -288,8 +309,10 @@ export function createMusic(deps: MusicDeps): MusicService {
       if (g !== generation || session !== activeSession || leaveAlone) return
       if (play) play.endedByApp = true
       try {
-        if (target === 'settle') await fadePlay(uri, contextUri, activeSession, g)
-        else await controller.play(uri, contextUri)
+        if (target === 'settle') {
+          // Verifying an unplayed pick would restart a cancelled fade.
+          if (!(await fadePlay(uri, contextUri, activeSession, g))) return
+        } else await controller.play(uri, contextUri)
       } catch (error) {
         if (g !== generation || session !== activeSession) return
         if (!song) throw error

@@ -45,8 +45,8 @@ describe('why line', () => {
   it('counts a tense hold in minutes (real) and seconds (demo), with progress', () => {
     const tense = [...seconds(60, [60, 14]), ...seconds(600, [70, 18])]
     const real = run(normal, tense).map((w) => w.text)
-    expect(real).toContain('Close to your usual')
-    expect(real).toContain('Pulse above your usual · 1 of 3 min')
+    expect(real).toContain('Heart rate like when you started')
+    expect(real).toContain('Heart rate higher than when you started · 1 of 3 min')
     const fast = run(demo, tense)
     // A short first window (e.g. right after calibration) shows partial demo progress in seconds.
     const short: WindowEval = {
@@ -59,12 +59,14 @@ describe('why line', () => {
       negativeMajority: false
     }
     expect(whyLine([short], 'focused', 'continuous', demo)).toEqual({
-      text: 'Pulse above your usual · 20 of 30 s',
+      text: 'Heart rate higher than when you started · 20 of 30 s',
       progress: 20 / 30,
       moving: true
     })
     // After tense, it counts toward crashing.
-    expect(fast.map((w) => w.text)).toContain('Pulse above your usual · 1 of 2 min')
+    expect(fast.map((w) => w.text)).toContain(
+      'Heart rate higher than when you started · 1 of 2 min'
+    )
     expect(
       fast.every((w) => w.progress === undefined || (w.progress >= 0 && w.progress <= 1))
     ).toBe(true)
@@ -73,7 +75,7 @@ describe('why line', () => {
   it('steady is not moving, and a breathing change alone is nothing', () => {
     for (const b of [14, 11, 20])
       expect(run(normal, seconds(120, [60, b])).at(-1)).toEqual({
-        text: 'Close to your usual',
+        text: 'Heart rate like when you started',
         moving: false
       })
   })
@@ -91,7 +93,7 @@ describe('why line', () => {
     const history = [w('tense', 30_000), w('noread', 60_000)]
     for (const situation of ['focused', 'tense', 'low'] as Situation[])
       expect(whyLine(history, situation, 'continuous', normal)).toEqual({
-        text: 'Low signal, holding steady',
+        text: "Couldn't see you clearly · no change",
         moving: false
       })
     expect(describeWindow(history[1])).toBe(
@@ -99,7 +101,7 @@ describe('why line', () => {
     )
     // The hold resumes where it was.
     expect(whyLine([...history, w('tense', 90_000)], 'focused', 'continuous', normal)?.text).toBe(
-      'Pulse above your usual · 1 of 3 min'
+      'Heart rate higher than when you started · 1 of 3 min'
     )
   })
 
@@ -115,7 +117,7 @@ describe('why line', () => {
     ].map((w) => w.text)
     expect(lines.length).toBeGreaterThan(20)
     for (const text of lines) {
-      const rest = text.replace(/\d+(\.\d+)? of \d+(\.\d+)? (s|min|check-ins)/g, '')
+      const rest = text.replace(/\d+(\.\d+)? of \d+(\.\d+)? (s|min|checks)/g, '')
       expect(rest, text).not.toMatch(/\d/)
     }
   })

@@ -119,12 +119,12 @@ export function NewSession(props: {
           description={
             cameraOn
               ? undefined
-              : 'The camera is off (you chose Not now). You still get the timer, music and timed nudges. Change it in Privacy.'
+              : 'The camera is off (you chose Not now). You still get the timer, music and break reminders. Change it in Privacy.'
           }
           options={[
             {
               value: 'checkins',
-              label: 'Check-ins',
+              label: 'Every few minutes',
               hint: `About 90 s every ${settings.checkinIntervalMin} min`
             },
             {
@@ -138,7 +138,7 @@ export function NewSession(props: {
         />
         <Toggle
           label="Demo mode"
-          hint="See every state in about 15 minutes. Ovra still reads your real pulse and breathing with the same rules, it just waits seconds instead of minutes, and guides you through steps that change them."
+          hint="Try the moods in about 15 minutes. Ovra uses your real heart rate and breathing, with the same rules and shorter waits. A mood only appears if the readings match."
           checked={demo}
           onChange={(enabled) => {
             setDemo(enabled)
@@ -223,7 +223,7 @@ export function Calibration({
     return (
       <section className="page page--center" aria-labelledby="calibration-title">
         <MoonOrb mood="dim" listening={false} away={false} size={128} />
-        <h1 id="calibration-title">Getting to know today’s you</h1>
+        <h1 id="calibration-title">Getting to know you</h1>
         <div className="calibration-hint" role="alert">
           <p className="muted">I couldn’t get a steady read this time.</p>
           <p className="calibration-hint__text">{failed}</p>
@@ -248,7 +248,7 @@ export function Calibration({
   return (
     <section className="page page--center" aria-labelledby="calibration-title">
       <MoonOrb mood="calm" listening calibration={cal.progress} away={false} size={128} />
-      <h1 id="calibration-title">Getting to know today’s you</h1>
+      <h1 id="calibration-title">Getting to know you</h1>
       <p className="muted">
         Sit back so your shoulders and chest are in view, and breathe normally.
       </p>
@@ -289,19 +289,21 @@ export function Calibration({
       )}
       {cameraError && (
         <p className="muted" role="status">
-          Camera preview isn’t available. Calibration can continue.
+          Camera preview isn’t available. I can still get to know you.
         </p>
       )}
       <div className="calibration">
-        <Progress value={cal.progress} label="Calibration progress" />
+        <Progress value={cal.progress} label="Getting to know you progress" />
         <div className="calibration__meta">
-          <span>{framing ? 'Finding your position' : 'Getting to know you'}</span>
+          <span>{framing ? 'Getting you in view' : 'Getting to know you'}</span>
           {framing ? (
             <button type="button" className="text-link" onClick={() => choose('skip-framing')}>
               Skip
             </button>
           ) : (
-            <span>{secLeft > 0 ? `About ${secLeft} s of steady reading left` : 'Almost done'}</span>
+            <span>
+              {secLeft > 0 ? `About ${secLeft} s of steady heart rate left` : 'Almost done'}
+            </span>
           )}
         </div>
         {session.config.music && music.scoringQueue > 0 && (

@@ -129,7 +129,7 @@ describe('calibration preview', () => {
     })
     render(<Calibration session={session('calibrating')} settings={settings} />)
     expect(
-      await screen.findByText('Camera preview isn’t available. Calibration can continue.')
+      await screen.findByText('Camera preview isn’t available. I can still get to know you.')
     ).toBeInTheDocument()
   })
 
@@ -145,12 +145,12 @@ describe('calibration preview', () => {
     const bridge = installFakeBridge()
     render(<Calibration session={session('calibrating')} settings={settings} />)
     bridge.push('push:calibration', { progress: 0, hint: 'Lean back a little.', framing: true })
-    expect(screen.getByText('Finding your position')).toBeInTheDocument()
+    expect(screen.getByText('Getting you in view')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
     expect(calls(bridge)).toEqual([{ action: 'skip-framing' }])
     bridge.push('push:calibration', { progress: 0.5, hint: null, framing: false })
     expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
-    expect(screen.getByText('About 15 s of steady reading left')).toBeInTheDocument()
+    expect(screen.getByText('About 15 s of steady heart rate left')).toBeInTheDocument()
   })
 
   it('failed calibration: plain reason, Try again and Start anyway, camera preview off', () => {
@@ -164,12 +164,14 @@ describe('calibration preview', () => {
       <Calibration
         session={{
           ...session('calibrating'),
-          calibrationFailed: 'I only got 12 of 30 s of steady pulse.'
+          calibrationFailed: 'I only got 12 of 30 s of steady heart rate.'
         }}
         settings={settings}
       />
     )
-    expect(screen.getByRole('alert')).toHaveTextContent('I only got 12 of 30 s of steady pulse.')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'I only got 12 of 30 s of steady heart rate.'
+    )
     expect(getUserMedia).not.toHaveBeenCalled()
     expect(screen.queryByRole('progressbar')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
@@ -241,7 +243,7 @@ describe('new session', () => {
     installFakeBridge()
     render(<NewSession privacy={DEFAULT_PRIVACY} settings={DEFAULT_SETTINGS} onStarted={vi.fn()} />)
     expect(screen.getByText('Studying, work, coding, writing')).toBeInTheDocument()
-    expect(screen.getByText('Soft and mostly instrumental')).toBeInTheDocument()
+    expect(screen.getByText('Soft, mostly without singing')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /Everyday tasks/ }))
     expect(screen.getByRole('radio', { name: '45 min' })).toBeChecked()
     fireEvent.click(screen.getByRole('radio', { name: /Reading/ }))

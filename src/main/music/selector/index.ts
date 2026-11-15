@@ -41,12 +41,12 @@ export function desiredTarget(i: {
 
 /** Wellness wording only. */
 export const TARGET_REASON: Record<MusicTarget, string> = {
-  settle: 'Things feel intense right now. Switching to calm songs.',
-  'ease-down': 'You seem a bit tense. Easing into calmer songs.',
-  steady: 'Keeping the music steady while you focus.',
-  lift: 'Energy seems low. Bringing in some brighter songs.',
-  'let-it-ride': 'You seem in a good mood. Letting the music ride.',
-  'wind-down': 'The session is almost done. Winding the music down.'
+  settle: 'You seem very stressed. Playing quiet songs.',
+  'ease-down': 'You seem stressed. Playing calmer songs.',
+  steady: 'Keeping the music steady.',
+  lift: 'You seem tired. Playing more upbeat songs.',
+  'let-it-ride': 'You seem in a good mood. Keeping the music going.',
+  'wind-down': 'The session is almost done. Playing softer songs.'
 }
 
 export interface Effective {

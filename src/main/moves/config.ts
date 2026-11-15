@@ -18,8 +18,8 @@ export const MOVES: Record<MoveId, Move> = {
       },
       {
         id: 'breathe',
-        title: 'Breathe with the orb',
-        howTo: 'Breathe in as the orb grows, out as it shrinks.',
+        title: 'Breathe with the moon',
+        howTo: 'Breathe in as the moon grows, out as it shrinks.',
         durationSec: 80,
         animation: 'breathe',
         check: 'breathing-slows'
@@ -98,7 +98,7 @@ export const MOVES: Record<MoveId, Move> = {
       },
       {
         id: 'fold',
-        title: 'Soft fold',
+        title: 'Bend forward',
         howTo: 'Bend your knees and let your arms hang loose.',
         durationSec: 30,
         animation: 'fold',
@@ -209,23 +209,23 @@ export const MOVES_CONFIG = {
   resultHideSec: 20,
   messages: {
     breathe: {
-      tense: 'You seem tense. Want to breathe along for a minute?'
+      tense: 'You seem stressed. Want to breathe along for a minute?'
     },
     'neck-stretch': {
-      tense: 'You seem a bit tense. Want to loosen your neck and shoulders?',
+      tense: 'You seem stressed. Want to loosen your neck and shoulders?',
       seated: "You've been sitting a while. Want a quick neck stretch?"
     },
     'stand-stretch': {
-      low: 'Energy seems low. Want to stand and stretch?',
+      low: 'You seem tired. Want to stand and stretch?',
       seated: "You've been sitting about an hour. Time to stand and stretch?"
     },
     walk: {
-      crashing: 'Things seem intense. A short walk might help.',
+      crashing: 'You seem very stressed. A short walk might help.',
       seated: "You've been sitting a long time. Walk and grab some water?"
     },
     'step-outside': {
-      tense: "You've seemed tense for a while. Want to step outside for a bit?",
-      crashing: "You've seemed tense for a while. Want to step outside for a bit?"
+      tense: "You've seemed stressed for a while. Want to step outside for a bit?",
+      crashing: "You've seemed stressed for a while. Want to step outside for a bit?"
     }
   } satisfies Record<MoveId, Partial<Record<NudgeReason, string>>>,
   feedback: {
@@ -237,8 +237,8 @@ export const MOVES_CONFIG = {
   } satisfies Partial<Record<MoveCheck, string>>,
   returnMessages: {
     calmer: "You're calmer than before.",
-    settled: "Welcome back. You're looking settled.",
-    stillTense: 'Still a bit tense. Want a 1 min breathing round?',
+    settled: 'Welcome back. You seem relaxed.',
+    stillTense: 'Still feeling stressed? Want to breathe along for 1 min?',
     unknown: 'Welcome back.'
   }
 }

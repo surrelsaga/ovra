@@ -59,7 +59,7 @@ export function MusicHelp({ onDone }: { onDone: () => Promise<void> }): React.JS
       </h2>
       <p className="muted small">
         Paste a Spotify playlist and Ovra picks the song that fits how you’re doing: calmer when
-        you’re tense, brighter when you’re low. It reads up to 100 songs per playlist.
+        you’re stressed, more upbeat when you’re tired. It reads up to 100 songs per playlist.
       </p>
       <ol className="music-help__steps">
         <li>

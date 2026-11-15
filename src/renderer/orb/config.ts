@@ -21,3 +21,19 @@ export function cameraLabel(view: import('@shared/types').OrbView, now: number):
   const min = view.nextCheckAt ? Math.ceil((view.nextCheckAt - now) / 60_000) : 0
   return min > 0 ? `Camera off · next check in ${min} min` : 'Camera off'
 }
+
+/** Display labels only; IPC and saved target values keep their existing names. */
+export const MUSIC_TARGET_LABEL: Record<import('@shared/types').MusicTarget, string> = {
+  lift: 'Pick me up',
+  'ease-down': 'Calm down',
+  settle: 'Quiet',
+  'let-it-ride': 'Keep it going',
+  steady: 'Steady',
+  'wind-down': 'Wind down'
+}
+
+export const MUSIC_WORD_LABEL: Record<import('@shared/types').TargetWord, string> = {
+  Calm: 'Calm down',
+  Focus: 'Steady',
+  Boost: 'Pick me up'
+}

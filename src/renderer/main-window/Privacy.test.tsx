@@ -19,11 +19,11 @@ it.each([
     ).toBeInTheDocument()
     expect(screen.getByText('/actual/user/data/ovra')).toBeInTheDocument()
     expect(screen.getByText('Never stored:')).toBeInTheDocument()
-    expect(screen.getByText('App cache')).toBeInTheDocument()
+    expect(screen.getByText('Temporary app files')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: `Show in ${manager}` }))
     await waitFor(() =>
       expect(bridge.invokes).toContainEqual({ channel: 'data:show-folder', req: undefined })
     )
-    expect(screen.getByText(/Looks up public tags on Last.fm/)).toBeInTheDocument()
+    expect(screen.getByText(/Looks up public song descriptions on Last.fm/)).toBeInTheDocument()
   }
 )

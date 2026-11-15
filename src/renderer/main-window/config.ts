@@ -32,13 +32,13 @@ export const ACTIVITIES: { value: Activity; label: string; examples: string; hin
     value: 'reading',
     label: 'Reading',
     examples: 'Articles, books, comics',
-    hint: 'Soft and mostly instrumental'
+    hint: 'Soft, mostly without singing'
   },
   {
     value: 'creative',
     label: 'Creative',
     examples: 'Design, drawing, editing',
-    hint: 'Warm, a bit more energy'
+    hint: 'A little more upbeat'
   },
   {
     value: 'everyday',
@@ -50,7 +50,7 @@ export const ACTIVITIES: { value: Activity; label: string; examples: string; hin
     value: 'unwind',
     label: 'Unwind',
     examples: 'Browsing, social, chatting',
-    hint: 'Bright and feel-good'
+    hint: 'Upbeat and feel-good'
   }
 ]
 
@@ -60,11 +60,11 @@ export const ACTIVITY_LABEL = Object.fromEntries(
 
 /** "Why it's here" for each score source. */
 export const SOURCE_LABEL: Record<ScoreSource, string> = {
-  lastfm: 'Public tags on Last.fm',
-  llm: 'AI estimate from title and tags',
+  lastfm: 'Public song descriptions on Last.fm',
+  llm: 'AI guess from title and descriptions',
   web: 'Web search',
   learned: 'Learned from your sessions',
-  rules: 'Estimated from playlist hints or defaults'
+  rules: 'Guessed from the playlist or starting settings'
 }
 
 export type SongTab = 'Calm' | 'Focus' | 'Boost' | 'Not sure yet'
@@ -114,3 +114,22 @@ export function fmtDate(t: number): string {
 }
 
 export const musicUiConfig = { availabilityPollMs: 5000 } as const
+
+export const SONG_TAB_LABEL: Record<SongTab, string> = {
+  Calm: 'Calm',
+  Focus: 'Steady',
+  Boost: 'Pick me up',
+  'Not sure yet': 'Not sure yet'
+}
+
+export const SONG_MOOD_LABEL: Record<import('@shared/types').SongMood, string> = {
+  dark: 'Sad',
+  neutral: 'Neutral',
+  bright: 'Upbeat'
+}
+
+export const SINGING_LABEL: Record<import('@shared/types').Vocals, string> = {
+  instrumental: 'No singing',
+  light: 'Some singing',
+  heavy: 'Lots of singing'
+}

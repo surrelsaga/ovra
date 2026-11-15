@@ -61,7 +61,7 @@ describe('pickMove triggers', () => {
   })
   it('uses wellness wording', () => {
     expect(pickMove(input({ situation: 'tense', tenseMinutes: 1 }), cfg)?.message).toMatch(
-      /^You seem tense/
+      /^You seem stressed/
     )
     for (const m of Object.values(cfg.messages).flatMap((x) => Object.values(x)))
       expect(m).not.toMatch(/stress level|heart|pulse|diagnos|anxiety/i)
@@ -129,7 +129,7 @@ describe('returnResult', () => {
     const r = returnResult(st({ situation: 'crashing' }), 'tense', cfg)
     expect(r).toEqual({
       result: 'still-tense',
-      message: 'Still a bit tense. Want a 1 min breathing round?'
+      message: 'Still feeling stressed? Want to breathe along for 1 min?'
     })
   })
   it('no data, away or no situation → unknown', () => {

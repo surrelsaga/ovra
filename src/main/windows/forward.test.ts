@@ -127,7 +127,7 @@ describe('bus → push forwarding', () => {
       away: false,
       trend: 'rising'
     })
-    expect(fw.orb()).toMatchObject({ mood: 'uneasy', bubble: 'You seem a bit tense.' })
+    expect(fw.orb()).toMatchObject({ mood: 'uneasy', bubble: 'You seem stressed.' })
 
     bus.emit('sdk:checkin-started', { phase: 'checkin' })
     expect(fw.orb().listening).toBe(true)
@@ -163,7 +163,7 @@ describe('bus → push forwarding', () => {
     })
     bus.emit('music:target-changed', { target: 'ease-down', word: 'Calm', reason: '' })
     expect(fw.orb().nowPlaying).toEqual({ name: 'Song', artist: 'Band', word: 'Calm' })
-    expect(fw.orb().bubble).toBe('Easing into calmer songs.')
+    expect(fw.orb().bubble).toBe('Playing calmer songs.')
     bus.emit('music:target-changed', {
       target: 'lift',
       word: 'Boost',
@@ -314,7 +314,7 @@ describe('demo badge, why line and demo hints', () => {
     vi.useFakeTimers()
     const bus = createBus()
     const shell = fakeShell()
-    let why: OrbView['why'] = { text: 'Close to your usual', moving: false }
+    let why: OrbView['why'] = { text: 'Heart rate like when you started', moving: false }
     const fw = bindForwarding(bus, shell, undefined, () => why)
     bus.emit('session:started', session('calibrating'))
     expect(fw.orb().demo).toBeUndefined()
@@ -324,8 +324,8 @@ describe('demo badge, why line and demo hints', () => {
     bus.emit('session:status', session('running'))
     expect(fw.orb().demo).toBe(true)
     bus.emit('state:updated', state)
-    expect(fw.orb().why).toEqual({ text: 'Close to your usual', moving: false })
-    why = { text: "Can't see you · away in 9 s", progress: 0.4, moving: true }
+    expect(fw.orb().why).toEqual({ text: 'Heart rate like when you started', moving: false })
+    why = { text: "Couldn't see you · away in 9 s", progress: 0.4, moving: true }
     vi.advanceTimersByTime(windowsConfig.whyTickMs)
     expect(fw.orb().why).toEqual(why)
     bus.emit('session:status', session('ended'))
@@ -339,13 +339,13 @@ describe('demo badge, why line and demo hints', () => {
     const bus = createBus()
     const fw = bindForwarding(bus, fakeShell())
     const hint = 'Demo: try 40 s of squats off camera, then sit down.'
-    bus.emit('state:updated', state) // "You seem a bit tense."
+    bus.emit('state:updated', state) // "You seem stressed."
     bus.emit('orb:bubble', { text: hint, ttlMs: 15_000 })
-    expect(fw.orb().bubble).toBe('You seem a bit tense.')
+    expect(fw.orb().bubble).toBe('You seem stressed.')
     vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
     expect(fw.orb().bubble).toBe(hint)
-    bus.emit('orb:bubble', { text: 'Easing into calmer songs.' })
-    expect(fw.orb().bubble).toBe('Easing into calmer songs.')
+    bus.emit('orb:bubble', { text: 'Playing calmer songs.' })
+    expect(fw.orb().bubble).toBe('Playing calmer songs.')
     vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
     expect(fw.orb().bubble).toBe(hint)
     vi.advanceTimersByTime(15_000)

@@ -238,13 +238,13 @@ function ReturnCheckCard({ progress }: { progress: number }): React.JSX.Element 
       <Header title="Welcome back" />
       <CardMoon mood="calm" listening />
       <h1 id="return-title" className="return-title">
-        Checking in
+        Seeing how you feel
       </h1>
-      <p className="muted">Sit back and settle for a moment.</p>
+      <p className="muted">Sit back and relax for a moment.</p>
       <div
         className="progress"
         role="progressbar"
-        aria-label="Return check"
+        aria-label="Seeing how you feel after your break"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={pct}

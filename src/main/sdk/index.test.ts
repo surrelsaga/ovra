@@ -645,7 +645,7 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     expect(t.ready).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
     expect(t.sensing.phase()).toBe('idle')
-    expect(t.ready).toEqual([{ ok: false, reason: 'I only got 0 of 30 s of steady pulse.' }])
+    expect(t.ready).toEqual([{ ok: false, reason: 'I only got 0 of 30 s of steady heart rate.' }])
     expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
       progress: 0,
       hint: 'Place more of the chest in view.',

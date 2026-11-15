@@ -4,13 +4,13 @@ import type { MoodPoint } from '@shared/types'
 export type TimelineKind = MoodPoint['situation']
 
 export const SITUATION_LABEL: Record<TimelineKind, string> = {
-  focused: 'Focused',
-  tense: 'Tense',
-  crashing: 'Rough patch',
-  low: 'Low energy',
+  focused: 'Steady',
+  tense: 'Stressed',
+  crashing: 'Very stressed',
+  low: 'Tired',
   good: 'Good mood',
   away: 'Away',
-  unknown: 'No reading'
+  unknown: "Couldn't see you"
 }
 
 /** Each point holds until the next one. Merges neighbours with the same label. */

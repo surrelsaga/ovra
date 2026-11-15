@@ -23,15 +23,15 @@ export function Settings(props: {
       </header>
       <div className="panel stack stack--loose">
         <ChoiceGroup<CheckinIntervalMin>
-          legend="Check-in interval"
-          description="In check-in mode the camera runs about 90 seconds, then turns fully off until the next one."
+          legend="How often to use the camera"
+          description="When you choose every few minutes, the camera runs for about 90 seconds, then turns off until the next time."
           name="checkin"
           options={mainConfig.checkinIntervals.map((m) => ({ value: m, label: `Every ${m} min` }))}
           value={settings.checkinIntervalMin}
           onChange={(v) => void save({ checkinIntervalMin: v })}
         />
         <ChoiceGroup
-          legend="Move nudges"
+          legend="Break reminders"
           description="The most often Ovra will suggest a stretch or a break."
           name="nudges"
           options={mainConfig.nudgeIntervalsMin.map((m) => ({
@@ -43,7 +43,7 @@ export function Settings(props: {
         />
       </div>
       <details className="panel advanced">
-        <summary>Advanced: thresholds</summary>
+        <summary>Advanced: mood rules</summary>
         <Thresholds
           overrides={settings.thresholdOverrides}
           onChange={(thresholdOverrides) => void save({ thresholdOverrides })}
@@ -70,7 +70,7 @@ function Thresholds(props: {
   return (
     <div className="stack">
       <p className="muted small">
-        Override a state engine value by name, for example <code>tensePulsePct</code> = 0.12. Leave
+        Change a mood rule by its code name, for example <code>tensePulsePct</code> = 0.12. Leave
         empty to use the defaults.
       </p>
       {entries.map(([k, v]) => (
@@ -107,7 +107,7 @@ function Thresholds(props: {
       >
         <input
           className="input"
-          aria-label="Threshold name"
+          aria-label="Rule name"
           placeholder="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -116,7 +116,7 @@ function Thresholds(props: {
           className="input input--small"
           type="number"
           step="any"
-          aria-label="Threshold value"
+          aria-label="Rule value"
           placeholder="value"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -165,8 +165,8 @@ function DevSource(props: {
       </label>
       <label className="field">
         <span className="field__label">
-          Framing pad{' '}
-          <span className="muted">({Math.round(pad * 100)}% of frame height added below)</span>
+          Space below the video{' '}
+          <span className="muted">({Math.round(pad * 100)}% extra space below)</span>
         </span>
         <input
           type="range"

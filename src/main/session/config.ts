@@ -54,11 +54,11 @@ export const sessionConfig = {
       { after: ['good'], text: 'Demo: try 40 s of squats off camera, then sit down.' },
       // The breathe-along nudge appears by itself.
       { after: ['tense'] },
-      { after: ['settled'], text: 'Demo: push harder for about 2 minutes to see crashing out.' },
+      { after: ['settled'], text: 'Demo: keep moving for about 2 minutes to see Very stressed.' },
       { after: ['crashing'], text: 'Demo: step away from the camera for 20 s, then come back.' },
       {
         after: ['returned'],
-        text: 'Demo: breathe slowly, about 6 a minute, and blink often. This one may not trigger.',
+        text: 'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.',
         timeoutMs: 120_000
       },
       { after: ['low', 'timeout'], text: 'Demo: let the session wind down to see your summary.' }

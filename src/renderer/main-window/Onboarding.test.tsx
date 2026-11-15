@@ -52,10 +52,10 @@ describe('onboarding', () => {
       expect(screen.getAllByRole('group')).toHaveLength(1)
       fireEvent.click(next())
       seen.push(screen.getByRole('group').querySelector('legend')!.textContent!)
-      if (/face/i.test(seen[seen.length - 1])) {
+      if (/expressions/i.test(seen[seen.length - 1])) {
         // Face: no default, must pick.
         expect(next()).toBeDisabled()
-        fireEvent.click(screen.getByLabelText(/^Vitals only/))
+        fireEvent.click(screen.getByLabelText(/^Heart rate and breathing/))
       }
       if (i === 5) break
     }

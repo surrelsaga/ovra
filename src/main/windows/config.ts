@@ -47,15 +47,15 @@ export function mainWindowSize(workArea: { width: number; height: number }): {
 /** Wellness wording only. Shown when the situation changes. */
 export const situationLines: Record<Situation, string> = {
   focused: 'Nice and steady.',
-  tense: 'You seem a bit tense.',
-  crashing: 'Rough stretch? Let’s slow things down.',
-  low: 'Energy dipping a little.',
+  tense: 'You seem stressed.',
+  crashing: 'You seem very stressed. Let’s slow down.',
+  low: 'You seem tired.',
   good: 'You seem in a good mood.'
 }
 
 /** Shown when the music target changes. */
 export const targetLines: Record<TargetWord, string> = {
-  Calm: 'Easing into calmer songs.',
+  Calm: 'Playing calmer songs.',
   Focus: 'Keeping the music steady.',
-  Boost: 'Picking something brighter.'
+  Boost: 'Playing more upbeat songs.'
 }

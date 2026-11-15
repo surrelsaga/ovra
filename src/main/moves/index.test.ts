@@ -281,7 +281,7 @@ describe('breaks and the return check', () => {
     t.bus.emit('sdk:checkin-ended', { phase: 'return-check' })
     vi.advanceTimersByTime(cfg.returnCheck.settleMs)
     expect(t.events('break:return-check')).toEqual([
-      { result: 'still-tense', message: 'Still a bit tense. Want a 1 min breathing round?' }
+      { result: 'still-tense', message: 'Still feeling stressed? Want to breathe along for 1 min?' }
     ])
     expect(t.card()).toMatchObject({ kind: 'return-result', result: 'still-tense' })
     t.moves.breatheRound()

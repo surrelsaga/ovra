@@ -12,7 +12,7 @@ import { AppWindow, Camera, CameraOff, Hand, Music, Square } from 'lucide-react'
 import type { MusicStatus, OrbView } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { MoonOrb } from '../ui/MoonOrb'
-import { awayText, cameraLabel, orbConfig } from './config'
+import { awayText, cameraLabel, MUSIC_TARGET_LABEL, MUSIC_WORD_LABEL, orbConfig } from './config'
 import './orb.css'
 
 const START: OrbView = { mood: 'calm', listening: false, paused: false, away: false }
@@ -136,6 +136,11 @@ export default function App(): React.JSX.Element {
     return () => clearTimeout(timer)
   }, [cameraNote.on, cameraNote.text])
   const cameraTip = cameraLabel(view, now)
+  const targetLabel = music.target
+    ? MUSIC_TARGET_LABEL[music.target]
+    : view.nowPlaying?.word
+      ? MUSIC_WORD_LABEL[view.nowPlaying.word]
+      : null
   // Why line: only while something is moving, or on hover. Never a vitals value (decision 34).
   const why = view.why && !view.away && (view.why.moving || hover) ? view.why : null
 
@@ -226,10 +231,10 @@ export default function App(): React.JSX.Element {
             className="pill now-playing"
             data-hit
             tabIndex={0}
-            aria-label={[view.nowPlaying.word, view.nowPlaying.name, view.nowPlaying.artist]
+            aria-label={[targetLabel, view.nowPlaying.name, view.nowPlaying.artist]
               .filter(Boolean)
               .join(' · ')}
-            title={[view.nowPlaying.word, view.nowPlaying.name, view.nowPlaying.artist]
+            title={[targetLabel, view.nowPlaying.name, view.nowPlaying.artist]
               .filter(Boolean)
               .join(' · ')}
           >
@@ -248,7 +253,7 @@ export default function App(): React.JSX.Element {
             {view.nowPlaying.word && (
               <>
                 <span className={`word word--${view.nowPlaying.word.toLowerCase()}`}>
-                  {view.nowPlaying.word}
+                  {targetLabel}
                 </span>
                 <span aria-hidden>·</span>
               </>
@@ -259,7 +264,7 @@ export default function App(): React.JSX.Element {
           </p>
         ) : null}
         {why && (
-          <p className="why" data-hit data-testid="why-line">
+          <p className="why" data-hit data-testid="why-line" title={why.text} aria-label={why.text}>
             {why.text}
             {why.progress !== undefined && (
               <span className="why__bar" aria-hidden>
@@ -297,7 +302,7 @@ export default function App(): React.JSX.Element {
         >
           {leaveAlone ? <Hand /> : <Music />}
           <span className="control-tooltip" role="tooltip">
-            {leaveAlone ? 'Music: hands off (on)' : 'Leave my music alone'}
+            {leaveAlone ? 'Song switching is off' : 'Leave my music alone'}
           </span>
         </button>
         <button

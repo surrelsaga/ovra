@@ -10,7 +10,7 @@ const MOVE_LABEL: Record<MoveId, string> = {
   breathe: 'Breathe along',
   'neck-stretch': 'Neck and shoulder stretch',
   'stand-stretch': 'Stand and stretch',
-  walk: 'Walk / get water',
+  walk: 'Walk and get water',
   'step-outside': 'Step outside'
 }
 
@@ -33,9 +33,9 @@ export function SessionSummaryView(props: {
       detail: [...new Set(done)].map((m) => MOVE_LABEL[m]).join(', ')
     },
     {
-      label: 'Snoozed',
+      label: 'Put off',
       value: String(r.snoozes),
-      detail: r.snoozes ? 'Nudges you put off' : 'None'
+      detail: r.snoozes ? 'Break reminders you put off' : 'None'
     },
     {
       label: 'Songs learned',
@@ -43,7 +43,7 @@ export function SessionSummaryView(props: {
       detail: 'Songs Ovra learned something about'
     },
     {
-      label: 'Longest seated stretch',
+      label: 'Longest time sitting',
       value: fmtMinutes(r.longestSeatedMin),
       detail: 'Without a real break'
     }
@@ -76,7 +76,7 @@ export function SessionSummaryView(props: {
           <h2 className="panel__title">What’s saved</h2>
           <p className="muted small">
             Mood labels with times, moves done, session length and which songs it learned about.
-            Kept on this Mac only. No video, no pulse or breathing numbers.
+            Kept on this Mac only. No video, no heart rate or breathing numbers.
           </p>
         </div>
         <ConfirmButton
@@ -150,7 +150,7 @@ export function History(): React.JSX.Element {
                 <span className="muted small">{fmtDate(r.startedAt)}</span>
                 <MoodTimeline points={r.moodTimeline} start={r.startedAt} end={r.endedAt} />
                 <span className="muted small">
-                  {doneMoves(r).length} moves done · {r.snoozes} snoozed
+                  {doneMoves(r).length} moves done · {r.snoozes} put off
                 </span>
               </button>
               <Button

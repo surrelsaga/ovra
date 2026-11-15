@@ -5,7 +5,15 @@ import type { MusicStatus, PlaylistLink, Song } from '@shared/types'
 import { ovra, usePush } from '../shared/bridge'
 import { Button, ConfirmButton, EnergyDots, Toggle } from '../ui'
 import { musicUiConfig } from './config'
-import { SOURCE_LABEL, effectiveEnergy, songTab, type SongTab } from './config'
+import {
+  SOURCE_LABEL,
+  SONG_TAB_LABEL,
+  SONG_MOOD_LABEL,
+  SINGING_LABEL,
+  effectiveEnergy,
+  songTab,
+  type SongTab
+} from './config'
 
 const TABS: SongTab[] = ['Calm', 'Focus', 'Boost', 'Not sure yet']
 
@@ -140,7 +148,7 @@ export function Music(props: {
         <div className="tabs" role="tablist" aria-label="Song groups">
           {TABS.map((t) => (
             <button
-              key={t}
+              key={SONG_TAB_LABEL[t]}
               type="button"
               role="tab"
               id={`tab-${t}`}
@@ -149,7 +157,7 @@ export function Music(props: {
               className="tabs__tab"
               onClick={() => setTab(t)}
             >
-              {t}
+              {SONG_TAB_LABEL[t]}
               <span className="tabs__count">
                 {library.songs.filter((s) => songTab(s) === t).length}
               </span>
@@ -170,7 +178,7 @@ export function Music(props: {
                   <th scope="col">Song</th>
                   <th scope="col">Energy</th>
                   <th scope="col">Mood</th>
-                  <th scope="col">Vocals</th>
+                  <th scope="col">Singing</th>
                   <th scope="col">Why it’s here</th>
                 </tr>
               </thead>
@@ -182,12 +190,12 @@ export function Music(props: {
                       <div className="muted small">{s.artist}</div>
                     </td>
                     <td>{s.scores ? <EnergyDots energy={effectiveEnergy(s) ?? 0} /> : '—'}</td>
-                    <td className="cap">{s.scores?.mood ?? '—'}</td>
-                    <td className="cap">{s.scores?.vocals ?? '—'}</td>
+                    <td className="cap">{s.scores ? SONG_MOOD_LABEL[s.scores.mood] : '—'}</td>
+                    <td className="cap">{s.scores ? SINGING_LABEL[s.scores.vocals] : '—'}</td>
                     <td className="muted small">
                       {s.scores
                         ? SOURCE_LABEL[s.learned ? 'learned' : s.scores.source]
-                        : 'Not scored yet'}
+                        : 'Not sorted yet'}
                     </td>
                   </tr>
                 ))}
@@ -200,7 +208,7 @@ export function Music(props: {
       <div className="page__actions page__actions--start">
         <ConfirmButton
           label="Clear music library"
-          confirmLabel="Yes, clear all song scores"
+          confirmLabel="Yes, clear what Ovra learned"
           icon={<Trash2 />}
           onConfirm={async () => {
             await ovra().invoke('music:clear-library')

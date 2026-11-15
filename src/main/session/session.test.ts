@@ -119,11 +119,11 @@ describe('session', () => {
     expect(t.svc.current()?.status).toBe('calibrating')
     t.bus.emit('state:baseline-ready', {
       ok: false,
-      reason: 'I only got 4 of 30 s of steady pulse.'
+      reason: 'I only got 4 of 30 s of steady heart rate.'
     })
     expect(t.svc.current()).toMatchObject({
       status: 'calibrating',
-      calibrationFailed: 'I only got 4 of 30 s of steady pulse.'
+      calibrationFailed: 'I only got 4 of 30 s of steady heart rate.'
     })
     expect(t.sensing.startCheckins).not.toHaveBeenCalled()
     expect(t.seen['orb:bubble']).toBeUndefined()

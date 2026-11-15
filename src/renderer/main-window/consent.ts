@@ -25,43 +25,51 @@ export const CONSENT_QUESTIONS: ConsentQuestion[] = [
       {
         value: 'yes',
         label: 'Yes',
-        hint: 'Reads pulse (and more if you allow it) to fit music and breaks to you'
+        hint: 'Reads heart rate and breathing to fit music and breaks to you'
       },
       {
         value: 'not-now',
         label: 'Not now',
-        hint: 'You still get the timer, music and timed move nudges'
+        hint: 'You still get the timer, music and break reminders'
       }
     ]
   },
   {
     key: 'cameraMode',
     legend: 'How often can it look?',
-    description: 'Check-ins turn the camera fully off in between, so the camera light goes off.',
+    description: 'The camera turns fully off between checks, so its light goes off too.',
     needsCamera: true,
     options: [
       {
         value: 'checkins',
-        label: 'Check-ins every few minutes',
+        label: 'Every few minutes',
         hint: 'About 90 seconds every 5 minutes'
       },
-      { value: 'continuous', label: 'The whole session', hint: 'Better break and away detection' }
+      {
+        value: 'continuous',
+        label: 'The whole session',
+        hint: 'Notices when you leave and come back'
+      }
     ]
   },
   {
     key: 'face',
-    legend: 'Can it read your face too?',
+    legend: 'Can it use your expressions too?',
     description:
-      'Face signals only support what your vitals say. They never decide anything alone.',
+      'Smiles, frowns and blinks can help explain your heart rate and breathing. They never decide your mood on their own.',
     required: true,
     needsCamera: true,
     options: [
       {
         value: 'vitals-and-face',
-        label: 'Vitals and face',
+        label: 'Heart rate, breathing and expressions',
         hint: 'Blinks, talking and expressions help read your mood'
       },
-      { value: 'vitals-only', label: 'Vitals only', hint: 'Face analysis is never requested' }
+      {
+        value: 'vitals-only',
+        label: 'Heart rate and breathing',
+        hint: 'Smiles, frowns and blinks are never read'
+      }
     ]
   },
   {
@@ -76,23 +84,23 @@ export const CONSENT_QUESTIONS: ConsentQuestion[] = [
   },
   {
     key: 'aiScoring',
-    legend: 'Can Ovra look up public tags on Last.fm and use AI to score your songs?',
+    legend: 'Can Ovra use Last.fm and AI to sort your songs?',
     description:
-      'Looks up public tags on Last.fm, then uses AI to estimate song energy and mood. Sends only title, artist and public tags; never your vitals or moods.',
+      'Looks up public song descriptions on Last.fm, then uses AI to guess song energy and mood. Sends only title, artist and public descriptions; never your heart rate, breathing or mood.',
     options: [
       { value: true, label: 'Yes', hint: 'Songs get sorted faster' },
       {
         value: false,
         label: 'No',
-        hint: 'Uses playlist hints and defaults, then learns as songs play'
+        hint: 'Uses the playlist to guess, then learns as songs play'
       }
     ]
   },
   {
     key: 'telemetry',
-    legend: 'Share anonymous diagnostics with Presage?',
+    legend: 'Share anonymous app reports with Presage?',
     description:
-      'Presage makes the sensing SDK. Per Presage, diagnostics hold no frames, no measured values and no user or device IDs.',
+      'Presage makes the camera software. Presage says these reports contain no pictures, readings, or details that identify you or your computer.',
     options: [
       { value: true, label: 'Share' },
       { value: false, label: 'Don’t share' }
@@ -101,7 +109,7 @@ export const CONSENT_QUESTIONS: ConsentQuestion[] = [
   {
     key: 'autoDelete',
     legend: 'Auto-delete old session history?',
-    description: 'Song scores and settings stay until you clear them.',
+    description: 'What Ovra learned about songs and your settings stay until you clear them.',
     options: [
       { value: 30, label: '30 days' },
       { value: 90, label: '90 days' },

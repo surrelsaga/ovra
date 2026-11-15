@@ -79,7 +79,7 @@ export function Privacy(props: {
         <dl className="stored-files">
           <div>
             <dt>Songs</dt>
-            <dd>Title, artist, energy and mood guess, how each song worked for you</dd>
+            <dd>Title, artist, energy and mood guesses, how each song worked for you</dd>
           </div>
           <div>
             <dt>Playlists</dt>
@@ -97,14 +97,14 @@ export function Privacy(props: {
             <dd>Your privacy choices and app settings</dd>
           </div>
           <div>
-            <dt>App cache</dt>
-            <dd>Standard files every desktop app built on Chrome keeps. No personal data</dd>
+            <dt>Temporary app files</dt>
+            <dd>Files the app uses to run, with no personal data</dd>
           </div>
         </dl>
         <p className="small">
           <strong>Never stored:</strong>{' '}
           <span className="muted">
-            video, photos, pulse, breathing, face data or your baseline.
+            video, photos, heart rate, breathing, face details or your starting readings.
           </span>
         </p>
       </div>
@@ -112,8 +112,8 @@ export function Privacy(props: {
         <div>
           <h2 className="panel__title">Delete everything</h2>
           <p className="muted small">
-            Removes all session history, song scores, playlists and settings from this Mac. You’ll
-            see the privacy questions again.
+            Removes all session history, what Ovra learned about songs, playlists and settings from
+            this Mac. You’ll see the privacy questions again.
           </p>
         </div>
         <ConfirmButton

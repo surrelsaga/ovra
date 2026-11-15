@@ -367,7 +367,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
         const gapMs = Date.now() - (lastFace ?? phaseStart)
         if (gapMs >= c.whyAwaySoonSec * 1000)
           return {
-            text: `Can't see you · away in ${Math.max(0, Math.ceil(c.awayNoFaceSec - gapMs / 1000))} s`,
+            text: `Couldn't see you · away in ${Math.max(0, Math.ceil(c.awayNoFaceSec - gapMs / 1000))} s`,
             progress: Math.min(1, gapMs / (c.awayNoFaceSec * 1000)),
             moving: true
           }

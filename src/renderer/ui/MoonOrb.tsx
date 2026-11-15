@@ -54,7 +54,14 @@ function useCameraMotion(listening: boolean, still: boolean): { ms: number; step
 }
 
 function moonLabel(p: MoonProps): string {
-  const parts = [`Ovra moon, ${p.away ? 'away' : p.mood}`]
+  const labels = {
+    calm: 'Steady',
+    uneasy: 'Stressed',
+    stormy: 'Very stressed',
+    dim: 'Tired',
+    bright: 'Good mood'
+  }
+  const parts = [`Ovra moon, ${p.away ? 'Away' : labels[p.mood]}`]
   if (p.breath !== undefined) parts.push('breathing along')
   if (p.listening) parts.push('camera on')
   else if (p.paused) parts.push('camera paused')

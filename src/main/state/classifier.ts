@@ -99,7 +99,7 @@ export function buildBaseline(
   const pulse = stablePulse(snaps)
   const sec = seconds(pulse)
   if (sec < cfg.baselineMinPulseSec)
-    return { reason: `I only got ${sec} of ${cfg.baselineMinPulseSec} s of steady pulse.` }
+    return { reason: `I only got ${sec} of ${cfg.baselineMinPulseSec} s of steady heart rate.` }
   return {
     baseline: {
       pulse: median(pulse.map((s) => s.pulse!.value))!,

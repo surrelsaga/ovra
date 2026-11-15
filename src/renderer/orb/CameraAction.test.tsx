@@ -20,7 +20,7 @@ it('has a CSS tooltip for each control, including the updated camera and music l
   fireEvent.click(screen.getByRole('button', { name: 'Leave my music alone' }))
   expect(
     within(screen.getByRole('button', { name: 'Leave my music alone' })).getByRole('tooltip')
-  ).toHaveTextContent('Music: hands off (on)')
+  ).toHaveTextContent('Song switching is off')
 })
 
 it('opens the main Session preview from the optional framing action', () => {

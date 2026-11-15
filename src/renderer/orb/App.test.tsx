@@ -22,7 +22,9 @@ describe('orb window', () => {
     for (const mood of ['calm', 'uneasy', 'stormy', 'dim', 'bright'] as const) {
       bridge.push('push:orb', { ...base, mood })
       expect(moon()).toHaveAttribute('data-mood', mood)
-      expect(moon()).toHaveAccessibleName(`Ovra moon, ${mood}`)
+      expect(moon()).toHaveAccessibleName(
+        `Ovra moon, ${{ calm: 'Steady', uneasy: 'Stressed', stormy: 'Very stressed', dim: 'Tired', bright: 'Good mood' }[mood]}`
+      )
     }
 
     bridge.push('push:orb', { ...base, listening: true, bubble: 'Checking in' })
@@ -35,7 +37,7 @@ describe('orb window', () => {
     // A user pause shows its badge immediately, without a lingering satellite.
     expect(screen.queryByTestId('camera-satellite')).toBeNull()
     expect(screen.getByTestId('camera-off-badge')).toBeInTheDocument()
-    expect(moon()).toHaveAccessibleName('Ovra moon, calm, camera paused')
+    expect(moon()).toHaveAccessibleName('Ovra moon, Steady, camera paused')
 
     bridge.push('push:orb', {
       ...base,
@@ -58,7 +60,7 @@ describe('orb window', () => {
       nowPlaying: { name: 'Weightless', artist: 'Marconi Union', word: 'Calm' }
     })
     act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs))
-    expect(screen.getByText('Calm')).toBeInTheDocument()
+    expect(screen.getByText('Calm down')).toBeInTheDocument()
     expect(screen.getByText(/Weightless/)).toBeInTheDocument()
   })
 
@@ -203,8 +205,8 @@ describe('song pill and camera status', () => {
     act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs - 1))
     expect(screen.getByRole('status')).toHaveTextContent('Camera on')
     act(() => vi.advanceTimersByTime(1))
-    const pill = screen.getByLabelText('Focus · Bones · Imagine Dragons')
-    expect(pill).toHaveAttribute('title', 'Focus · Bones · Imagine Dragons')
+    const pill = screen.getByLabelText('Steady · Bones · Imagine Dragons')
+    expect(pill).toHaveAttribute('title', 'Steady · Bones · Imagine Dragons')
     expect(screen.getByRole('img', { name: "Camera on · checking how you're doing" })).toHaveClass(
       'camera-dot--on'
     )
@@ -225,7 +227,7 @@ describe('song pill and camera status', () => {
     act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs - 1))
     expect(screen.getByRole('status')).toHaveTextContent('Camera off')
     act(() => vi.advanceTimersByTime(1))
-    expect(screen.getByLabelText('Focus · Bones · Imagine Dragons')).toBeInTheDocument()
+    expect(screen.getByLabelText('Steady · Bones · Imagine Dragons')).toBeInTheDocument()
     expect(document.querySelector('.camera-dot')).toBeNull()
     expect(screen.queryByTestId('camera-off-badge')).toBeNull()
   })
@@ -256,7 +258,7 @@ describe('song pill and camera status', () => {
     act(() => vi.advanceTimersByTime(orbConfig.cameraNoteMs))
     expect(screen.getByText('Camera paused')).toBeInTheDocument()
     bridge.push('push:orb', { ...base, nowPlaying: song })
-    expect(screen.getByLabelText('Focus · Bones · Imagine Dragons')).toBeInTheDocument()
+    expect(screen.getByLabelText('Steady · Bones · Imagine Dragons')).toBeInTheDocument()
   })
 
   it('describes on, paused and off, with a countdown only when known and still in the future', () => {
@@ -293,11 +295,14 @@ describe('song pill and camera status', () => {
     const app = container.querySelector('.orb-app') as HTMLElement
     const line = (): HTMLElement | null => screen.queryByTestId('why-line')
 
-    bridge.push('push:orb', { ...base, why: { text: 'Close to your usual', moving: false } })
+    bridge.push('push:orb', {
+      ...base,
+      why: { text: 'Heart rate like when you started', moving: false }
+    })
     expect(line()).toBeNull()
     expect(screen.queryByText('Demo')).toBeNull()
     fireEvent.mouseMove(moon())
-    expect(line()).toHaveTextContent('Close to your usual')
+    expect(line()).toHaveTextContent('Heart rate like when you started')
     fireEvent.mouseMove(app)
     act(() => vi.advanceTimersByTime(orbConfig.hoverGraceMs + 1))
     expect(line()).toBeNull()
@@ -305,13 +310,46 @@ describe('song pill and camera status', () => {
     bridge.push('push:orb', {
       ...base,
       demo: true,
-      why: { text: 'Pulse above your usual · 20 of 30 s', progress: 0.66, moving: true }
+      why: {
+        text: 'Heart rate higher than when you started · 20 of 30 s',
+        progress: 0.66,
+        moving: true
+      }
     })
-    expect(line()).toHaveTextContent('Pulse above your usual · 20 of 30 s')
+    expect(line()).toHaveTextContent('Heart rate higher than when you started · 20 of 30 s')
     expect(line()?.querySelector('.why__bar i')).toHaveStyle({ width: '66%' })
     expect(screen.getByText('Demo')).toBeInTheDocument()
 
     bridge.push('push:orb', { ...base, away: true, why: { text: 'x', moving: true } })
     expect(line()).toBeNull()
   })
+})
+
+it.each([
+  ['lift', 'Boost', 'Pick me up'],
+  ['ease-down', 'Calm', 'Calm down'],
+  ['settle', 'Calm', 'Quiet'],
+  ['let-it-ride', 'Focus', 'Keep it going'],
+  ['steady', 'Focus', 'Steady'],
+  ['wind-down', 'Calm', 'Wind down']
+] as const)('shows %s in plain words without changing its IPC value', (target, word, label) => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  bridge.push('push:orb', {
+    ...base,
+    nowPlaying: { name: 'Song', artist: 'Artist', word }
+  })
+  bridge.push('push:music', {
+    available: true,
+    leaveAlone: false,
+    target,
+    nowPlaying: null,
+    scoringQueue: 0,
+    scoredCount: 0
+  })
+  expect(screen.getByLabelText(`${label} · Song · Artist`)).toHaveAttribute(
+    'title',
+    `${label} · Song · Artist`
+  )
+  expect(screen.getByText(label)).toHaveClass(`word--${word.toLowerCase()}`)
 })

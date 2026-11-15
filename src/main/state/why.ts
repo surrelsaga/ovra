@@ -23,7 +23,7 @@ function hold(
   const s = streak(history, signal)
   if (mode === 'checkins')
     return {
-      label: `${Math.min(s.count, checkins)} of ${checkins} check-ins`,
+      label: `${Math.min(s.count, checkins)} of ${checkins} checks`,
       progress: Math.min(1, s.count / checkins)
     }
   return {
@@ -41,44 +41,59 @@ export function whyLine(
 ): Why | undefined {
   const last = history[history.length - 1]
   if (!last) return undefined
-  if (last.signal === 'noread') return { text: 'Low signal, holding steady', moving: false }
+  if (last.signal === 'noread')
+    return { text: "Couldn't see you clearly · no change", moving: false }
   const up = last.signal === 'tense' || !!last.nearTense
   const down = last.signal === 'low' || !!last.nearLow
 
   if (situation === 'tense' && last.signal === 'tense') {
     const s = streak(history, 'tense')
     return {
-      text: `Pulse above your usual · ${steps(s.duration, cfg.crashingTenseMin)}`,
+      text: `Heart rate higher than when you started · ${steps(s.duration, cfg.crashingTenseMin)}`,
       progress: Math.min(1, s.duration / (cfg.crashingTenseMin * 60_000)),
       moving: true
     }
   }
   if (situation === 'tense' || situation === 'crashing')
     return {
-      text: up ? 'Pulse above your usual' : 'Pulse above your usual · settling',
+      text: up
+        ? 'Heart rate higher than when you started'
+        : 'Heart rate higher than when you started · coming back',
       moving: true
     }
   if (situation === 'low')
     return {
-      text: down ? 'Pulse below your usual' : 'Pulse below your usual · settling',
+      text: down
+        ? 'Heart rate lower than when you started'
+        : 'Heart rate lower than when you started · coming back',
       moving: true
     }
 
   if (up && streak(history, 'tense').count > 0) {
     const h = hold(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)
-    return { text: `Pulse above your usual · ${h.label}`, progress: h.progress, moving: true }
+    return {
+      text: `Heart rate higher than when you started · ${h.label}`,
+      progress: h.progress,
+      moving: true
+    }
   }
   if (down && streak(history, 'low').count > 0) {
     const h = hold(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin)
-    return { text: `Pulse below your usual · ${h.label}`, progress: h.progress, moving: true }
+    return {
+      text: `Heart rate lower than when you started · ${h.label}`,
+      progress: h.progress,
+      moving: true
+    }
   }
   if (last.signal === 'unclear')
     return {
       text:
-        last.pulseDelta > 0 ? 'Pulse a little above your usual' : 'Pulse a little below your usual',
+        last.pulseDelta > 0
+          ? 'Heart rate a little higher than when you started'
+          : 'Heart rate a little lower than when you started',
       moving: true
     }
-  return { text: 'Close to your usual', moving: false }
+  return { text: 'Heart rate like when you started', moving: false }
 }
 
 /** Monitor line for one window: signal, which rule decided it, flags. No values. */

@@ -168,9 +168,9 @@ describe('demo hints', () => {
     state('crashing')
     bus.emit('break:returned', { awayMs: 20_000 })
     expect(hints.slice(3)).toEqual([
-      'Demo: push harder for about 2 minutes to see crashing out.',
+      'Demo: keep moving for about 2 minutes to see Very stressed.',
       'Demo: step away from the camera for 20 s, then come back.',
-      'Demo: breathe slowly, about 6 a minute, and blink often. This one may not trigger.'
+      'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.'
     ])
     vi.advanceTimersByTime(120_000)
     expect(hints.at(-1)).toBe('Demo: let the session wind down to see your summary.')

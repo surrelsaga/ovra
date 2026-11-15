@@ -114,7 +114,7 @@ describe('baseline', () => {
 
   it('needs 30 distinct seconds of steady pulse, with the reason in plain words', () => {
     expect(buildBaseline(stream(0, 29, { pulse: 62 }), cfg, 1)).toEqual({
-      reason: 'I only got 29 of 30 s of steady pulse.'
+      reason: 'I only got 29 of 30 s of steady heart rate.'
     })
     expect('baseline' in buildBaseline(stream(0, 30, { pulse: 62 }), cfg, 1)).toBe(true)
     // Four readings a second for 10 s is still 10 s, not 40 readings.
@@ -122,7 +122,7 @@ describe('baseline', () => {
       [0, 250, 500, 750].map((ms) => ({ ...s, t: s.t + ms }))
     )
     expect(buildBaseline(burst, cfg, 1)).toEqual({
-      reason: 'I only got 10 of 30 s of steady pulse.'
+      reason: 'I only got 10 of 30 s of steady heart rate.'
     })
     const unstable = stream(0, 60, {}).map((s) => ({ ...s, pulse: r(62, false) }))
     expect('reason' in buildBaseline(unstable, cfg, 1)).toBe(true)
@@ -493,7 +493,7 @@ describe('state engine', () => {
   it('after a failed calibration, builds the baseline from the first 30 s of in-session steady pulse', () => {
     const { engine, ready, updates, phase, wait } = setup()
     phase('calibration', 20, { pulse: 60 })
-    expect(ready).toEqual([{ ok: false, reason: 'I only got 20 of 30 s of steady pulse.' }])
+    expect(ready).toEqual([{ ok: false, reason: 'I only got 20 of 30 s of steady heart rate.' }])
     expect(last(updates).situation).toBeNull()
     // Start anyway: getting to know you until 30 s of steady pulse came in.
     wait(MIN)
@@ -642,7 +642,10 @@ describe('state engine', () => {
     wait(3.5 * MIN)
     phase('checkin', 90, { face: { present: true } }) // no pulse at all
     expect(last(updates)).toMatchObject({ situation: 'tense', confidence: cfg.confidencePulseOnly })
-    expect(engine.why()).toEqual({ text: 'Low signal, holding steady', moving: false })
+    expect(engine.why()).toEqual({
+      text: "Couldn't see you clearly · no change",
+      moving: false
+    })
     expect(engine.lastWindow()?.line).toContain('signal=noread')
   })
 
@@ -667,7 +670,10 @@ describe('state engine', () => {
     feed(60)
     console.log('DBG2', engine.lastWindow()?.line) // seen but no pulse (code 7, motion): no-read windows, hold paused
     expect(last(updates).situation).toBe('focused')
-    expect(engine.why()).toEqual({ text: 'Low signal, holding steady', moving: false })
+    expect(engine.why()).toEqual({
+      text: "Couldn't see you clearly · no change",
+      moving: false
+    })
     feed(30, 70)
     expect(last(updates).situation).toBe('focused')
     feed(30, 70)
@@ -708,12 +714,12 @@ describe('state engine', () => {
       wait(1000)
       bus.emit('sdk:metrics', { t: Date.now(), pulse: r(60) })
     }
-    expect(engine.why()).toEqual({ text: 'Close to your usual', moving: false })
+    expect(engine.why()).toEqual({ text: 'Heart rate like when you started', moving: false })
     expect(engine.lastWindow()?.line).toBe(
-      'signal=steady rule="near usual" situation=focused why="Close to your usual"'
+      'signal=steady rule="near usual" situation=focused why="Heart rate like when you started"'
     )
     wait(8000)
-    expect(engine.why()).toMatchObject({ text: "Can't see you · away in 12 s", moving: true })
+    expect(engine.why()).toMatchObject({ text: "Couldn't see you · away in 12 s", moving: true })
     wait(13_000)
     expect(engine.current().away).toBe(true)
     expect(engine.why()).toBeUndefined()

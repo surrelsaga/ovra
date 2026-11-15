@@ -69,3 +69,34 @@ it('shows only songs left while provisional scores are pending and hides progres
   bridge.push('push:music', { ...status, scoredCount: 100 })
   expect(screen.queryByText(/Getting to know your music/)).toBeNull()
 })
+
+it('shows plain group and singing labels for songs with unchanged stored scores', async () => {
+  installFakeBridge({
+    'music:library': {
+      playlists: [],
+      songs: [
+        {
+          id: 'known-song',
+          title: 'Song',
+          artist: 'Artist',
+          scores: {
+            energy: 3,
+            mood: 'neutral',
+            vocals: 'light',
+            confidence: 0.9,
+            source: 'rules',
+            scoredAt: 0
+          }
+        }
+      ]
+    }
+  })
+  render(<Music initialStatus={status} />)
+  expect(await screen.findByText('Some singing')).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: /^Steady/ })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: /^Pick me up/ })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: 'Singing' })).toBeInTheDocument()
+  expect(screen.getByText('Some singing')).toBeInTheDocument()
+  expect(screen.getByText('Neutral')).toBeInTheDocument()
+  expect(screen.queryByText('light')).toBeNull()
+})

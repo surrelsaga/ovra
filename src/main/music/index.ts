@@ -89,7 +89,14 @@ export function createMusic(deps: MusicDeps): MusicService & {
   const played = new Map<string, number>()
   const unavailableSongs = new Set<string>()
   let verifyTimer: ReturnType<typeof setTimeout> | null = null
-  let pendingPick: { id: string; previousId?: string } | null = null
+  let pendingPick: {
+    id?: string
+    uri: string
+    contextUri?: string
+    previousId?: string
+    attempts: number
+  } | null = null
+  let cancelReadyWait: (() => void) | null = null
   const fallbackLinks = new Map<string, number>()
   let picks = 0
   let fallbackPicks = 0
@@ -123,9 +130,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
       safe(abortSettleFade())
       if (endTimer) clearTimeout(endTimer)
       endTimer = null
-      if (verifyTimer) clearTimeout(verifyTimer)
-      verifyTimer = null
-      pendingPick = null
+      cancelPendingPlay()
       finishPlay()
       nowPlaying = null
       hint()
@@ -149,6 +154,30 @@ export function createMusic(deps: MusicDeps): MusicService & {
     return checkingAvailability
   }
 
+  function cancelPendingPlay(): void {
+    cancelReadyWait?.()
+    cancelReadyWait = null
+    if (verifyTimer) clearTimeout(verifyTimer)
+    verifyTimer = null
+    pendingPick = null
+  }
+
+  async function playVerified(uri: string, contextUri?: string): Promise<void> {
+    const pending = pendingPick
+    const g = generation
+    await controller.play(uri, contextUri)
+    const actual = await controller.current().catch(() => null)
+    if (!pending || pendingPick !== pending || g !== generation) return
+    if (
+      actual?.isAd ||
+      (actual?.state === 'playing' && (!pending.id || library.resolve(actual).id === pending.id))
+    ) {
+      cancelPendingPlay()
+      return
+    }
+    verifyTimer = setTimeout(() => safe(verifyPick(g)), musicConfig.controller.playVerifyMs)
+  }
+
   async function fadePlay(
     uri: string,
     contextUri: string | undefined,
@@ -158,7 +187,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     if (settleFade) return false
     const getVolume = controller.getVolume
     if (!getVolume) {
-      await controller.play(uri, contextUri)
+      await playVerified(uri, contextUri)
       return true
     }
     let cancelled = false
@@ -193,7 +222,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
         initial = await getVolume.call(controller).catch(() => null)
         if (initial === null || cancelled) {
           if (initial === null && !cancelled) {
-            await controller.play(uri, contextUri)
+            await playVerified(uri, contextUri)
             switched = true
           }
           return
@@ -225,7 +254,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
           await wait()
           if (!stillCurrent()) return
         }
-        await controller.play(uri, contextUri)
+        await playVerified(uri, contextUri)
         switched = true
         for (let step = 1; step <= musicConfig.switching.settleFadeSteps; step++) {
           if (!stillCurrent()) return
@@ -271,6 +300,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
       !session ||
       privacy.get().music !== 'spotify' ||
       leaveAlone ||
+      pausedForBreak ||
       !target ||
       picking === generation
     )
@@ -284,7 +314,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
         g !== generation ||
         session !== activeSession ||
         privacy.get().music !== 'spotify' ||
-        leaveAlone
+        leaveAlone ||
+        pausedForBreak
       )
         return
       observeAvailability(running)
@@ -327,16 +358,46 @@ export function createMusic(deps: MusicDeps): MusicService & {
       if (!uri) return
       const contextUri =
         song?.playlists?.[0] ?? link?.uri ?? parsePlaylistUrl(FALLBACK_PLAYLISTS[target][0])!.uri
-      const previousId = nowPlaying?.id ?? (await controller.current())?.id
-      if (g !== generation || session !== activeSession || leaveAlone) return
+      const previous = nowPlaying ?? (await controller.current().catch(() => null))
+      if (!previous) {
+        const ready = await new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(true), musicConfig.controller.readyWaitMs)
+          cancelReadyWait = () => {
+            clearTimeout(timer)
+            resolve(false)
+          }
+        })
+        cancelReadyWait = null
+        if (!ready) return
+      }
+      if (
+        g !== generation ||
+        session !== activeSession ||
+        privacy.get().music !== 'spotify' ||
+        leaveAlone ||
+        pausedForBreak
+      )
+        return
+      cancelPendingPlay()
+      pendingPick = {
+        id: song && process.platform !== 'win32' ? song.id : undefined,
+        uri,
+        contextUri,
+        previousId: previous?.id,
+        attempts: 1
+      }
       if (play) play.endedByApp = true
       try {
         if (target === 'settle') {
           // Verifying an unplayed pick would restart a cancelled fade.
-          if (!(await fadePlay(uri, contextUri, activeSession, g))) return
-        } else await controller.play(uri, contextUri)
+          if (!(await fadePlay(uri, contextUri, activeSession, g))) {
+            cancelPendingPlay()
+            return
+          }
+        } else await playVerified(uri, contextUri)
       } catch (error) {
         if (g !== generation || session !== activeSession) return
+        cancelPendingPlay()
         if (!song) throw error
         unavailableSongs.add(song.id)
         verifyTimer = setTimeout(() => {
@@ -348,39 +409,55 @@ export function createMusic(deps: MusicDeps): MusicService & {
       if (song) played.set(song.id, now())
       picks++
       if (song?.origin === 'fallback') fallbackPicks++
-      if (verifyTimer) clearTimeout(verifyTimer)
-      pendingPick = song && process.platform !== 'win32' ? { id: song.id, previousId } : null
-      if (song && pendingPick)
-        verifyTimer = setTimeout(() => safe(verifyPick(song.id, g)), musicConfig.controller.pollMs)
     } finally {
       if (picking === g) picking = -1
     }
   }
 
-  async function verifyPick(id: string, g: number): Promise<void> {
+  async function verifyPick(g: number): Promise<void> {
     verifyTimer = null
     const pending = pendingPick
-    const actual = await controller.current()
+    const actual = await controller.current().catch(() => null)
     if (
       !pending ||
       pendingPick !== pending ||
-      pending.id !== id ||
       g !== generation ||
       !session ||
       leaveAlone ||
-      !actual ||
-      actual.isAd ||
-      actual.state !== 'playing'
+      pausedForBreak ||
+      privacy.get().music !== 'spotify'
     )
       return
-    pendingPick = null
-    if (library.resolve(actual).id === id) return
-    // Spotify can reject an exact pick; avoid retrying that track for the rest of this session.
-    unavailableSongs.add(id)
-    played.delete(id)
-    picks--
-    if (library.get(id)?.origin === 'fallback') fallbackPicks--
-    await playNext()
+    const id = actual && library.resolve(actual).id
+    // A different new track belongs to the user, even if they left it paused.
+    if (id && pending.id && id !== pending.id && id !== pending.previousId) {
+      cancelPendingPlay()
+      return
+    }
+    if (actual?.isAd || actual?.state === 'playing') {
+      cancelPendingPlay()
+      if (!pending.id || id === pending.id || actual.isAd) return
+      // Spotify can reject an exact pick; avoid retrying that track for the rest of this session.
+      unavailableSongs.add(pending.id)
+      played.delete(pending.id)
+      picks--
+      if (library.get(pending.id)?.origin === 'fallback') fallbackPicks--
+      await playNext()
+      return
+    }
+    if (pending.attempts >= musicConfig.controller.maxPlayAttempts) {
+      cancelPendingPlay()
+      return
+    }
+    const running = await controller.isAvailable().catch(() => false)
+    if (pendingPick !== pending || g !== generation) return
+    if (!running) return observeAvailability(false)
+    pending.attempts++
+    // A failed reply can still have started playback; check again before another attempt.
+    await playVerified(pending.uri, pending.contextUri).catch(() => {
+      if (pendingPick === pending && g === generation)
+        verifyTimer = setTimeout(() => safe(verifyPick(g)), musicConfig.controller.playVerifyMs)
+    })
   }
 
   function evaluate(): void {
@@ -445,11 +522,13 @@ export function createMusic(deps: MusicDeps): MusicService & {
     if (!session) return
     const g = generation
     t = library.resolve(t)
-    if (pendingPick && t.id !== pendingPick.previousId) {
-      pendingPick = null
-      if (verifyTimer) clearTimeout(verifyTimer)
-      verifyTimer = null
-    }
+    if (
+      pendingPick &&
+      (t.isAd ||
+        (t.state === 'playing' && (!pendingPick.id || t.id === pendingPick.id)) ||
+        (pendingPick.id && t.id !== pendingPick.id && t.id !== pendingPick.previousId))
+    )
+      cancelPendingPlay()
     const prev = nowPlaying
     nowPlaying = t
     observeAvailability(true)
@@ -471,11 +550,9 @@ export function createMusic(deps: MusicDeps): MusicService & {
   }
 
   async function stopInternal(): Promise<void> {
-    await abortSettleFade()
     generation++
-    if (verifyTimer) clearTimeout(verifyTimer)
-    verifyTimer = null
-    pendingPick = null
+    cancelPendingPlay()
+    await abortSettleFade()
     finishPlay()
     stopPolling?.()
     stopPolling = null
@@ -502,6 +579,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     safe(checkAvailability())
   })
   bus.on('break:away', () => {
+    cancelPendingPlay()
     safe(abortSettleFade())
     if (!session || nowPlaying?.state !== 'playing') return
     pausedForBreak = true
@@ -559,7 +637,10 @@ export function createMusic(deps: MusicDeps): MusicService & {
     },
     setLeaveAlone(value) {
       leaveAlone = value
-      if (value) safe(abortSettleFade())
+      if (value) {
+        cancelPendingPlay()
+        safe(abortSettleFade())
+      }
       safe(privacy.setSettings({ leaveMusicAlone: value }))
       if (value && endTimer) clearTimeout(endTimer)
       if (!value) {
@@ -574,9 +655,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
       scorer.reset()
       fallbackLinks.clear()
       unavailableSongs.clear()
-      if (verifyTimer) clearTimeout(verifyTimer)
-      verifyTimer = null
-      pendingPick = null
+      cancelPendingPlay()
       play = null
       await library.clear()
       emitStatus()

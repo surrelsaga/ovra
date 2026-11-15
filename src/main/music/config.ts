@@ -9,6 +9,11 @@ export const musicConfig = {
     /** How often onTrackChange polls Spotify. */
     pollMs: 2000,
     restartSlackMs: 1000,
+    /** Give a newly opened player with no readable track time to finish loading. */
+    readyWaitMs: 2500,
+    /** Confirm playback, not just a loaded track; stop once playing is observed. */
+    playVerifyMs: 3000,
+    maxPlayAttempts: 3,
     /** osascript timeout. */
     osascriptTimeoutMs: 5000,
     /** Check for Spotify opening or closing, and start music once it opens. */

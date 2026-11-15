@@ -24,7 +24,18 @@ class FakeController implements MusicController {
   running = true
   calls: string[] = []
   contexts: (string | undefined)[] = []
-  np: NowPlaying | null = null
+  // Most tests begin with an already readable player. Cold-launch cases explicitly clear it.
+  np: NowPlaying | null = {
+    id: 'spotify:track:before',
+    uri: 'spotify:track:before',
+    name: 'Before',
+    artist: 'a',
+    album: '',
+    durationMs: 200_000,
+    positionMs: 0,
+    state: 'paused',
+    isAd: false
+  }
   volume = 60
   getVolume?: () => Promise<number | null>
   startedAt = 0
@@ -349,7 +360,7 @@ describe('music service', () => {
       const tick = async (): Promise<void> => {
         await vi.advanceTimersByTimeAsync(musicConfig.controller.unavailableRetryMs)
         t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 0, remainingSec: 3600 })
-        await vi.advanceTimersByTimeAsync(0)
+        await vi.advanceTimersByTimeAsync(musicConfig.controller.readyWaitMs)
       }
       await t.music.startSession(session())
       await tick()
@@ -872,7 +883,7 @@ it('repicks if Spotify did not start the requested song after one poll', async (
   }
   await t.music.startSession(session())
   expect(t.controller.calls).toEqual(['play spotify:track:steady'])
-  await vi.advanceTimersByTimeAsync(2000)
+  await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs)
   expect(t.controller.calls).toEqual(['play spotify:track:steady', 'play spotify:track:calm'])
   await vi.advanceTimersByTimeAsync(2000)
   expect(t.controller.calls).toHaveLength(2)
@@ -918,4 +929,181 @@ it('awaits the controller check for status IPC and shares an already pending che
   expect(t.controller.calls).toEqual([])
   t.controller.isAvailable = vi.fn().mockRejectedValue(new Error('unavailable'))
   await expect(handler(undefined as never)).resolves.toMatchObject({ available: false })
+})
+
+describe('playback confirmation', () => {
+  function loadPaused(t: Awaited<ReturnType<typeof setup>>): ReturnType<typeof vi.spyOn> {
+    const play = t.controller.play
+    return vi.spyOn(t.controller, 'play').mockImplementation(async (uri, context) => {
+      await play(uri, context)
+      if (t.controller.np) {
+        t.controller.np.state = 'paused'
+        t.controller.cb?.(t.controller.np)
+      }
+    })
+  }
+
+  it.each([false, true])(
+    'waits for a cold player after dialog availability succeeds (demo=%s)',
+    async (demo) => {
+      const t = await setup()
+      t.controller.np = null
+      expect(await t.music.refreshStatus()).toMatchObject({ available: true })
+      const started = t.music.startSession(session({ demo }))
+      await vi.advanceTimersByTimeAsync(musicConfig.controller.readyWaitMs - 1)
+      expect(t.controller.calls).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+      await started
+      expect(t.controller.calls).toEqual(['play spotify:track:steady'])
+      await t.music.stopSession()
+    }
+  )
+
+  it('waits before the first play when the session availability retry sees Spotify open', async () => {
+    const t = await setup()
+    t.controller.running = false
+    t.controller.np = null
+    await t.music.startSession(session())
+    t.controller.running = true
+    await vi.advanceTimersByTimeAsync(musicConfig.controller.unavailableRetryMs)
+    t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 10, remainingSec: 3590 })
+    await vi.advanceTimersByTimeAsync(musicConfig.controller.readyWaitMs - 1)
+    expect(t.controller.calls).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.controller.calls).toEqual(['play spotify:track:steady'])
+    await t.music.stopSession()
+  })
+
+  it('cancels the startup wait when the session stops', async () => {
+    const t = await setup()
+    t.controller.np = null
+    const started = t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(0)
+    await t.music.stopSession()
+    await started
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(t.controller.calls).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retries a loaded paused track, then leaves a later user pause alone', async () => {
+    const t = await setup()
+    const play = t.controller.play
+    let attempts = 0
+    t.controller.play = async (uri, context) => {
+      await play(uri, context)
+      if (++attempts === 1) t.controller.np!.state = 'paused'
+      t.controller.cb?.(t.controller.np!)
+    }
+    await t.music.startSession(session())
+    expect(t.music.status().nowPlaying?.state).toBe('paused')
+    await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs - 1)
+    expect(attempts).toBe(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(attempts).toBe(2)
+    expect(t.music.status().nowPlaying?.state).toBe('playing')
+    t.controller.np!.state = 'paused'
+    t.controller.cb?.(t.controller.np!)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(attempts).toBe(2)
+    expect(t.controller.contexts[1]).toBe(t.controller.contexts[0])
+    await t.music.stopSession()
+  })
+
+  it('confirms immediate success without a track-change event and respects a quick user pause', async () => {
+    const t = await setup()
+    const play = vi.spyOn(t.controller, 'play')
+    await t.music.startSession(session())
+    t.controller.np!.state = 'paused'
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(play).toHaveBeenCalledTimes(1)
+    await t.music.stopSession()
+  })
+
+  it('limits a permanently paused track to the configured total attempts', async () => {
+    const t = await setup()
+    const play = loadPaused(t)
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(play).toHaveBeenCalledTimes(musicConfig.controller.maxPlayAttempts)
+    expect(new Set(t.controller.calls)).toEqual(new Set(['play spotify:track:steady']))
+    await t.music.stopSession()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retries when the player cannot be read, including a failed retry reply', async () => {
+    const t = await setup()
+    const play = loadPaused(t)
+    await t.music.startSession(session())
+    t.controller.current = vi.fn().mockRejectedValue(new Error('player still loading'))
+    play.mockImplementationOnce(async () => {
+      throw new Error('no reply')
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(play).toHaveBeenCalledTimes(musicConfig.controller.maxPlayAttempts)
+    await t.music.stopSession()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('verifies playlist fallback plays too', async () => {
+    const t = await setup({ songs: [] })
+    const link = await t.music.addPlaylist('spotify:playlist:37i9dQZF1DXcBWIGoYBM5M')
+    const play = loadPaused(t)
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(play).toHaveBeenCalledTimes(musicConfig.controller.maxPlayAttempts)
+    expect(new Set(t.controller.calls)).toEqual(new Set([`play ${link.uri}`]))
+    await t.music.stopSession()
+  })
+
+  it('verifies a Settle play from the command time without repeating the volume fade', async () => {
+    const t = await setup()
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs)
+    const play = loadPaused(t)
+    t.controller.getVolume = async () => t.controller.volume
+    const volume = vi.spyOn(t.controller, 'setVolume')
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(musicConfig.switching.settleFadeMs)
+    expect(play).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs)
+    expect(play).toHaveBeenCalledTimes(2)
+    expect(volume).toHaveBeenCalledTimes(2 * musicConfig.switching.settleFadeSteps)
+    expect(t.controller.volume).toBe(60)
+    await t.music.stopSession()
+  })
+
+  it.each(['stop', 'leave-alone', 'break', 'delete', 'privacy', 'closed'] as const)(
+    'cancels pending retries on %s',
+    async (reason) => {
+      const t = await setup()
+      const play = loadPaused(t)
+      await t.music.startSession(session())
+      if (reason === 'stop') await t.music.stopSession()
+      if (reason === 'leave-alone') t.music.setLeaveAlone(true)
+      if (reason === 'break') t.bus.emit('break:away', { since: Date.now(), manual: true })
+      if (reason === 'delete') t.bus.emit('data:deleted-all', {})
+      if (reason === 'privacy') t.bus.emit('privacy:changed', { ...DEFAULT_PRIVACY, music: 'none' })
+      if (reason === 'closed') t.controller.running = false
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(play).toHaveBeenCalledTimes(1)
+      await t.music.stopSession()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
+  it.each(['playing', 'paused'] as const)(
+    'leaves a user-selected %s track alone during verification',
+    async (state) => {
+      const t = await setup()
+      const play = loadPaused(t)
+      await t.music.startSession(session())
+      t.controller.start('spotify:track:mine')
+      t.controller.np!.state = state
+      t.controller.cb?.(t.controller.np!)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(play).toHaveBeenCalledTimes(1)
+      await t.music.stopSession()
+    }
+  )
 })

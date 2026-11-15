@@ -174,8 +174,12 @@ export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): nu
     (target === 'let-it-ride' || (lean ? lean.bright : target === 'lift')) &&
     e?.mood !== 'bright'
   )
-    distance += c.moodPenalty
+    distance +=
+      e?.mood === 'neutral' && (target === 'lift' || target === 'let-it-ride')
+        ? c.neutralMoodPenalty
+        : c.moodPenalty
   if (lean && e) distance += lean.vocals[e.vocals]
+  if ((calm || target === 'wind-down') && e) distance += c.calmVocals[e.vocals]
   if (isUnsure(s)) distance += calm ? c.unsurePenaltyCalm : c.unsurePenalty
   if (s.lastPlayedAt !== undefined && ctx.now - s.lastPlayedAt < c.cooldownMs)
     distance += c.cooldownPenalty

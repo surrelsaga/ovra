@@ -7,6 +7,7 @@ import {
   fits,
   isUnsure,
   pickSong,
+  songDistance,
   steadyEnergy
 } from '.'
 import { musicConfig } from '../config'
@@ -125,6 +126,44 @@ describe('song fit', () => {
 })
 
 describe('pickSong', () => {
+  it.each(['lift', 'let-it-ride'] as const)(
+    '%s admits neutral songs alongside bright ones, with the same dark penalty',
+    (target) => {
+      const bright = song('bright', { mood: 'bright' })
+      const neutral = song('neutral', { mood: 'neutral', vocals: 'heavy' })
+      const dark = song('dark', { mood: 'dark' })
+      for (const activity of [undefined, 'everyday', 'unwind'] as const) {
+        const context = { ...ctx, activity }
+        expect(songDistance(neutral, target, context)).toBe(
+          musicConfig.selection.neutralMoodPenalty
+        )
+        expect(songDistance(dark, target, context)).toBe(musicConfig.selection.moodPenalty)
+        expect(songDistance(bright, target, context)).toBe(0)
+        expect(pickSong([dark, neutral, bright], target, context)?.id).toBe(neutral.id)
+        expect(pickSong([neutral, bright], target, { ...context, rng: () => 0 })?.id).toBe(
+          bright.id
+        )
+      }
+    }
+  )
+
+  it.each(['settle', 'ease-down', 'wind-down'] as const)(
+    '%s ranks instrumental, light and heavy vocals, while allowing light vocals in the pool',
+    (target) => {
+      const instrumental = song('instrumental', { energy: 2, vocals: 'instrumental' })
+      const light = song('light', { energy: 2, vocals: 'light' })
+      const heavy = song('heavy', { energy: 2, vocals: 'heavy' })
+      expect(songDistance(light, target, ctx)).toBe(musicConfig.selection.calmVocals.light)
+      expect(songDistance(heavy, target, ctx)).toBe(musicConfig.selection.calmVocals.heavy)
+      expect(pickSong([heavy, light, instrumental], target, ctx)?.id).toBe(light.id)
+      expect(pickSong([heavy, light, instrumental], target, { ...ctx, rng: () => 0 })?.id).toBe(
+        instrumental.id
+      )
+      expect(pickSong([heavy, light], target, ctx)?.id).toBe(light.id)
+      expect(pickSong([heavy], target, ctx)?.id).toBe(heavy.id)
+    }
+  )
+
   it('always chooses the nearest own or heard song, even when unscored or out of band', () => {
     const mine = song('mine', { energy: 5, mood: 'dark' }, { origin: 'mine' })
     const heard = song('heard', { energy: 3 }, { origin: 'heard' })
@@ -252,6 +291,25 @@ describe('target tracker', () => {
 })
 
 describe('activity music lean', () => {
+  it.each(['steady', 'let-it-ride'] as const)(
+    'Focus allows a fitting light-vocal song for %s, still ranks instrumentals first and avoids heavy vocals',
+    (target) => {
+      const context = { ...ctx, activity: 'focus' as const }
+      const instrumental = song('instrumental', {
+        energy: 2,
+        mood: 'bright',
+        vocals: 'instrumental'
+      })
+      const light = song('light', { energy: 3, mood: 'bright', vocals: 'light' })
+      const heavy = song('heavy', { energy: 3, mood: 'bright', vocals: 'heavy' })
+      expect(pickSong([heavy, light, instrumental], target, context)?.id).toBe(light.id)
+      expect(pickSong([light, instrumental], target, { ...context, rng: () => 0 })?.id).toBe(
+        instrumental.id
+      )
+      expect(pickSong([heavy, instrumental], target, context)?.id).toBe(instrumental.id)
+    }
+  )
+
   it.each(['focused', 'good', null] as const)(
     'Reading prefers instrumental, then light vocals for %s, with no vocal filter',
     (situation) => {
@@ -292,7 +350,7 @@ describe('activity music lean', () => {
     (activity, preferred, other) => {
       const a = song('preferred', preferred)
       const b = song('other', other)
-      const context = { ...ctx, activity }
+      const context = { ...ctx, rng: () => 0, activity }
       expect(pickSong([b, a], baseTarget('focused', activity), context)?.id).toBe(a.id)
       expect(fits(a, 'steady', context)).toBe(true)
       expect(fits(b, 'steady', context)).toBe(false)

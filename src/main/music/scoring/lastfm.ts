@@ -11,7 +11,11 @@ export function parseLastfmTags(json: unknown): string[] {
   const raw = j.toptags?.tag
   const list = Array.isArray(raw) ? raw : raw ? [raw] : []
   return list
-    .filter((t) => typeof t?.count !== 'number' || t.count >= musicConfig.lastfm.minTagCount)
+    .filter(
+      (t) =>
+        (typeof t?.count !== 'number' && typeof t?.count !== 'string') ||
+        Number(t.count) >= musicConfig.lastfm.minTagCount
+    )
     .map((t) => (typeof t?.name === 'string' ? t.name.trim().toLowerCase() : ''))
     .filter(Boolean)
     .slice(0, musicConfig.lastfm.tagsPerCall)

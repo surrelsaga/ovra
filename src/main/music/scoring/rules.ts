@@ -97,7 +97,7 @@ const norm = (t: string): string =>
   t.toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
 /** Whole-word match: "hard rock" contains "rock", "rockabilly" doesn't. */
 const has = (tag: string, kw: string): boolean => ` ${tag} `.includes(` ${kw} `)
-const anyHit = (tags: string[], kws: string[]): number =>
+const anyHit = (tags: string[], kws: readonly string[]): number =>
   tags.filter((t) => kws.some((k) => has(t, k))).length
 
 export function scoreFromTags(
@@ -107,7 +107,20 @@ export function scoreFromTags(
   artistOnly = false
 ): SongScores {
   const c = musicConfig.rules
-  const tags = [...rawTags, title].filter(Boolean).map(norm)
+  let tags = [...new Set(rawTags.filter(Boolean).map(norm))]
+  const extreme = (tag: string): boolean => c.extremeGenres.some((k) => has(tag, k))
+  const genreKeywords = [...Object.keys(ENERGY), ...c.extremeGenres, ...c.contrastingGenres]
+  const genres = tags.filter((t) => genreKeywords.some((k) => has(t, k)))
+  // shortcut: majority tags cannot catch troll-only lists; revisit if verified tags still mis-score.
+  if (
+    anyHit(
+      genres.filter((t) => !extreme(t)),
+      c.contrastingGenres
+    ) >
+    genres.length * c.genreMajority
+  )
+    tags = tags.filter((t) => !extreme(t))
+  if (title) tags.push(norm(title))
   const energies = tags.flatMap((t) => {
     // Prefer the longest keyword in a tag ("hard rock" over "rock").
     const kw = Object.keys(ENERGY)

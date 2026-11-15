@@ -36,6 +36,8 @@ export const musicConfig = {
     cooldownPenalty: 1,
     darkPenalty: 2,
     moodPenalty: 1,
+    neutralMoodPenalty: 0.25,
+    calmVocals: { instrumental: 0, light: 0.25, heavy: 1 },
     unsurePenalty: 0.5,
     unsurePenaltyCalm: 2,
     voteBonus: 0.5,
@@ -49,7 +51,7 @@ export const musicConfig = {
     fallbackEvery: 10
   },
   activityLean: {
-    focus: { min: 2, max: 3, bright: false, vocals: { instrumental: 0, light: 0.75, heavy: 1.5 } },
+    focus: { min: 2, max: 3, bright: false, vocals: { instrumental: 0, light: 0.25, heavy: 1.5 } },
     reading: { min: 1, max: 2, bright: false, vocals: { instrumental: 0, light: 1, heavy: 2 } },
     creative: { min: 3, max: 3, bright: false, vocals: { instrumental: 0, light: 0, heavy: 0 } },
     everyday: { min: 3, max: 4, bright: true, vocals: { instrumental: 0, light: 0, heavy: 0 } },
@@ -83,6 +85,29 @@ export const musicConfig = {
     timeoutMs: 10_000
   },
   rules: {
+    /** Ignore extreme genres only when a majority of the known genres contradicts them. */
+    extremeGenres: ['metal', 'screamo'],
+    contrastingGenres: [
+      'pop',
+      'rnb',
+      'r&b',
+      'hip hop',
+      'rap',
+      'soul',
+      'dance',
+      'house',
+      'disco',
+      'funk',
+      'jazz',
+      'classical',
+      'piano',
+      'folk',
+      'acoustic',
+      'ambient',
+      'lo fi',
+      'lofi'
+    ],
+    genreMajority: 0.5,
     baseConfidence: 0.2,
     perHitConfidence: 0.1,
     maxConfidence: 0.6,

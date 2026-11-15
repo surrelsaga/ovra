@@ -18,6 +18,19 @@ describe('parseLastfmTags', () => {
     expect(parseLastfmTags({ toptags: { tag: [{ name: 5 }, {}, null] } })).toEqual([])
     expect(parseLastfmTags(null)).toEqual([])
   })
+  it('applies the count floor to numeric strings as well as numbers', () => {
+    expect(
+      parseLastfmTags({
+        toptags: {
+          tag: [
+            { name: 'pop', count: '100' },
+            { name: 'black metal', count: '58' },
+            { name: 'brutal death metal', count: '1' }
+          ]
+        }
+      })
+    ).toEqual(['pop', 'black metal'])
+  })
   it('error 6 (not found) is no tags; other errors throw', () => {
     expect(
       parseLastfmTags({ error: 6, message: 'The artist you supplied could not be found' })
@@ -27,6 +40,38 @@ describe('parseLastfmTags', () => {
 })
 
 describe('keyword rules', () => {
+  it('ignores a high-count extreme tag contradicted by a genre majority, including cached tags', () => {
+    const tags = parseLastfmTags({
+      toptags: {
+        tag: [
+          { name: 'pop', count: 100 },
+          { name: 'black metal', count: 58 },
+          { name: 'rnb', count: 50 },
+          { name: 'canadian', count: 40 }
+        ]
+      }
+    })
+    expect(tags).toContain('black metal') // The count floor alone cannot catch this.
+    expect(scoreFromTags(tags, 1)).toMatchObject({ energy: 3, vocals: 'light', tags })
+    expect(
+      scoreFromTags(['pop', 'black metal', 'rnb', 'justin bieber', 'hip-hop', 'r&b', 'canadian'], 1)
+    ).toMatchObject({ energy: 3, vocals: 'heavy' }) // Rap evidence remains; only the extreme outlier goes.
+    expect(scoreFromTags(['pop', 'rnb', 'screamo'], 1)).toMatchObject({
+      energy: 3,
+      vocals: 'light'
+    })
+  })
+  it('preserves genuine extreme genres and does not mistake generic or duplicate tags for a majority', () => {
+    for (const tags of [
+      ['black metal'],
+      ['black metal', 'death metal', 'rock', 'pop'],
+      ['black metal', 'pop', 'canadian', 'favorites'],
+      ['black metal', 'pop', 'Pop'],
+      ['folk metal', 'black metal', 'folk']
+    ])
+      expect(scoreFromTags(tags, 1).vocals).toBe('heavy')
+    expect(scoreFromTags(['hard rock', 'metal'], 1)).toMatchObject({ energy: 5, vocals: 'heavy' })
+  })
   it('scores calm instrumental tags', () => {
     const s = scoreFromTags(['piano', 'classical', 'ambient', 'instrumental'], 1)
     expect(s).toMatchObject({

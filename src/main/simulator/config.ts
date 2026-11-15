@@ -39,7 +39,7 @@ export const simConfig = {
   noise: 0.01,
   profiles: {
     calm,
-    tense: { ...calm, pulse: 1.15, rmssd: 0.75, expressions: { neutral: 70, angry: 15 } },
+    tense: { ...calm, pulse: 1.2, rmssd: 0.75, expressions: { neutral: 70, angry: 15 } },
     crashing: { ...calm, pulse: 1.25, rmssd: 0.75, expressions: { angry: 70, neutral: 20 } },
     low: {
       ...calm,
@@ -60,6 +60,45 @@ export const simConfig = {
     breathingDrop: 0.3
   },
 
+  defaultSpeed: 'instant' as const,
+  statusMs: 1_000,
+  returnGraceSec: 3,
+  returnSettleMs: 300,
+  panel: { width: 380, height: 880 },
+  instant: {
+    timing: {
+      calibrationMs: 5_000,
+      checkinMs: 5_000,
+      checkinIntervalMs: 10_000,
+      returnCheckMs: 5_000
+    } satisfies SimTiming,
+    nudgeMinIntervalMin: 1 / 6,
+    musicTargetGap: { minTargetChangeMs: 5_000 },
+    thresholds: {
+      baselineMinPulseSec: 3,
+      windowMinPulseSec: 3,
+      goodMinFaceSec: 3,
+      blinkMinWindowSec: 3,
+      continuousWindowSec: 5,
+      continuousUpdateSec: 1,
+      tenseHoldCheckins: 1,
+      tenseHoldMin: 5 / 60,
+      lowHoldCheckins: 1,
+      lowHoldMin: 5 / 60,
+      crashingTenseMin: 0.5,
+      awayNoFaceSec: 5
+    },
+    triggers: {
+      ...MOVES_CONFIG.triggers,
+      earlyTenseMaxMin: 0.25,
+      neckSeatedMin: 0.5,
+      standSeatedMin: 1,
+      walkSeatedMin: 1.5,
+      stepOutsideTenseMin: 1
+    },
+    maxStepSec: 5,
+    resultHideSec: 5
+  },
   fast: {
     timing: {
       calibrationMs: 10_000,
@@ -73,6 +112,8 @@ export const simConfig = {
     /** Merged over the user's own overrides while fast mode is on. */
     thresholds: {
       ...e2eConfig.thresholds,
+      windowMinPulseSec: 5,
+      goodMinFaceSec: 5,
       blinkMinWindowSec: 5,
       tenseHoldCheckins: 1,
       tenseHoldMin: 0.25,
@@ -106,26 +147,31 @@ export const simConfig = {
   noCameraVideo: '/ovra-simulator-no-camera'
 }
 
-const shorten = <T extends { durationSec: number }>(steps: T[]): T[] =>
-  steps.map((s) => ({ ...s, durationSec: Math.min(s.durationSec, simConfig.fast.maxStepSec) }))
-const shortMove = <M extends MovesConfig['breatheRound']>(m: M): M => {
-  const steps = shorten(m.steps)
-  return { ...m, steps, lengthSec: steps.reduce((sum, s) => sum + s.durationSec, 0) }
+/** Shorten waits only; retain every move's instructions and verification. */
+export function simulatorMovesConfig(speed: 'instant' | 'fast'): MovesConfig {
+  const pace = simConfig[speed]
+  const shortMove = <M extends MovesConfig['breatheRound']>(m: M): M => {
+    const steps = m.steps.map((s) => ({
+      ...s,
+      durationSec: Math.min(s.durationSec, pace.maxStepSec)
+    }))
+    return { ...m, steps, lengthSec: steps.reduce((sum, s) => sum + s.durationSec, 0) }
+  }
+  return {
+    ...MOVES_CONFIG,
+    moves: Object.fromEntries(
+      Object.entries(MOVES_CONFIG.moves).map(([id, m]) => [id, shortMove(m)])
+    ) as MovesConfig['moves'],
+    breatheRound: shortMove(MOVES_CONFIG.breatheRound),
+    triggers: pace.triggers,
+    returnCheck: {
+      ...MOVES_CONFIG.returnCheck,
+      durationSec: pace.timing.returnCheckMs / 1000,
+      graceSec: simConfig.returnGraceSec,
+      settleMs: simConfig.returnSettleMs
+    },
+    resultHideSec: pace.resultHideSec
+  }
 }
 
-/** Moves config for fast mode: short steps, seated triggers and return check. */
-export const fastMovesConfig: MovesConfig = {
-  ...MOVES_CONFIG,
-  moves: Object.fromEntries(
-    Object.entries(MOVES_CONFIG.moves).map(([id, m]) => [id, shortMove(m)])
-  ) as MovesConfig['moves'],
-  breatheRound: shortMove(MOVES_CONFIG.breatheRound),
-  triggers: simConfig.fast.triggers,
-  returnCheck: {
-    ...MOVES_CONFIG.returnCheck,
-    durationSec: simConfig.fast.timing.returnCheckMs / 1000,
-    graceSec: 3,
-    settleMs: 300
-  },
-  resultHideSec: simConfig.fast.resultHideSec
-}
+export const fastMovesConfig = simulatorMovesConfig('fast')

@@ -1,6 +1,12 @@
 // Owner: orchestrator / Phase 3 integration. Wires every module together through the bus.
 import { app, session as electronSession, shell } from 'electron'
-import type { AppSettings, Bus, PrivacyService, SensingService } from '@shared/types'
+import type {
+  AppSettings,
+  Bus,
+  PrivacyService,
+  PrivacySettings,
+  SensingService
+} from '@shared/types'
 import { sensingConfig, type SensingConfig } from './sdk/config'
 import { MOVES_CONFIG, type MovesConfig } from './moves/config'
 import { musicConfig } from './music/config'
@@ -29,6 +35,7 @@ export interface AppOptions {
   musicTargetGap?: TargetGap
   /** Dev simulator: settings read over the stored ones, never written (see createPrivacy). */
   settingsOverlay?: Partial<AppSettings>
+  privacyOverlay?: Partial<Pick<PrivacySettings, 'cameraMode'>>
   setup?: (privacy: PrivacyService) => Promise<void>
   /** Dev simulator: replaces the SDK sensing service (the SDK is then never loaded). */
   createSensing?: (deps: { bus: Bus; privacy: PrivacyService }) => SensingService
@@ -49,6 +56,7 @@ export async function startApp(options: AppOptions = {}) {
     storage,
     bus,
     settingsOverlay: overlay,
+    privacyOverlay: options.privacyOverlay,
     clearSdkCache: async () => {
       await sensing.stop()
       // @ts-expect-error Electron supports cache at runtime (the SDK uses it), but its path types omit it.

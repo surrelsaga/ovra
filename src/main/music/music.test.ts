@@ -1107,3 +1107,27 @@ describe('playback confirmation', () => {
     }
   )
 })
+
+it('simulator switchNow plays the current target before track end and never plays when Spotify is closed', async () => {
+  const { music, controller, state } = await setup({ privacy: { music: 'spotify' } })
+  await music.startSession(session())
+  controller.calls.length = 0
+  state('low')
+  expect(music.status().target).toBe('lift')
+  await music.switchNow()
+  expect(controller.calls.some((c) => c.startsWith('play '))).toBe(true)
+  controller.calls.length = 0
+  controller.running = false
+  await music.switchNow()
+  expect(controller.calls).toEqual([])
+  await music.stopSession()
+})
+
+it('simulator switchNow preserves leave-alone and no-session guards', async () => {
+  const { music, controller } = await setup({ privacy: { music: 'spotify' }, leaveAlone: true })
+  await music.switchNow()
+  await music.startSession(session())
+  await music.switchNow()
+  expect(controller.calls).toEqual([])
+  await music.stopSession()
+})

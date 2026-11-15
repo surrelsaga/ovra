@@ -4,30 +4,33 @@ import { app, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 import {
-  ORB_MOOD,
   TARGET_WORD,
   type Activity,
   type AppSettings,
   type SimulatorStatus,
-  type TargetWord
+  type SimSpeed,
+  type CameraMode,
+  type MusicTarget
 } from '@shared/types'
 import { startApp } from '../app'
-import { handle, push } from '../ipc'
+import { broadcast, handle, push } from '../ipc'
 import { preloadPath } from '../paths'
 import { MOVES_CONFIG, type MovesConfig } from '../moves/config'
 import { musicConfig } from '../music/config'
 import { desiredTarget, type TargetGap } from '../music/selector'
-import { fastMovesConfig, simConfig as cfg } from './config'
+import { simulatorMovesConfig, simConfig as cfg } from './config'
+import { countdown, MOOD_LABEL, SCENARIO_LABEL, MUSIC_LABEL } from './display'
+import { resolveConfig } from '../state/config'
 import { createSimulatedSensing, type SimulatedSensing } from './sensing'
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- same services as startApp
 export async function startSimulator() {
   if (app.isPackaged) throw new Error('The simulator is dev only')
-  let fastMode = true
+  let speed: SimSpeed = cfg.defaultSpeed
   let sim: SimulatedSensing | null = null
   // createMoves keeps this object; fast mode swaps its contents.
-  const moves: MovesConfig = { ...fastMovesConfig }
-  const musicGap: TargetGap = { ...cfg.fast.musicTargetGap }
+  const moves: MovesConfig = { ...simulatorMovesConfig(speed) }
+  const musicGap: TargetGap = { ...cfg[speed].musicTargetGap }
   // Simulator settings live in memory only, so nothing is left behind in settings.json. The dev
   // video keeps the calibration screen from opening the live camera for its preview.
   const overlay: Partial<AppSettings> = { devVideoSource: cfg.noCameraVideo }
@@ -36,49 +39,61 @@ export async function startSimulator() {
     movesConfig: moves,
     musicTargetGap: musicGap,
     settingsOverlay: overlay,
+    privacyOverlay: { cameraMode: 'continuous' },
     createSensing: ({ bus, privacy }) =>
       (sim = createSimulatedSensing(bus, privacy, () =>
-        fastMode ? cfg.fast.timing : cfg.normalTiming
+        speed === 'normal' ? cfg.normalTiming : cfg[speed].timing
       )),
-    setup: async (privacy) => applyFast(privacy, true)
+    setup: async (privacy) => applySpeed(privacy, cfg.defaultSpeed)
   })
   const { bus, privacy } = services
   const sensing = sim as unknown as SimulatedSensing
 
-  function applyFast(p: typeof privacy, on: boolean): void {
-    fastMode = on
-    Object.assign(moves, on ? fastMovesConfig : MOVES_CONFIG)
-    const gap = on ? cfg.fast.musicTargetGap : musicConfig.switching
+  function applySpeed(p: typeof privacy, next: SimSpeed): void {
+    speed = next
+    Object.assign(moves, next === 'normal' ? MOVES_CONFIG : simulatorMovesConfig(next))
+    const gap = next === 'normal' ? musicConfig.switching : cfg[next].musicTargetGap
     musicGap.minTargetChangeMs = gap.minTargetChangeMs
     delete overlay.nudgeMinIntervalMin
     delete overlay.thresholdOverrides
-    if (!on) return
-    overlay.nudgeMinIntervalMin = cfg.fast.nudgeMinIntervalMin
-    overlay.thresholdOverrides = { ...p.getSettings().thresholdOverrides, ...cfg.fast.thresholds }
+    if (next === 'normal') return
+    overlay.nudgeMinIntervalMin = cfg[next].nudgeMinIntervalMin
+    overlay.thresholdOverrides = { ...p.getSettings().thresholdOverrides, ...cfg[next].thresholds }
   }
 
   let state: SimulatorStatus['state'] = null
-  let musicWord: TargetWord | null = null
+  let musicTarget: MusicTarget | null = null
   let activity: Activity = 'focus'
+  let cameraMode: CameraMode = 'continuous'
   let remainingSec: number | undefined
   let lastNudge: SimulatorStatus['lastNudge'] = null
+  const target = (): MusicTarget | null =>
+    musicTarget ??
+    (state ? desiredTarget({ situation: state.situation, activity, remainingSec }) : null)
   const status = (): SimulatorStatus => ({
+    target: target(),
     scenario: sensing.scenario(),
-    fastMode,
+    fastMode: speed !== 'normal',
+    speed,
+    why: services.state.why(),
+    countdown:
+      sensing.phase() === 'idle'
+        ? undefined
+        : countdown(
+            state,
+            services.state.why(),
+            cameraMode,
+            resolveConfig(privacy.getSettings().thresholdOverrides)
+          ),
     state,
     // Music's own decision when it's playing; otherwise what it would pick (music off or "none").
-    targetWord:
-      musicWord ??
-      (state
-        ? TARGET_WORD[desiredTarget({ situation: state.situation, activity, remainingSec })]
-        : null),
+    targetWord: target() ? TARGET_WORD[target()!] : null,
     lastNudge,
     phase: sensing.phase()
   })
 
   const win = new BrowserWindow({
-    width: 360,
-    height: 720,
+    ...cfg.panel,
     title: 'Ovra simulator',
     alwaysOnTop: true,
     backgroundColor: '#0b0c0f',
@@ -95,9 +110,9 @@ export async function startSimulator() {
     const s = status()
     push(win, 'push:simulator', s)
     const line =
-      `phase=${s.phase} scenario=${s.scenario} situation=${s.state?.situation ?? '-'}` +
-      ` away=${s.state?.away ?? false} orb=${s.state?.situation ? ORB_MOOD[s.state.situation] : '-'}` +
-      ` target=${s.targetWord ?? '-'}`
+      `phase=${s.phase} scenario=${SCENARIO_LABEL[s.scenario]} mood=${s.state?.away ? MOOD_LABEL.away : s.state?.situation ? MOOD_LABEL[s.state.situation] : '-'}` +
+      ` away=${s.state?.away ?? false} orb=${s.state?.away ? MOOD_LABEL.away : s.state?.situation ? MOOD_LABEL[s.state.situation] : '-'}` +
+      ` target=${s.target ? MUSIC_LABEL[s.target] : '-'}`
     if (line !== last) console.log(`[sim] ${line}`)
     last = line
   }
@@ -113,16 +128,30 @@ export async function startSimulator() {
     console.log(`[sim] action ${action}`)
   })
   handle('simulator:set-fast-mode', async ({ value }) => {
-    applyFast(privacy, value)
-    await privacy.setSettings({}) // writes nothing new; pushes the changed values to the windows
+    applySpeed(privacy, value ? 'fast' : 'normal')
+    broadcast('push:settings', privacy.getSettings())
     announce()
     return status()
   })
 
+  handle('simulator:set-speed', ({ speed: next }) => {
+    if (!['instant', 'fast', 'normal'].includes(next)) throw new Error('Unknown simulator speed')
+    applySpeed(privacy, next)
+    broadcast('push:settings', privacy.getSettings())
+    announce()
+    return status()
+  })
+  handle('simulator:switch-music', () => services.music.switchNow())
+  const statusTimer = setInterval(announce, cfg.statusMs)
+  win.on('closed', () => clearInterval(statusTimer))
+
   bus.on('session:started', (s) => {
+    // Simulator speed owns the waits even when the session's Demo hints are enabled.
+    applySpeed(privacy, speed)
     activity = s.config.activity
+    cameraMode = s.config.cameraMode
     state = null
-    musicWord = null
+    musicTarget = null
     lastNudge = null
     announce()
   })
@@ -132,11 +161,11 @@ export async function startSimulator() {
     announce()
   })
   bus.on('music:status', (m) => {
-    musicWord = m.target ? TARGET_WORD[m.target] : null
+    musicTarget = m.target
     announce()
   })
   bus.on('music:target-changed', (t) => {
-    musicWord = t.word
+    musicTarget = t.target
     announce()
   })
   bus.on('move:nudge', (n) => {

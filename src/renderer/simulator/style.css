@@ -55,16 +55,6 @@ button.on {
   color: var(--text-muted);
   font-size: 12px;
 }
-.toggle {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-height: 44px;
-  margin-top: 12px;
-}
-.toggle input {
-  accent-color: var(--accent);
-}
 dl {
   display: grid;
   grid-template-columns: 90px 1fr;
@@ -83,4 +73,22 @@ dd {
 }
 dd.live {
   color: var(--ok);
+}
+
+.speeds {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.switch-music {
+  width: 100%;
+  margin-top: 12px;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

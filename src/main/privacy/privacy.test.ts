@@ -328,3 +328,19 @@ it('returns the actual data folder and platform through IPC', async () => {
   registerPrivacyIpc(privacy, undefined, { path: dir, platform: 'darwin' })
   expect(await handlers.get('data:folder')!(undefined)).toEqual({ path: dir, platform: 'darwin' })
 })
+
+it('defaults simulator camera mode in memory and lets an explicit check-in choice win', async () => {
+  const storage = createStorage(dir)
+  const privacy = await createPrivacy({
+    storage,
+    bus: createBus(),
+    privacyOverlay: { cameraMode: 'continuous' }
+  })
+  expect(privacy.get().cameraMode).toBe('continuous')
+  await privacy.set({ aiScoring: false })
+  expect(privacy.get().cameraMode).toBe('continuous')
+  expect((await setup()).privacy.get().cameraMode).toBe('checkins')
+  await privacy.set({ cameraMode: 'checkins' })
+  expect(privacy.get().cameraMode).toBe('checkins')
+  expect((await setup()).privacy.getSettings()).toEqual(DEFAULT_SETTINGS)
+})

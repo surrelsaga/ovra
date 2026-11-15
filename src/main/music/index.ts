@@ -51,6 +51,8 @@ interface PlayRecord {
 
 export function createMusic(deps: MusicDeps): MusicService & {
   refreshStatus(): Promise<MusicStatus>
+  /** Simulator-only IPC exposes this; all normal playback guards still apply. */
+  switchNow(): Promise<void>
 } {
   const { bus, privacy, controller } = deps
   const now = deps.now ?? Date.now
@@ -612,6 +614,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
   })
 
   return {
+    switchNow: playNext,
     status() {
       if (!session) safe(checkAvailability())
       return status()

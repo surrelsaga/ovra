@@ -6,6 +6,7 @@ import {
   type SensingPhase,
   type Session,
   type SimScenario,
+  type SimSpeed,
   type StateUpdate
 } from '@shared/types'
 import { createBus } from '../bus'
@@ -166,22 +167,30 @@ describe('simulated sensing contract', () => {
 })
 
 /** Calibrate (always calm), then run the scenario through the REAL state engine. */
-async function situationFor(scenario: SimScenario, mode: CameraMode): Promise<StateUpdate> {
-  const { bus, privacy, sim } = setup()
+async function situationFor(
+  scenario: SimScenario,
+  mode: CameraMode,
+  speed: Exclude<SimSpeed, 'normal'> = 'fast'
+): Promise<StateUpdate> {
+  const bus = createBus()
+  const privacy = fakePrivacy()
+  privacy.getSettings().thresholdOverrides = { ...simConfig[speed].thresholds }
+  const timing = simConfig[speed].timing
+  const sim = createSimulatedSensing(bus, privacy, () => timing)
   const state = createStateEngine({ bus, privacy })
   let last: StateUpdate | undefined
   bus.on('state:updated', (s) => (last = s))
   bus.emit('session:started', { config: { cameraMode: mode } } as Session)
   sim.setScenario(scenario) // calibration still sees calm
   await sim.startCalibration()
-  vi.advanceTimersByTime(T.calibrationMs)
+  vi.advanceTimersByTime(timing.calibrationMs)
   expect(last?.situation).toBe('focused')
   if (mode === 'checkins') {
     sim.startCheckins(5)
-    vi.advanceTimersByTime(T.checkinIntervalMs + T.checkinMs)
+    vi.advanceTimersByTime(timing.checkinIntervalMs + timing.checkinMs)
   } else {
     await sim.startContinuous()
-    vi.advanceTimersByTime(30_000)
+    vi.advanceTimersByTime(speed === 'instant' ? 10_000 : 30_000)
   }
   await sim.stop()
   state.dispose()
@@ -222,5 +231,40 @@ describe('scenarios through the real state engine (fast mode)', () => {
     await sim.startCalibration()
     vi.advanceTimersByTime(T.calibrationMs)
     expect(seen).toEqual([])
+  })
+})
+
+describe('Instant scenarios through the real engine', () => {
+  it.each([
+    ['calm', 'focused'],
+    ['tense', 'tense'],
+    ['crashing', 'crashing'],
+    ['low', 'low'],
+    ['good', 'good'],
+    ['away', 'focused']
+  ] as const)('%s appears within 10 s after calibration', async (scenario, expected) => {
+    const s = await situationFor(scenario, 'continuous', 'instant')
+    expect(s.situation).toBe(expected)
+    expect(s.away).toBe(scenario === 'away')
+  })
+
+  it('Stressed progresses to Very stressed after the short sustained hold, without face', async () => {
+    const bus = createBus()
+    const privacy = fakePrivacy({ face: false })
+    privacy.getSettings().thresholdOverrides = { ...simConfig.instant.thresholds }
+    const sim = createSimulatedSensing(bus, privacy, () => simConfig.instant.timing)
+    const state = createStateEngine({ bus, privacy })
+    bus.emit('session:started', { config: { cameraMode: 'continuous' } } as Session)
+    await sim.startCalibration()
+    vi.advanceTimersByTime(simConfig.instant.timing.calibrationMs)
+    await sim.startContinuous()
+    sim.setScenario('tense')
+    vi.advanceTimersByTime(10_000)
+    expect(state.current().situation).toBe('tense')
+    expect(state.why()?.progress).toBeGreaterThan(0)
+    vi.advanceTimersByTime(30_000)
+    expect(state.current().situation).toBe('crashing')
+    await sim.stop()
+    state.dispose()
   })
 })

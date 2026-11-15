@@ -1,151 +1,87 @@
 # Dev sensing simulator
 
-A dev-only stand-in for the camera. The real app runs (state engine, session, music with your real
-Spotify, moves, orb, move card, privacy and storage). Only the sensing service is swapped for a fake one
-that sends made-up readings for the scenario you pick. The SmartSpectra SDK is never loaded, the
-camera is never opened and no Presage credits are used.
+Run `npm run dev:simulate`. The small **SIMULATED — no camera** panel replaces sensing with
+synthetic readings. The real state engine, sessions, moves and music service run; the SmartSpectra
+SDK is never loaded, no camera opens, and no Presage credits are used. Packaged builds ignore
+`OVRA_SIMULATE`.
 
-## Run
+**Music uses the real Spotify desktop app if you enable it.** The simulator never launches Spotify.
+For a sensing-only walkthrough, start a session with music off. Automated checks use mocks only.
 
-```sh
-npm run dev:simulate
-```
+## Quick walkthrough
 
-Packaged builds ignore `OVRA_SIMULATE`. A small always-on-top window opens next to Ovra, labelled
-**SIMULATED — no camera**. It has:
+1. Complete consent as usual. Camera consent is still required for synthetic sensing. Choose
+   **Vitals and face** to try Good mood, angry-face support for Very stressed, blinks and move feedback.
+2. Start a session. Simulator sessions default to **The whole session** (continuous), in memory only.
+   You can still choose **Check-ins** on the session form. Stored preferences and shipped defaults
+   stay unchanged.
+3. Leave speed on **Instant**. Calibration always receives Steady readings, regardless of the selected
+   scenario, and takes about five seconds. Then pick **Stressed** or **Tired**: the current mood
+   normally changes within five to ten seconds.
+4. **What the app decided** shows the current mood, confidence, sensing phase, exact music target
+   and last break reminder. **Building toward** uses the engine's actual hold progress, for example
+   “Stressed in ~4 s”. A low-signal window pauses progress; this is an estimate, not a promise.
+5. Try **Tilt left**, **Tilt right**, **Stand up**, or **Breathing slows** during a guided move. Actions
+   last about eight seconds and only register while a sensing phase is active.
+6. **Switch music now** asks the existing music service to play its pick for the current target,
+   without waiting for the song to end. Spotify must already be open, session music enabled and
+   “Leave my music alone” off. Breaks and other playback guards still apply. A target change alone
+   continues to wait for the track boundary (except Quiet's existing early fade).
 
-- **Scenario** (one at a time): Calm, Tense, Crashing, Low, Good, Away. Calibration always sees calm
-  readings, whatever is picked.
-- **Actions** (last about 8 s): Tilt left, Tilt right, Stand up, Breathing slows. Use these to trigger
-  move feedback.
-- **Fast mode** (on by default).
-- **What the app decided**: sensing phase, situation and confidence, orb mood, music target word
-  (Calm / Focus / Boost), last nudge. The terminal logs the same lines (`[sim] …`), plus nudges, move
-  feedback and return results.
+Scenario identifiers remain `calm`, `good`, `tense`, `crashing`, `low`, `away`; visible names are
+**Steady, Good mood, Stressed, Very stressed, Tired, Away**. Panel labels and `[sim]` mood/music
+logs use the current app wording.
 
-Readings only flow while a sensing phase runs (`calibration`, `checkin`, `continuous`,
-`return-check`), as with the real camera. In check-in mode the camera is off between check-ins, so
-scenario changes show up at the next check-in and actions only count while one is running.
+## Speeds
 
-### Fast mode
+All simulator values live in `src/main/simulator/config.ts`. Instant and Fast shorten time-based
+waits only; pulse, HRV and expression thresholds still come from the real engine.
 
-On by default. The numbers below are **fast-mode test values, not the real thresholds**:
+| Wait                                 | Instant (default) | Fast           | Normal                                           |
+| ------------------------------------ | ----------------- | -------------- | ------------------------------------------------ |
+| Calibration                          | 5 s               | 10 s           | 35 s synthetic phase, real 30 s steady-pulse bar |
+| Continuous window / update           | 5 s / 1 s         | 20 s / 3 s     | 60 s / 30 s                                      |
+| Minimum steady pulse per window      | 3 s               | 5 s            | 10 s                                             |
+| Minimum face time for Good mood      | 3 s               | 5 s            | 10 s                                             |
+| Stressed / Tired hold                | 5 s               | 15 s           | 3 min / 2 min                                    |
+| Stressed becomes Very stressed       | 30 s              | 3 min          | 10 min                                           |
+| Automatic Away                       | 5 s               | 8 s            | 20 s                                             |
+| Check-in duration / start interval   | 5 s / 10 s        | 15 s / 30 s    | 90 s / chosen 3, 5 or 10 min                     |
+| Return check                         | 5 s               | 10 s           | 30 s                                             |
+| Minimum reminder interval            | 10 s              | 30 s           | your setting (default 20 min)                    |
+| Seated neck / stand / walk reminders | 30 / 60 / 90 s    | 3 / 6 / 10 min | 45 / 60 / 90 min                                 |
+| Music target gap                     | 5 s               | 15 s           | 3 min                                            |
+| Move step maximum                    | 5 s               | 15 s           | original move lengths                            |
 
-|                                       | Fast mode                       | Real                                       |
-| ------------------------------------- | ------------------------------- | ------------------------------------------ |
-| Calibration                           | 10 s                            | 90 s                                       |
-| Check-in                              | 15 s every 30 s                 | 90 s every 3/5/10 min                      |
-| Return check                          | 10 s                            | 30 s                                       |
-| Tense / low must hold                 | 1 check-in (15 s in continuous) | 2 check-ins or 3 min / 1 check-in or 2 min |
-| Tense turns into crashing after       | 3 min                           | 10 min                                     |
-| Nudges at most every                  | 30 s                            | your setting (default 20 min)              |
-| Seated nudges (neck / stand / walk)   | 3 / 6 / 10 min                  | 45 / 60 / 90 min                           |
-| Tense counts as "early" (breathe) for | 1 min                           | 5 min                                      |
-| Step outside after upset for          | 4 min                           | 15 min                                     |
-| Move steps                            | at most 15 s each               | 10 s to 10 min                             |
-| Music target changes at most every    | 15 s (18 s in Downtime)         | 3 min (9 min in Downtime)                  |
+Check-in holds need one qualifying check-in in Instant/Fast. With Check-ins selected, readings stop
+between phases: scenario changes wait until a check-in runs and ends. The panel reports qualifying
+check-ins rather than an inaccurate seconds countdown. Automatic Away needs continuous mode; check-in
+breaks still use **Okay, going / I'm back**.
 
-It works through in-memory overrides of `nudgeMinIntervalMin` and `thresholdOverrides` (your own
-overrides plus the fast ones), a fast moves config and a shorter music target-change gap, all passed in
-only when simulating. Nothing is written to `settings.json`; shipped defaults are not changed. Turning
-fast mode off puts your own nudge interval, threshold overrides and the 3 min music gap back straight
-away; the new sensing timing applies from the next phase or session. The music still only changes
-songs between tracks (except Settle's early fade), so the target word moves within the same minute as
-the orb, and the song follows when the current one ends.
+Speed changes update the in-memory thresholds, reminders, move definitions and music gap immediately.
+Sensing phase lengths and check-in scheduling take effect on the next phase or session. Normal
+restores the user's original threshold overrides and reminder interval. Existing moves keep their
+already-started step timer. If Demo hints are enabled for the session, the simulator's selected speed
+still owns the waits.
 
-While the simulator runs, Settings shows the dev video source `/ovra-simulator-no-camera` (in memory
-only). That keeps the calibration screen from opening the camera for its preview (you'll see "Camera
-preview isn't available. Calibration can continue." — expected). Quitting any way leaves your stored
-settings untouched. Older simulator builds wrote these values to `settings.json`; any normal or
-simulator start now notices the sentinel video path and resets the dev video source, nudge interval
-and threshold overrides to the defaults (none, 20 min, none).
+## Synthetic signals and safety
 
-## Manual test script
+- Stressed: pulse about +20%, RMSSD −25%; clears the current +15% pulse-only bar as well as the
+  +10% HRV-backed bar. Very stressed: pulse about +25%, RMSSD −25%, angry expression support.
+- Tired: pulse about −12%, slower breathing and more blinks; clears the −8% pulse bar. Good mood:
+  near-baseline pulse and happy expression support. Face consent is still required for face support.
+- Steady calibration stays calm even if another scenario is selected. The baseline and readings live
+  only in memory. No synthetic readings or raw vitals are saved or sent to a service.
+- The missing dev video path `/ovra-simulator-no-camera` prevents the calibration preview from opening
+  a live camera. Its “preview isn't available” message is expected. This path is an in-memory overlay.
+- Speed selection broadcasts settings to the windows without calling the settings writer. Neither
+  simulator thresholds nor its continuous default are saved. Legacy simulator values left by older
+  versions are still cleaned up by the existing startup migration.
 
-### 1. Onboarding (or check Privacy if already done)
+## Mock verification
 
-- Camera: **Yes**. Safe here: the simulator replaces the camera, so no camera is opened and macOS
-  won't ask for camera access.
-- How often: either (you pick per session anyway).
-- Face: **Vitals and face**. Needed for crashing (angry), good (happy), the low blink rate, and all
-  move feedback. With "Vitals only" the face fields are dropped like the real SDK does.
-- Music: **Spotify desktop app**. Have Spotify open; approve the Automation prompt once.
-- AI scoring, diagnostics, auto-delete: anything.
-
-### 2. Music
-
-Open **Music** and paste one of your playlist links (`https://open.spotify.com/playlist/…`).
-
-### 3. Start a check-in session
-
-Session → Deep work, 45 min, Camera **Check-ins**, Music on → **Start session**. Leave the simulator
-on **Calm**.
-
-- Main window shows calibration for ~10 s with the preview-unavailable line. Simulator phase:
-  `calibration`. The orb has its listening ring.
-- Then the main window hides and the orb shows. Orb: cool white-blue, slow pulse. Bubble
-  "Nice and steady." Read-out: `focused`, orb `calm`, music **Focus**. Spotify starts your playlist.
-- Every 30 s the ring appears for 15 s (`checkin`), then goes away (`idle`).
-
-### 4. Scenarios (check-in mode)
-
-Change the scenario, then wait for the next check-in to end (up to ~45 s).
-
-| Scenario     | Situation / orb                                                           | Bubble                                   | Music                                                                    | Nudge (move card)                                                                                                 |
-| ------------ | ------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| **Tense**    | `tense`, amber, faster pulse                                              | "You seem a bit tense."                  | **Calm**, "Easing into calmer songs" at the next track                   | "You seem tense. Want to breathe along for a minute?" After 1 min still tense: "…loosen your neck and shoulders?" |
-| **Crashing** | `crashing`, orange-red edge, flickery                                     | "Rough stretch? Let's slow things down." | **Calm** (Settle): fades out and switches right away, then fades back up | "Things seem intense. A short walk might help." After 4 min upset: step outside                                   |
-| **Low**      | `low`, dim grey-blue, slow                                                | "Energy dipping a little."               | **Boost**, brighter songs at the next track                              | "Energy seems low. Want to stand and stretch?"                                                                    |
-| **Good**     | `good`, bright warm white                                                 | "You seem in a good mood."               | **Focus** (Let it ride), no switch                                       | none from mood                                                                                                    |
-| **Calm**     | `focused`, calm                                                           | "Nice and steady."                       | **Focus**                                                                | seated nudges at 3 / 6 / 10 min (neck / stand / walk)                                                             |
-| **Away**     | no change in check-in mode (the check-in sees nobody, seated time resets) | —                                        | —                                                                        | —                                                                                                                 |
-
-In fast mode the music target can change every 15 s, so it follows each scenario change (Crashing
-fades straight into a calm song). Nudges answer with
-**Let's go / 5 more min / Skip**; a new nudge can come 30 s after the last one.
-
-### 5. Guided moves with feedback
-
-Feedback needs readings during the step. In check-in mode click the action while the phase reads
-`checkin`; it's easier with a **The whole session** session (see 7).
-
-- **Breathe along** (from a Tense nudge → Let's go): orb grows and shrinks, card shows in/out. On the
-  breathe step click **Breathing slows** → "Your breathing is slowing down".
-- **Neck and shoulder stretch**: on "Tilt left" click **Tilt left** → "I can see the tilt"; same on
-  "Tilt right" with **Tilt right**.
-- **Stand and stretch** (Low nudge): on "Stand up" click **Stand up** → "I can see you standing".
-
-### 6. Leave-desk break and return check (check-in mode)
-
-From the Crashing nudge → **Let's go** → on "Take a short walk" click **Okay, going**. Camera stops,
-the orb goes dim/eclipsed with a time-away counter, Spotify pauses. Pick the scenario you want to come
-back as, then click **I'm back** on the card. A 10 s return check runs (ring on, phase
-`return-check`), then the card shows:
-
-- Calm or Good → "You're calmer than before." (if you left tense/crashing), else "Welcome back.
-  You're looking settled."
-- Tense or Crashing → "Still a bit tense. Want a 1 min breathing round?"
-- Away → "Welcome back." (no reading)
-
-Music resumes and check-ins carry on.
-
-### 7. Continuous mode and automatic away
-
-End the session and start another with Camera **The whole session**. The ring stays on (phase
-`continuous`); the read-out updates every ~3 s and a new scenario takes over within ~15–25 s.
-
-- **Away**: after ~8 s without presence evidence in fast mode (20 s at normal pace), the orb goes to away by itself, the away card shows, Spotify
-  pauses. Back to **Calm**: the orb wakes, a 10 s return check runs, then the return result shows.
-- Away deliberately emits face objects without landmark geometry or pulse, matching the SDK's empty-face behavior. A bare object cannot keep the session present. Calm returns with steady pulse, which wakes immediately; face-only returns need evidence in 3 of the last 4 one-second buckets.
-- Repeat step 5 here; actions register right away.
-
-### 8. Pause / resume
-
-Hover the orb → **Pause camera**. Ring disappears, phase `idle`, no check-ins start. **Resume
-camera**: continuous restarts immediately; check-ins resume at the next 30 s tick.
-
-### 9. End of session
-
-Orb → **End session**. The camera ring goes away, the main window shows the summary: mood timeline
-(your scenarios), moves done and snoozed, songs it learned about, longest seated stretch, with a
-delete button.
+The simulator tests drive these synthetic readings through the real state engine with fake timers,
+including all six Instant scenarios within ten seconds, calm calibration, consent, face opt-out,
+Stressed escalation, labels and hold countdowns. Panel tests mock the bridge; music tests mock the
+controller and verify immediate switching and closed-Spotify/leave-alone guards. No SDK, camera or
+real Spotify is needed for the checks.

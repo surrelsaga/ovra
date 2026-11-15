@@ -175,3 +175,10 @@ Format:
 - Behaviour: raw SDK errors are still forwarded as `sdk:error` (code and message, key redacted) but with `retryable: true`, because sensing now retries them itself. Only `sdk-lost` and `no-api-key` are non-retryable on the bus.
 - Why: Daniel's live runs (decision 48): the SDK sat in kError, Ovra kept `capture=running` and declared away; calibration blamed the user.
 - Status: applied in surrelsaga/ovra-sdkfix2 (allowed by the Job 9 brief)
+
+## 2026-11-16 — simulator Instant speed and current-target switch (Job 18)
+
+- Requested: `SimSpeed = 'instant' | 'fast' | 'normal'`; `SimulatorStatus.speed: SimSpeed` (retain `fastMode` for compatibility), optional `target?: MusicTarget | null`, `why?: OrbView['why']` and `countdown?: string`.
+- Requested invokes: `simulator:set-speed` (`{ speed: SimSpeed }` → `SimulatorStatus`) and `simulator:switch-music` (`void` → `void`), plus their `IPC_INVOKE_CHANNELS` entries.
+- Why: three speeds cannot be represented by the existing boolean; the panel needs the engine's existing hold progress and a dev-only music trigger without overloading unrelated channels.
+- Status: applied in surrelsaga/ovra-sim with explicit coordinator authorization (msg_eefb82645884).

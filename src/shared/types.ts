@@ -674,6 +674,8 @@ export type BusEventName = keyof BusEvents
 // Dev simulator (dev builds only; stands in for the camera, never uses the SDK)
 // ---------------------------------------------------------------------------
 
+export type SimSpeed = 'instant' | 'fast' | 'normal'
+
 export type SimScenario = 'calm' | 'tense' | 'crashing' | 'low' | 'good' | 'away'
 
 /** Momentary actions for move checks. */
@@ -682,6 +684,10 @@ export type SimAction = 'tilt-left' | 'tilt-right' | 'stand-up' | 'breathing-slo
 export interface SimulatorStatus {
   scenario: SimScenario
   fastMode: boolean
+  speed: SimSpeed
+  target?: MusicTarget | null
+  why?: OrbView['why']
+  countdown?: string
   state: StateUpdate | null
   targetWord: TargetWord | null
   lastNudge: Nudge | null
@@ -738,6 +744,8 @@ export interface IpcInvoke {
   'simulator:status': { req: void; res: SimulatorStatus }
   'simulator:set-scenario': { req: { scenario: SimScenario }; res: SimulatorStatus }
   'simulator:action': { req: { action: SimAction }; res: void }
+  'simulator:set-speed': { req: { speed: SimSpeed }; res: SimulatorStatus }
+  'simulator:switch-music': { req: void; res: void }
   'simulator:set-fast-mode': { req: { value: boolean }; res: SimulatorStatus }
 }
 
@@ -823,7 +831,9 @@ export const IPC_INVOKE_CHANNELS = [
   'simulator:status',
   'simulator:set-scenario',
   'simulator:action',
-  'simulator:set-fast-mode'
+  'simulator:set-fast-mode',
+  'simulator:set-speed',
+  'simulator:switch-music'
 ] as const satisfies readonly IpcInvokeChannel[]
 
 export const IPC_PUSH_CHANNELS = [

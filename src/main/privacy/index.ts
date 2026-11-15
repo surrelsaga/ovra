@@ -6,6 +6,7 @@ import {
   type Bus,
   type IpcInvoke,
   type PrivacyService,
+  type PrivacySettings,
   type SessionRecord,
   type Storage
 } from '@shared/types'
@@ -19,6 +20,8 @@ export interface PrivacyDeps {
   bus: Bus
   /** Dev simulator: read over the stored settings, never written. Callers may change it in place. */
   settingsOverlay?: Partial<AppSettings>
+  /** Dev simulator default, never persisted; an explicit user choice wins. */
+  privacyOverlay?: Partial<Pick<PrivacySettings, 'cameraMode'>>
   /** Clears Chromium's browser storage and cache for the app (Delete everything). */
   clearBrowserData?: () => Promise<void>
   /** Removes only the SDK’s known cache directory, after sensing has stopped. */
@@ -78,17 +81,20 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
     })
   }
 
+  const privacyView = (): PrivacySettings => ({ ...privacy, ...deps.privacyOverlay })
   const canUseCamera = (): boolean => privacy.camera === 'yes'
 
   return {
-    get: () => ({ ...privacy }),
+    get: privacyView,
 
     async set(patch) {
       const next = privacySchema.parse({ ...privacy, ...patch })
       privacy = next
+      if (deps.privacyOverlay && patch.cameraMode !== undefined)
+        delete deps.privacyOverlay.cameraMode
       await storage.write('privacy', next)
-      bus.emit('privacy:changed', { ...next })
-      return { ...next }
+      bus.emit('privacy:changed', privacyView())
+      return privacyView()
     },
 
     canUseCamera,
@@ -133,7 +139,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       privacy = { ...DEFAULT_PRIVACY }
       settings = structuredClone(DEFAULT_SETTINGS)
       broadcast('push:settings', view())
-      bus.emit('privacy:changed', { ...privacy })
+      bus.emit('privacy:changed', privacyView())
       bus.emit('data:deleted-all', {})
       await Promise.all([deps.clearBrowserData?.(), deps.clearSdkCache?.()])
     },

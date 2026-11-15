@@ -49,6 +49,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
 
   let mode: CameraMode = 'checkins'
   let baseline: Baseline | null = null
+  let refinementPulses: number[] = []
   let baselineFailure: string | null = null
   let calibrationPulseCount = 0
   let calibrationPulseSpanSec = 0
@@ -100,6 +101,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   const reset = (): void => {
     stopTimer()
     baseline = null
+    refinementPulses = []
     calibratedFace = undefined
     baselineFailure = null
     calibrationPulseCount = calibrationPulseSpanSec = 0
@@ -164,6 +166,15 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     history = [...history, ev].slice(-MAX_HISTORY)
     ;({ situation, confidence, trend } = classify(history, mode, situation, c))
     windows++
+    if (Date.now() - baseline.builtAt >= c.baselineRefineMin * 60_000) {
+      refinementPulses = []
+    } else if (refinementPulses.length === 0) {
+      // The first evaluation belongs to calibration (or Start anyway), so count it only once.
+      refinementPulses = [baseline.pulse]
+    } else if (ev.signal === 'steady' && !ev.nearTense && !ev.nearLow) {
+      refinementPulses.push(median(snaps.flatMap((s) => (s.pulse?.stable ? [s.pulse.value] : [])))!)
+      baseline.pulse = median(refinementPulses)!
+    }
     if (
       ev.signal === 'steady' &&
       (baseline.breathing === undefined || baseline.rmssd === undefined)

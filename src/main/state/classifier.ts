@@ -179,7 +179,9 @@ export function evaluateWindow(
 
   // Pulse decides. HRV backs up or vetoes tense; breathing can only back it up (confidence).
   const vetoed = rd !== undefined && rd >= cfg.tenseRmssdVetoPct
-  const tense = pd >= cfg.tensePulsePct && !vetoed
+  const hrvBacked = rd !== undefined && rd <= -cfg.tenseRmssdDropPct
+  const tenseBar = hrvBacked ? cfg.tenseBackedPulsePct : cfg.tensePulsePct
+  const tense = pd >= tenseBar && !vetoed
   // Face only supports: a high blink rate lowers the pulse bar, it never replaces it.
   const blinky = blinkD !== undefined && blinkD >= cfg.lowBlinkPct
   const low = pd <= cfg.lowPulsePct || (blinky && pd <= cfg.lowBlinkPulsePct)
@@ -191,15 +193,14 @@ export function evaluateWindow(
     t,
     signal,
     pulseDelta: pd,
-    nearTense: pd >= cfg.tensePulsePct - cfg.streakBandPct && !vetoed,
+    nearTense: pd >= tenseBar - cfg.streakBandPct && !vetoed,
     nearLow:
       pd <= cfg.lowPulsePct + cfg.streakBandPct ||
       (blinky && pd <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
     // ponytail: outside tense, HRV being there at all counts as backing; refine if it misleads.
     backed:
       signal === 'tense'
-        ? (rd !== undefined && rd <= -cfg.tenseRmssdDropPct) ||
-          (bd !== undefined && bd >= cfg.tenseBreathingPct)
+        ? hrvBacked || (bd !== undefined && bd >= cfg.tenseBreathingPct)
         : rd !== undefined,
     happyMajority:
       seconds(withExpr) >= cfg.goodMinFaceSec && frac((e) => e === 'happy') > cfg.faceMajorityFrac,

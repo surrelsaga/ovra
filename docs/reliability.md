@@ -139,6 +139,15 @@ Sources:
 | Max wait | 180 s (demo 120 s) | 180 s (demo 90 s) |
 | On failure | session runs blind ("timer only") | the reason is shown, plus **Try again** or **Start anyway**. Start anyway builds the baseline from the first 30 s of steady pulse during the session (rolling baseline, approach 4). Mood stays "getting to know you" until then |
 
+**Refining pulse baseline:** for the first **10 min after the baseline exists** (demo: **2 min**),
+pulse is the median of the calibration pulse and each subsequent calm window's median steady pulse,
+with equal weight per window. Only a **steady** window outside both near-miss bands can contribute;
+tense, low, near-miss, unclear and no-read windows never teach Ovra what is usual, even before a hold
+completes. Each window is classified against the existing baseline before it can contribute. After
+the deadline the pulse baseline stays fixed for the session. This adjusts a still-sitting calibration
+toward normal desk activity without learning a stressed stretch. All values stay in memory, are
+never saved or sent, and are dropped when the session ends.
+
 ### 5.2 A window counts only with enough signal
 
 - **Old:** at least 3 steady pulse readings (under 1 s of data at 4 readings per second).
@@ -152,14 +161,17 @@ In every rule, **pulse decides**. HRV, when available, **backs up** a call (conf
 or **vetoes** it when it clearly points the other way. Breathing is used even less (see §1): it can
 only add confidence, never decide, block or veto.
 
+The pulse-only tense bar is now +15%: normal talking, shifting and coffee can clear +10% after a
+still-sitting calibration. The +10% bar remains available when a steady RMSSD drop backs it.
+
 | Situation | Old rule | New rule |
 |---|---|---|
 | **Focused** | Δpulse within ±8% and Δbreathing within ±15% (if present) | Δpulse within ±8%. Breathing ignored |
 | **Good** | Focused + happy is the top expression in more than half the face frames | same, but needs at least 10 s of face frames with expressions. Without them it's just Focused |
-| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+10%**. Backers: RMSSD ≤ −15% (or Δbreathing ≥ +15%, confidence only). **Veto:** RMSSD ≥ +15% (body says relaxed). Held **3 min** (demo 30 s) |
+| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+15%** alone, or **+10% with ΔRMSSD ≤ −15%**. Breathing ≥ +15% adds confidence only, never lowers the pulse bar. **Veto:** ΔRMSSD ≥ +15% (body says relaxed). Held **3 min** (demo 30 s), or **2 check-ins** |
 | **Crashing out** | tense held 10 min (demo 2), or Δpulse ≥ +20% with an angry/sad/disgust majority | same |
 | **Low** | Δpulse ≤ −8% **and** Δbreathing ≤ −15% when breathing exists; or blink rate ≥ +50% with Δpulse ≤ −4%. Held 2 min (demo 30 s) | Δpulse ≤ **−8%**, or blink rate ≥ +50% with Δpulse ≤ −4%. Breathing ignored. Held **2 min** (demo 30 s) |
-| **Near miss** | within 3% of the tense/low bar pauses the hold | same |
+| **Near miss** | within 3% of the tense/low bar pauses the hold | within **3 percentage points** of the active tense bar (+15% alone, +10% with HRV backing) or the low bar pauses the hold; adds no qualifying time |
 | **No read** | window skipped; the next real window could reset holds | **pauses** holds, like a near miss |
 
 Why the backers changed from "required" to "optional":

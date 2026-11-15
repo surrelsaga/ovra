@@ -28,6 +28,7 @@ export const sessionConfig = {
     state: {
       continuousWindowSec: 30,
       continuousUpdateSec: 10,
+      baselineRefineMin: 2,
       tenseHoldMin: 0.5,
       lowHoldMin: 0.5,
       crashingTenseMin: 2,

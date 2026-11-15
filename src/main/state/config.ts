@@ -6,6 +6,8 @@ export const stateConfig = {
   baselineMinPulseSec: 30,
   /** Breathing/HRV missing from calibration: filled in from this many seconds of steady values in focused windows. */
   baselineFillSec: 60,
+  /** Refine pulse from calm windows for this long after the baseline is built, then freeze it. */
+  baselineRefineMin: 10,
 
   // One evaluation window (a check-in, or the sliding window in continuous mode).
   /** Below this many seconds of steady pulse the window is "no read": holds pause, the situation stays. */
@@ -22,10 +24,12 @@ export const stateConfig = {
   // Situations, as fractions relative to baseline. Pulse decides; HRV backs up or vetoes;
   // breathing only adds confidence (docs/reliability.md §5.3).
   focusedPulsePct: 0.08,
-  tensePulsePct: 0.1,
+  tensePulsePct: 0.15,
+  /** A steady RMSSD drop permits the lower pulse bar. Breathing cannot lower it. */
+  tenseBackedPulsePct: 0.1,
   /** Near misses pause a hold; they do not add qualifying time or check-ins. */
   streakBandPct: 0.03,
-  /** Backer: RMSSD this far below baseline raises tense confidence. */
+  /** Backer: RMSSD this far below baseline lowers the pulse bar and raises tense confidence. */
   tenseRmssdDropPct: 0.15,
   /** Veto: RMSSD this far above baseline (body says relaxed) blocks tense. */
   tenseRmssdVetoPct: 0.15,

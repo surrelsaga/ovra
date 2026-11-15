@@ -135,6 +135,8 @@ describe('baseline', () => {
       'windowMinPulseSec',
       'goodMinFaceSec',
       'tensePulsePct',
+      'tenseBackedPulsePct',
+      'tenseRmssdDropPct',
       'tenseRmssdVetoPct',
       'lowPulsePct',
       'focusedPulsePct'
@@ -144,6 +146,33 @@ describe('baseline', () => {
 })
 
 describe('classifier', () => {
+  it.each([
+    { pulse: 67.2, signal: 'unclear', backed: false }, // +12%, pulse only
+    { pulse: 67.2, rmssd: 72, signal: 'tense', backed: true }, // +12%, RMSSD -20%
+    { pulse: 69.6, signal: 'tense', backed: false }, // +16%, pulse only
+    { pulse: 67.2, breathing: 20, signal: 'unclear', backed: false },
+    { pulse: 69, signal: 'tense', backed: false }, // exact +15% bar
+    { pulse: 66, rmssd: 76.5, signal: 'tense', backed: true } // exact backed bars
+  ])('uses the correct tense bar for $pulse pulse and $rmssd RMSSD', (o) => {
+    expect(evaluateWindow(stream(0, 30, o), full, cfg)).toMatchObject({
+      signal: o.signal,
+      backed: o.backed
+    })
+    expect(last(run(full, checkins(o, o))).situation).toBe(
+      o.signal === 'tense' ? 'tense' : 'focused'
+    )
+  })
+
+  it.each([
+    { pulse: 68, nearTense: true }, // below the pulse-only +15% bar, within 3%
+    { pulse: 66.6, nearTense: false },
+    { pulse: 64.5, rmssd: 72, nearTense: true }, // below the backed +10% bar, within 3%
+    { pulse: 63.6, rmssd: 72, nearTense: false },
+    { pulse: 68, rmssd: 104, nearTense: false } // HRV veto still resets
+  ])('uses the active bar for the near-miss band: %o', (o) => {
+    expect(evaluateWindow(stream(0, 30, o), full, cfg).nearTense).toBe(o.nearTense)
+  })
+
   it('focused near baseline, full confidence with secondary vitals', () => {
     const res = run(full, checkins({ pulse: 62, breathing: 14.5, rmssd: 88 }))
     expect(res[0]).toMatchObject({ situation: 'focused', confidence: cfg.confidenceFull })
@@ -157,12 +186,12 @@ describe('classifier', () => {
   })
 
   it('pulse alone makes tense, even with normal HRV and breathing present', () => {
-    const alone = { pulse: 68 }
+    const alone = { pulse: 70 }
     expect(last(run(full, checkins(alone, alone)))).toMatchObject({
       situation: 'tense',
       confidence: cfg.confidencePulseOnly
     })
-    const normal = { pulse: 68, breathing: 14, rmssd: 90 }
+    const normal = { pulse: 70, breathing: 14, rmssd: 90 }
     expect(last(run(full, checkins(normal, normal)))).toMatchObject({
       situation: 'tense',
       confidence: cfg.confidencePulseOnly
@@ -170,7 +199,7 @@ describe('classifier', () => {
   })
 
   it('faster breathing (+15%) only adds confidence to tense', () => {
-    const tense = { pulse: 68, breathing: 16.2 }
+    const tense = { pulse: 70, breathing: 16.2 }
     expect(last(run(full, checkins(tense, tense)))).toMatchObject({
       situation: 'tense',
       confidence: cfg.confidenceFull
@@ -178,14 +207,14 @@ describe('classifier', () => {
   })
 
   it('RMSSD up 15% or more vetoes tense', () => {
-    const relaxed = { pulse: 68, rmssd: 104 }
+    const relaxed = { pulse: 70, rmssd: 104 }
     expect(run(full, checkins(relaxed, relaxed, relaxed)).map((x) => x.situation)).toEqual([
       'focused',
       'focused',
       'focused'
     ])
     // Just under the veto: tense.
-    const almost = { pulse: 68, rmssd: 103 }
+    const almost = { pulse: 70, rmssd: 103 }
     expect(last(run(full, checkins(almost, almost))).situation).toBe('tense')
   })
 
@@ -199,7 +228,7 @@ describe('classifier', () => {
   })
 
   it('tense on a pulse-only stream, with lower confidence', () => {
-    const res = run(pulseOnly, checkins({ pulse: 68 }, { pulse: 68 }))
+    const res = run(pulseOnly, checkins({ pulse: 70 }, { pulse: 70 }))
     expect(last(res)).toMatchObject({ situation: 'tense', confidence: cfg.confidencePulseOnly })
   })
 
@@ -207,7 +236,7 @@ describe('classifier', () => {
     const windows = Array.from({ length: 8 }, (_, i) => ({
       at: i * 30_000,
       sec: 30,
-      o: { pulse: 68 }
+      o: { pulse: 70 }
     }))
     const res = run(pulseOnly, windows, 'continuous').map((x) => x.situation)
     expect(res.indexOf('tense')).toBe(6) // first window starts at 0, the 7th ends at 3:30
@@ -287,7 +316,7 @@ describe('classifier', () => {
   })
 
   it('ignores breathing for a window with talking (it can no longer back tense)', () => {
-    const o = { pulse: 68, breathing: 20 }
+    const o = { pulse: 70, breathing: 20 }
     expect(last(run(full, checkins(o, o))).confidence).toBe(cfg.confidenceFull)
     const talking = { ...o, face: { talking: true } }
     expect(last(run(full, checkins(talking, talking)))).toMatchObject({
@@ -305,7 +334,7 @@ describe('classifier', () => {
   })
 
   it('a no-read window between two tense check-ins pauses the hold, not resets it', () => {
-    const tense = { pulse: 68 }
+    const tense = { pulse: 70 }
     const res = run(pulseOnly, [
       { at: 0, o: tense },
       { at: 5 * MIN, sec: 5, o: tense }, // no read
@@ -328,18 +357,18 @@ describe('classifier', () => {
         pulseOnly,
         c
       )
-    const history = [w(0, 68), w(1, 68, 5), w(2, 68)]
+    const history = [w(0, 70), w(1, 70, 5), w(2, 70)]
     // Two qualifying minutes, but the no-read minute in between doesn't count.
     expect(classify(history, 'continuous', 'focused', c).situation).toBe('focused')
-    history.push(w(3, 68))
+    history.push(w(3, 70))
     expect(classify(history, 'continuous', 'focused', c).situation).toBe('tense')
     const before = classify(history, 'continuous', 'tense', c)
-    history.push(w(4, 68, 3))
+    history.push(w(4, 70, 3))
     expect(classify(history, 'continuous', 'tense', c)).toEqual(before)
   })
 
   it.each([
-    { high: 67.2, near: 65.4, clear: 60, expected: 'tense' },
+    { high: 70, near: 68, clear: 60, expected: 'tense' },
     { high: 54, near: 55.8, clear: 60, expected: 'low' }
   ])(
     'pauses $expected holds near the threshold, resets on a clear miss',
@@ -358,7 +387,7 @@ describe('classifier', () => {
   )
 
   it('near windows preserve check-in counts without counting as qualifying check-ins', () => {
-    const history = [67.2, 65.4, 67.2].map((pulse, i) =>
+    const history = [70, 68, 70].map((pulse, i) =>
       evaluateWindow(stream(i * 5 * MIN, 90, { pulse }), pulseOnly, cfg)!
     )
     expect(classify(history.slice(0, 2), 'checkins', 'focused', cfg).situation).toBe('focused')
@@ -478,11 +507,112 @@ describe('state engine', () => {
     expect(engine.diagnostics().baselineFailure).toBeNull()
   })
 
+  it('refines pulse from equally weighted calibration and calm-window medians', () => {
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 90, { pulse: 64 }) // median of 60 and 64 is 62, regardless of window length
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: 70 }) // +12.9% against 62; +16.7% against original 60
+    expect(engine.lastWindow()?.line).toContain('signal=unclear')
+    phase('checkin', 30, { pulse: 71.5 }) // +15.3% against 62; +11.7% against 64
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it.each([
+    { o: { pulse: 74 }, probe: 70, signal: 'tense' },
+    { o: { pulse: 54 }, probe: 68, signal: 'unclear' },
+    { o: { pulse: 57 }, probe: 68, signal: 'unclear' }, // near low, still steady
+    { o: { pulse: 68 }, probe: 70, signal: 'tense' }, // near pulse-only tense
+    { o: { pulse: 64.5, rmssd: 72 }, probe: 70, signal: 'tense' }, // near backed tense, still steady
+    { o: { pulse: 66 }, probe: 70, signal: 'tense' }, // unclear, not calm
+    { o: {}, probe: 70, signal: 'tense' } // no read
+  ])('never refines from a non-calm window: $o', ({ o, probe, signal }) => {
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60, rmssd: 90 })
+    phase('checkin', 30, o)
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: probe })
+    expect(engine.lastWindow()?.line).toContain(`signal=${signal}`)
+  })
+
+  it('never lets a tense stretch become usual before the tense hold completes', () => {
+    const { engine, phase, wait, updates } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 30, { pulse: 74 })
+    expect(last(updates).situation).toBe('focused') // tense signal, not yet a held situation
+    phase('checkin', 30, { pulse: 64 }) // baseline becomes 62, not 64
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: 71.5 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it.each([10, sessionConfig.demo.state.baselineRefineMin])(
+    'stops pulse refinement exactly %s min after baseline creation',
+    (minutes) => {
+      overrides = { baselineRefineMin: minutes }
+      const { engine, phase, wait } = setup()
+      phase('calibration', 30, { pulse: 60 })
+      wait(minutes * MIN - 30_000)
+      phase('checkin', 30, { pulse: 64 }) // ends exactly at the deadline: no learning
+      phase('checkin', 30, { pulse: 70 })
+      expect(engine.lastWindow()?.line).toContain('signal=tense')
+    }
+  )
+
+  it('refines pulse in continuous windows too', () => {
+    const { bus, engine, phase, wait } = setup('continuous')
+    phase('calibration', 30, { pulse: 60 })
+    bus.emit('sdk:checkin-started', { phase: 'continuous' })
+    const feed = (sec: number, pulse: number): void => {
+      for (let i = 0; i < sec; i++) {
+        bus.emit('sdk:metrics', { t: Date.now(), pulse: r(pulse) })
+        wait(1000)
+      }
+    }
+    feed(60, 64) // two calm windows: median of 60, 64, 64 is 64
+    wait(10 * MIN)
+    feed(60, 73.5) // +14.8% against 64, below the pulse-only bar
+    expect(engine.lastWindow()?.line).toContain('signal=unclear')
+    engine.dispose()
+  })
+
+  it('drops pulse refinement samples when the engine resets', () => {
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 30, { pulse: 64 })
+    engine.reset()
+    phase('calibration', 30, { pulse: 60 })
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: 70 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it('keeps the refined pulse fixed after the deadline', () => {
+    const { engine, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    phase('checkin', 30, { pulse: 64 }) // refined to 62
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: 66 }) // calm, but too late to learn
+    phase('checkin', 30, { pulse: 71.5 })
+    expect(engine.lastWindow()?.line).toContain('signal=tense')
+  })
+
+  it('starts the refinement clock when a late Start anyway baseline exists', () => {
+    const { engine, phase, wait } = setup()
+    phase('calibration', 10, { pulse: 60 })
+    wait(11 * MIN)
+    phase('checkin', 30, { pulse: 60 }) // baseline starts here, not at session start
+    phase('checkin', 30, { pulse: 64 })
+    wait(10 * MIN)
+    phase('checkin', 30, { pulse: 70 })
+    expect(engine.lastWindow()?.line).toContain('signal=unclear')
+  })
+
   it('fills missing breathing/HRV from the first 60 s of steady values in focused windows', () => {
     const tenseWithHrv = (): Situation | null => {
       for (let i = 0; i < 2; i++) {
         wait(3.5 * MIN)
-        t.phase('checkin', 90, { pulse: 68, rmssd: 70 })
+        t.phase('checkin', 90, { pulse: 70, rmssd: 70 })
       }
       return last(t.updates).situation
     }
@@ -506,7 +636,7 @@ describe('state engine', () => {
     phase('calibration', 90, { pulse: 60 })
     for (let i = 0; i < 2; i++) {
       wait(3.5 * MIN)
-      phase('checkin', 90, { pulse: 68 })
+      phase('checkin', 90, { pulse: 70 })
     }
     expect(last(updates).situation).toBe('tense')
     wait(3.5 * MIN)
@@ -532,15 +662,15 @@ describe('state engine', () => {
         vi.advanceTimersByTime(1000)
       }
     }
-    feed(90, 68) // 3 windows: about 1.5 of 2 min of hold
+    feed(90, 70) // 3 windows: about 1.5 of 2 min of hold
     console.log('DBG', updates.map((u) => u.situation).join(','), engine.lastWindow()?.line)
     feed(60)
     console.log('DBG2', engine.lastWindow()?.line) // seen but no pulse (code 7, motion): no-read windows, hold paused
     expect(last(updates).situation).toBe('focused')
     expect(engine.why()).toEqual({ text: 'Low signal, holding steady', moving: false })
-    feed(30, 68)
+    feed(30, 70)
     expect(last(updates).situation).toBe('focused')
-    feed(30, 68)
+    feed(30, 70)
     expect(last(updates).situation).toBe('tense')
     engine.dispose()
   })
@@ -596,7 +726,7 @@ describe('state engine', () => {
     phase('calibration', 90, { pulse: 60 })
     for (let i = 0; i < 3; i++) {
       wait(3.5 * MIN)
-      phase('checkin', 90, { pulse: 68 })
+      phase('checkin', 90, { pulse: 70 })
     }
     expect(last(updates).situation).toBe('focused')
   })

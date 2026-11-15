@@ -29,6 +29,8 @@ export async function runHarness(): Promise<void> {
   }, cfg.deadlineMs)
   const camera = mode !== 'declined'
   const continuous = mode === 'continuous'
+  // calm-working etc. never leave the seat, so they can't show automatic away (Job 10).
+  const leaves = cfg.leaveVideos.includes(basename(video))
   const application = await startApp({
     background: true,
     sensingConfig: {
@@ -187,10 +189,10 @@ export async function runHarness(): Promise<void> {
       // Moving clips may never supply stable pulse; the real app must still reach running.
       assert(metrics > 0, 'Real SDK metrics reached the state engine')
       await wait(() => session.current()?.status === 'running', 'running session')
-      if (continuous) {
+      if (continuous && leaves) {
         await wait(() => automaticAway > 0 && automaticReturns > 0, 'automatic away + return')
         await wait(() => returnChecks > 0, 'automatic return check')
-      } else {
+      } else if (!continuous) {
         await wait(
           () =>
             events.filter((e) => e.name === 'sdk:checkin-ended' && e.phase === 'checkin').length >=
@@ -244,6 +246,7 @@ export async function runHarness(): Promise<void> {
       await wait(() => !capturing && sensing.phase() === 'idle', 'camera consent revoked')
       assert.equal(session.current()?.sensingEnabled, false)
     }
+    if (continuous && !leaves) assert.equal(automaticAway, 0, 'Seated video never goes away')
     await invoke('session:end')
     stopped = !capturing && sensing.phase() === 'idle'
     assert(stopped, 'Camera stopped at session end')
@@ -258,9 +261,17 @@ export async function runHarness(): Promise<void> {
         events.findIndex((e) => e.name === 'session:ended')
     )
     if (camera) {
+      // A continuous return check is a logical phase on the running stream (decision 41): it
+      // starts on top of continuous without ending it, so it has no matching end of its own.
+      const sdk = events.filter(
+        (e) => e.name === 'sdk:checkin-started' || e.name === 'sdk:checkin-ended'
+      )
+      const logical = sdk.filter(
+        (e, i) => e.name === 'sdk:checkin-started' && sdk[i - 1]?.name === 'sdk:checkin-started'
+      ).length
       assert.equal(
-        events.filter((e) => e.name === 'sdk:checkin-started').length,
-        events.filter((e) => e.name === 'sdk:checkin-ended').length
+        sdk.filter((e) => e.name === 'sdk:checkin-started').length,
+        sdk.filter((e) => e.name === 'sdk:checkin-ended').length + logical
       )
     }
     await wait(() => !session.current(), 'summary')

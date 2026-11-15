@@ -9,6 +9,8 @@ export const e2eConfig = {
   pollMs: 100,
   idleObservationMs: 1_000,
   sessionLengthMin: 6,
+  /** Clips where someone really leaves the frame; continuous runs on others assert no away. */
+  leaveVideos: ['leave-and-return.mp4'],
   nudgeIntervalMin: 0.1,
   thresholds: {
     baselineMinPulseSec: 3,

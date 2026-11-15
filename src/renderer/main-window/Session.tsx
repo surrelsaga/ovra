@@ -14,6 +14,7 @@ import { ovra, usePush } from '../shared/bridge'
 import { Button, ChoiceGroup, MoonOrb, Progress, Toggle } from '../ui'
 import { ACTIVITIES, ACTIVITY_LABEL, fmtClock, fmtMinutes, mainConfig } from './config'
 import { SessionCamera } from './SessionCamera'
+import { SpotifyStartDialog } from './SpotifyStartDialog'
 
 const NO_MUSIC: MusicStatus = {
   available: false,
@@ -40,6 +41,7 @@ export function NewSession(props: {
   const [music, setMusic] = useState(privacy.music === 'spotify')
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [spotifyChoice, setSpotifyChoice] = useState<((music: boolean | null) => void) | null>(null)
 
   const { min, max } = mainConfig.customMin
   const lengthMin = length === 'custom' ? custom : length
@@ -50,6 +52,15 @@ export function NewSession(props: {
     setError(null)
     try {
       await props.beforeStart?.()
+      let sessionMusic = music
+      if (music && !(await ovra().invoke('music:status')).available) {
+        const choice = await new Promise<boolean | null>((resolve) =>
+          setSpotifyChoice(() => resolve)
+        )
+        setSpotifyChoice(null)
+        if (choice === null) return
+        sessionMusic = choice
+      }
       props.onStarted(
         await ovra().invoke('session:start', {
           activity,
@@ -57,7 +68,7 @@ export function NewSession(props: {
           cameraMode: demo ? 'continuous' : cameraMode,
           ...(demo ? { demo: true } : {}),
           checkinIntervalMin: settings.checkinIntervalMin,
-          music
+          music: sessionMusic
         })
       )
     } catch {
@@ -69,6 +80,7 @@ export function NewSession(props: {
 
   return (
     <section className="page" aria-labelledby="new-session-title">
+      {spotifyChoice && <SpotifyStartDialog onDone={spotifyChoice} />}
       <header className="page__header">
         <h1 id="new-session-title">New session</h1>
         <p>Pick what you’re doing and for how long.</p>
@@ -393,7 +405,7 @@ export function Running({
       )}
       {session.config.music && !music.available && (
         <p className="muted" role="status">
-          Spotify isn&apos;t open
+          Spotify isn&apos;t open. Open the Spotify app to play your music.
         </p>
       )}
       {cameraConsent && session.sensingEnabled && (

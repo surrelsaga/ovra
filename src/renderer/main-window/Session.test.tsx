@@ -37,7 +37,9 @@ it('shows Spotify availability during music sessions and removes the note on ope
   const bridge = installFakeBridge()
   const s = session('running')
   const view = render(<Running session={{ ...s, config: { ...s.config, music: true } }} />)
-  expect(screen.getByRole('status')).toHaveTextContent("Spotify isn't open")
+  expect(screen.getByRole('status')).toHaveTextContent(
+    "Spotify isn't open. Open the Spotify app to play your music."
+  )
   const music = {
     available: true,
     leaveAlone: false,
@@ -47,11 +49,17 @@ it('shows Spotify availability during music sessions and removes the note on ope
     scoredCount: 0
   }
   bridge.push('push:music', music)
-  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  expect(
+    screen.queryByText("Spotify isn't open. Open the Spotify app to play your music.")
+  ).toBeNull()
   bridge.push('push:music', { ...music, available: false })
-  expect(screen.getByText("Spotify isn't open")).toBeInTheDocument()
+  expect(
+    screen.getByText("Spotify isn't open. Open the Spotify app to play your music.")
+  ).toBeInTheDocument()
   view.rerender(<Running session={s} />)
-  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  expect(
+    screen.queryByText("Spotify isn't open. Open the Spotify app to play your music.")
+  ).toBeNull()
 })
 
 describe('calibration preview', () => {
@@ -259,7 +267,10 @@ describe('calibration preview', () => {
 
 describe('new session', () => {
   it('passes the demo flag, continuous camera and custom 20 minutes through IPC, without saving a setting', async () => {
-    const bridge = installFakeBridge({ 'session:start': session('running') })
+    const bridge = installFakeBridge({
+      'session:start': session('running'),
+      'music:status': { available: true }
+    })
     const view = render(
       <NewSession
         privacy={{ ...DEFAULT_PRIVACY, camera: 'yes' }}
@@ -279,6 +290,7 @@ describe('new session', () => {
       await Promise.resolve()
     })
     expect(bridge.invokes).toEqual([
+      { channel: 'music:status', req: undefined },
       {
         channel: 'session:start',
         req: {

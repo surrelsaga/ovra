@@ -76,7 +76,7 @@ export function Music(props: {
         {status.available && <p className="small">Spotify is running</p>}
         {!status.available && (
           <p className="muted" role="status">
-            Spotify isn&apos;t open
+            Spotify isn&apos;t open. Open the Spotify app to play your music.
           </p>
         )}
       </header>

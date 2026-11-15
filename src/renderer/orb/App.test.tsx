@@ -13,7 +13,7 @@ const ignoreCalls = (b: ReturnType<typeof installFakeBridge>): unknown[] =>
 it('shows Spotify is closed in a music session and clears the note when it opens', () => {
   const bridge = installFakeBridge()
   render(<App />)
-  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  expect(screen.queryByText('Open Spotify')).toBeNull()
   const s = {
     id: 's1',
     config: {
@@ -28,7 +28,7 @@ it('shows Spotify is closed in a music session and clears the note when it opens
     sensingEnabled: false
   } as const
   bridge.push('push:session', s)
-  expect(screen.getByRole('status')).toHaveTextContent("Spotify isn't open")
+  expect(screen.getByRole('status')).toHaveTextContent('Open Spotify')
   const music = {
     available: true,
     leaveAlone: false,
@@ -38,10 +38,10 @@ it('shows Spotify is closed in a music session and clears the note when it opens
     scoredCount: 0
   }
   bridge.push('push:music', music)
-  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  expect(screen.queryByText('Open Spotify')).toBeNull()
   bridge.push('push:music', { ...music, available: false })
   bridge.push('push:session', { ...s, config: { ...s.config, music: false } })
-  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  expect(screen.queryByText('Open Spotify')).toBeNull()
 })
 
 describe('orb window', () => {

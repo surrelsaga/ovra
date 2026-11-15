@@ -43,9 +43,13 @@ it('shows read results and errors and polls availability only while Music is mou
     expect(screen.getByText('Read 100 songs')).toBeInTheDocument()
     expect(screen.queryByText(/scored so far/)).toBeNull()
     expect(screen.getByText('This playlist is private or empty')).toBeInTheDocument()
-    expect(screen.getByText("Spotify isn't open")).toBeInTheDocument()
+    expect(
+      screen.getByText("Spotify isn't open. Open the Spotify app to play your music.")
+    ).toBeInTheDocument()
     bridge.push('push:music', { ...status, available: true })
-    expect(screen.queryByText("Spotify isn't open")).toBeNull()
+    expect(
+      screen.queryByText("Spotify isn't open. Open the Spotify app to play your music.")
+    ).toBeNull()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000)
     })

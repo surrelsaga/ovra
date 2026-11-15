@@ -113,7 +113,7 @@ export function fmtDate(t: number): string {
   })
 }
 
-export const musicUiConfig = { availabilityPollMs: 5000 } as const
+export const musicUiConfig = { availabilityPollMs: 5000, startPollMs: 2000 } as const
 
 export const SONG_TAB_LABEL: Record<SongTab, string> = {
   Calm: 'Calm',

@@ -131,7 +131,10 @@ function fakeRecord(id: string, startedAt: number, lengthMin: number): SessionRe
 // Fake services behind IPC
 // ---------------------------------------------------------------------------
 
-function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Session | null } {
+function fakeServices(
+  bus: Bus,
+  privacy: PrivacyService
+): { session: () => Session | null; setMusic: (patch: Partial<MusicStatus>) => MusicStatus } {
   let session: Session | null = null
   let ticker: ReturnType<typeof setInterval> | undefined
   let library = { songs: [...SONGS], playlists: [...PLAYLISTS] }
@@ -242,7 +245,7 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
     handle(ch, () => undefined)
   }
   handle('move:respond', () => undefined)
-  return { session: () => session }
+  return { session: () => session, setMusic }
 }
 
 // ---------------------------------------------------------------------------
@@ -517,7 +520,12 @@ async function pillTour(orb: BrowserWindow, bus: Bus, dir: string): Promise<void
   await writeFile(join(dir, 'pill-labels.json'), JSON.stringify(labels, null, 2))
 }
 
-async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
+async function tour(
+  shell: ShellWindows,
+  bus: Bus,
+  dir: string,
+  services: ReturnType<typeof fakeServices>
+): Promise<void> {
   await mkdir(dir, { recursive: true })
   const { main, orb } = shell.windows()!
 
@@ -536,6 +544,13 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await wait(300)
   await click(main, 'Later')
   await shot(main, dir, '05-session-new')
+  services.setMusic({ available: false })
+  await click(main, 'Start session')
+  await shot(main, dir, 'spotify-start-dialog')
+  await click(main, 'Cancel')
+  await nav(main, 'music')
+  await shot(main, dir, 'spotify-start-music')
+  services.setMusic({ available: true })
 
   await nav(main, 'music')
   await shot(main, dir, '06-music')
@@ -681,7 +696,7 @@ export async function runHarness(): Promise<void> {
     ...fakeRecord('past-3', now - 74 * 60 * MIN, 180),
     activity: 'focus'
   })
-  fakeServices(bus, privacy)
+  const services = fakeServices(bus, privacy)
 
   const shell = createWindows({ bus, privacy })
   const ignore = shell.orbIgnoreMouse
@@ -695,7 +710,8 @@ export async function runHarness(): Promise<void> {
   await shell.ready()
 
   const shots = process.env.OVRA_SHOTS
-  if (shots) return void tour(shell, bus, shots).catch((e) => console.error('[harness:shell]', e))
+  if (shots)
+    return void tour(shell, bus, shots, services).catch((e) => console.error('[harness:shell]', e))
 
   // Interactive: once a session runs, cycle the orb through every state.
   const steps = orbSteps(bus)

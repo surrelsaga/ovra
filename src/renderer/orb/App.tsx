@@ -211,7 +211,7 @@ export default function App(): React.JSX.Element {
           </p>
         ) : session && session.status !== 'ended' && session.config.music && !music.available ? (
           <p className="pill" data-hit role="status">
-            Spotify isn&apos;t open
+            Open Spotify
           </p>
         ) : view.paused ? (
           <p className="pill pill--paused" data-hit>

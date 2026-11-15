@@ -13,7 +13,8 @@ import { DEFAULT_PRIVACY, DEFAULT_SETTINGS } from '@shared/types'
 import { createBus } from '../bus'
 import { memoryStorage } from './dev/memory-storage'
 import { readFileSync } from 'node:fs'
-import { createMusic } from '.'
+import { createMusic, registerMusicIpc } from '.'
+import { handle } from '../ipc'
 import { musicConfig } from './config'
 import { SpotifyMacController } from './controller'
 
@@ -889,4 +890,32 @@ it('tries another song after a playback command fails', async () => {
   await vi.advanceTimersByTimeAsync(0)
   expect(t.controller.calls).toEqual(['play spotify:track:calm'])
   await t.music.stopSession()
+})
+
+it('awaits the controller check for status IPC and shares an already pending check', async () => {
+  const t = await setup()
+  let resolve!: (available: boolean) => void
+  t.controller.isAvailable = vi.fn(
+    () =>
+      new Promise<boolean>((r) => {
+        resolve = r
+      })
+  )
+  t.music.status()
+  vi.mocked(handle).mockClear()
+  registerMusicIpc(t.music)
+  const handler = vi.mocked(handle).mock.calls.find(([channel]) => channel === 'music:status')![1]
+  const result = handler(undefined as never)
+  let settled = false
+  void Promise.resolve(result).then(() => {
+    settled = true
+  })
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  expect(t.controller.isAvailable).toHaveBeenCalledTimes(1)
+  resolve(true)
+  await expect(result).resolves.toMatchObject({ available: true })
+  expect(t.controller.calls).toEqual([])
+  t.controller.isAvailable = vi.fn().mockRejectedValue(new Error('unavailable'))
+  await expect(handler(undefined as never)).resolves.toMatchObject({ available: false })
 })

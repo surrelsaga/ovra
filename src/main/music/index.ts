@@ -49,7 +49,9 @@ interface PlayRecord {
   endedByApp: boolean
 }
 
-export function createMusic(deps: MusicDeps): MusicService {
+export function createMusic(deps: MusicDeps): MusicService & {
+  refreshStatus(): Promise<MusicStatus>
+} {
   const { bus, privacy, controller } = deps
   const now = deps.now ?? Date.now
   const rng = deps.rng ?? Math.random
@@ -92,7 +94,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   let picks = 0
   let fallbackPicks = 0
   let picking = -1
-  let checkingAvailability = false
+  let checkingAvailability: Promise<void> | null = null
   let lastRetry = 0
 
   const status = (): MusicStatus => ({
@@ -131,20 +133,20 @@ export function createMusic(deps: MusicDeps): MusicService {
     emitStatus()
   }
 
-  async function checkAvailability(): Promise<void> {
-    if (checkingAvailability) return
-    checkingAvailability = true
+  function checkAvailability(): Promise<void> {
+    if (checkingAvailability) return checkingAvailability
     const g = generation
     const activeSession = session
-    try {
+    checkingAvailability = (async () => {
       const running = await controller.isAvailable().catch(() => false)
       if (g !== generation || session !== activeSession) return
       const wasAvailable = available
       observeAvailability(running)
       if (session && running && !wasAvailable && !leaveAlone && !pausedForBreak) await playNext()
-    } finally {
-      checkingAvailability = false
-    }
+    })().finally(() => {
+      checkingAvailability = null
+    })
+    return checkingAvailability
   }
 
   async function fadePlay(
@@ -536,6 +538,10 @@ export function createMusic(deps: MusicDeps): MusicService {
       if (!session) safe(checkAvailability())
       return status()
     },
+    async refreshStatus() {
+      if (!session) await checkAvailability()
+      return status()
+    },
     async library() {
       await ready
       return { songs: library.songs(), playlists: library.playlists() }
@@ -617,8 +623,8 @@ export function createMusic(deps: MusicDeps): MusicService {
 }
 
 /** Registers music:* IPC handlers. */
-export function registerMusicIpc(music: MusicService): void {
-  handle('music:status', () => music.status())
+export function registerMusicIpc(music: ReturnType<typeof createMusic>): void {
+  handle('music:status', () => music.refreshStatus())
   handle('music:library', () => music.library())
   handle('music:add-playlist', ({ url }) => music.addPlaylist(url))
   handle('music:remove-playlist', ({ uri }) => music.removePlaylist(uri))

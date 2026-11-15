@@ -1,0 +1,91 @@
+# How Ovra decides
+
+A plain review of every rule and trigger, written 2026-11-15 for Daniel and the DEV post.
+New plain words are used throughout. The current word in the code is in brackets until the
+plain-words pass renames it. Numbers include Job 7: the stricter stressed bar and the refining baseline.
+
+## 1. What Ovra reads
+
+- **Heart rate** (pulse), from tiny colour changes in your face. This is the main signal.
+- **Heart rhythm variation** (HRV). Backup only, and it needs a still minute.
+- **Breathing rate.** The least reliable signal: it needs your chest in view, decent light and no very dark
+  clothes. It can only make Ovra *more sure*; it never decides anything.
+- **Face:** smile or frown, blinks, head tilt. It supports a call, but never decides one alone.
+
+Nothing is saved: no video, no pictures, no heart numbers. Only the mood timeline ("Steady from 12:01")
+is kept in your history.
+
+## 2. "Your usual"
+
+1. **At the start (calibration)** Ovra takes 30 seconds of steady heart rate while you sit normally. That
+   is your starting "usual".
+2. **For the next 10 minutes** your usual keeps adjusting from calm minutes only. A 30-second snapshot
+   reads low because you're sitting extra still, so a few normal minutes correct it. Stressed or tired
+   minutes are never learned, so stress can't become "normal".
+3. **After that it's fixed** for the rest of the session. Every session starts fresh, and nothing carries over.
+
+If calibration can't get 30 s, you choose **Try again** or **Start anyway**. Start anyway learns your
+usual from the first 30 s of steady heart rate during the session.
+
+## 3. How often Ovra looks
+
+- **Each check looks at:** the last minute.
+- **How often:** every 30 seconds. Demo mode: the last 30 s, every 10 s.
+- **When a check doesn't count:** if it has less than 10 seconds of steady heart rate (you moved a lot,
+  turned away, or the camera couldn't see you well), it's a **"no read"**. Ovra changes nothing: no new mood,
+  no music change, and any build-up is paused, not lost.
+
+## 4. The moods
+
+| Plain word | Code word | When | How long before Ovra says so |
+|---|---|---|---|
+| **Steady** | focused | heart rate within 8% of your usual | at once |
+| **Good mood** | good | Steady, plus smiling most of the time (needs 10 s of face) | at once |
+| **Stressed** | tense | heart rate **15% above** usual, or **10% above** if your heart rhythm also shows stress. A clearly relaxed heart rhythm cancels it | **3 min** in a row (demo 30 s) |
+| **Very stressed** | crashing / "rough patch" | Stressed for **10 min**, or heart rate **20% above** usual with a frowning/upset face | 10 min (demo 2 min) |
+| **Tired** | low | heart rate **8% below** usual, or blinking a lot more with heart rate a little below (4%) | **2 min** in a row (demo 30 s) |
+| **Couldn't see you** | no reading | not enough steady signal yet | — |
+| **Away** | away | see §5 | 20 s (demo 15 s) |
+
+Things that keep it fair:
+- **Almost counts:** a check that *almost* meets the bar (within 3%) pauses the countdown instead of resetting it.
+- **One odd check isn't enough:** a single check never changes the mood on its own. It must hold.
+- **Unclear checks:** when a check is unclear, the previous mood stays.
+
+## 5. Away
+
+- **Present:** while the camera sees a face, even one it can't measure well (chest not in view,
+  moving, face too high or low, turned away).
+- **Away:** after 20 s of no face, or if the camera picture freezes.
+- **Back:** a face for 3 of 4 seconds, or a heart reading.
+- **The SDK keeps running** while you're away, so it doesn't need to warm up again.
+- **Known issue (open):** in Daniel's test, away never triggered over 20+ minutes out of the chair. The
+  camera kept reporting something as a face. To be checked with the empty-chair test, then fixed.
+
+## 6. What happens for each mood
+
+| Mood | Music | Nudge (at most one every 20 min) |
+|---|---|---|
+| Not known yet | keep steady, using your activity's usual songs | — |
+| Steady | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | after 45 min seated: neck stretch; 60 min: stand and stretch; 90 min: walk |
+| Good mood | keep it going (brighter songs) | seated nudges only |
+| Stressed | calm down (calmer songs, from the next song) | under 5 min stressed: breathe along. Later: neck and shoulders |
+| Very stressed | quiet (fade down, switch right away, fade back up) | a short walk |
+| Stressed or very stressed for 15 min | — | step outside |
+| Tired | pick me up (brighter songs) | stand and stretch |
+| Last 10 min of the session | wind down (unless very stressed) | — |
+
+Music rules:
+- **How often:** the music changes direction at most once every 3 minutes. The first real mood can switch at once.
+- **"Leave my music alone":** turns all of this off.
+- **What plays:** songs come from your playlists, never the same song twice in a session.
+
+## 7. What changed today and why
+
+| Change | Why |
+|---|---|
+| Heart rate decides; breathing only makes Ovra more sure | breathing drops out most of the time on a laptop camera |
+| Stressed needs 15% (10% with heart-rhythm backup) | 10% from heart rate alone fired too often in Daniel's 42-min Unwind session |
+| Your usual keeps adjusting for 10 minutes | a 30-second start reads low |
+| "No read" pauses instead of resetting | moving or laughing shouldn't erase or invent a mood |
+| Seen-but-not-measurable counts as present | slouching (chest out of view) used to look like leaving |

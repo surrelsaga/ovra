@@ -18,6 +18,7 @@ import {
   buildBaseline,
   classify,
   evaluateWindow,
+  hasBox,
   hasFace,
   median,
   seconds,
@@ -72,6 +73,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let seatedSince: number | null = null
   /** Last face seen while the camera is on. Null = camera was off, so the gap doesn't count. */
   let lastFace: number | null = null
+  /** Last face box at the seat, or code 7. Null = none yet this stream (phaseStart stands in). */
+  let lastShape: number | null = null
   let lastFrame: number | null = null
   let away = false
   let manualAway = false
@@ -116,7 +119,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     confidence = 0
     trend = 'steady'
     seatedSince = null
-    lastFace = lastFrame = null
+    lastFace = lastFrame = lastShape = null
     validationCode = ValidationCode.ok
     wakeBuckets.clear()
     away = manualAway = paused = reconnecting = false
@@ -232,7 +235,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (!continuing) {
       validationCode = ValidationCode.ok
       wakeBuckets.clear()
-      lastFace = lastFrame = null // camera-off time is not a seated gap
+      lastFace = lastFrame = lastShape = null // camera-off time is not a seated gap
     }
     if (p === 'continuous' || (mode === 'continuous' && p === 'return-check')) {
       stopTimer()
@@ -257,16 +260,22 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
       return
     }
     const c = cfg()
-    const pulse = !!s.pulse?.stable && Number.isFinite(s.pulse.value)
+    const faceOn = privacy.canUseFace()
+    // hasFace vetoes a frame's pulse and code when that frame's own face box is off the seat.
+    const pulse = !!s.pulse?.stable && hasFace(s, faceOn, c, calibratedFace)
     const face =
       code !== ValidationCode.multipleFaces &&
-      hasFace(
-        { t: s.t, face: s.face, validationCode: s.validationCode },
-        privacy.canUseFace(),
-        c,
-        calibratedFace
-      )
+      hasFace({ t: s.t, face: s.face, validationCode: s.validationCode }, faceOn, c, calibratedFace)
     if (!pulse && !face) return
+    // Box-less evidence ages out after presenceNoShapeSec (not in calibration: the baseline
+    // must see the same pulses the calibration clock counted).
+    if (hasBox(s, faceOn) || s.validationCode === ValidationCode.chestNotVisible) lastShape = s.t
+    else if (
+      faceOn &&
+      phase !== 'calibration' &&
+      s.t - (lastShape ?? phaseStart) > c.presenceNoShapeSec * 1000
+    )
+      return
     onFace(s.t)
     buf.push(s)
     if (pulse && !baseline && baselineFailure && phase !== 'calibration') pending.push(s)
@@ -332,7 +341,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (!away && !manualAway) return
     manualAway = away = false
     // An explicit return gets the same no-face grace period as a fresh stream.
-    lastFace = Date.now()
+    lastFace = lastShape = Date.now()
     wakeBuckets.clear()
     emit()
   })
@@ -356,7 +365,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   })
   bus.on('privacy:camera-resumed', () => {
     paused = false
-    lastFace = lastFrame = null
+    lastFace = lastFrame = lastShape = null
     phaseStart = Date.now()
   })
   bus.on('sdk:reconnecting', ({ active }) => {
@@ -365,7 +374,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     wakeBuckets.clear()
     // Back up: the outage was camera-off time, so the away clock starts over.
     if (!active) {
-      lastFace = lastFrame = null
+      lastFace = lastFrame = lastShape = null
       phaseStart = Date.now()
     }
   })

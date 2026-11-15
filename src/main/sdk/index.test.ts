@@ -449,7 +449,9 @@ describe('capture messages', () => {
       expect(engine.current().away).toBe(true)
       h.handlers['capture:validation']({ t: Date.now(), code: 0, hint: '' }, { sender: h.wc })
       await vi.advanceTimersByTimeAsync(1000)
-      h.handlers['capture:metrics']({ ...m, t: Date.now() }, { sender: h.wc })
+      // With face consent a returning face brings its box; a box-less pulse can't wake (Job 10).
+      const back = face ? { present: true, center: { x: 0.5, y: 0.5 }, size: 0.4 } : m.face
+      h.handlers['capture:metrics']({ ...m, face: back, t: Date.now() }, { sender: h.wc })
       expect(engine.current().away).toBe(false)
       await t.sensing.stop()
       engine.dispose()

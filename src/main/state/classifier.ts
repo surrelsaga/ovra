@@ -18,39 +18,22 @@ export function median(xs: number[]): number | undefined {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** Raw face-specific validation, pulse or plausible landmarks; bare face objects prove nothing. */
-export function hasFace(
-  s: MetricsSnapshot,
-  faceEnabled: boolean,
-  cfg: StateConfig = stateConfig,
+/** A landmark face box exists (face consent only) for this frame. */
+export const hasBox = (s: MetricsSnapshot, faceEnabled: boolean): boolean =>
+  faceEnabled && !!s.face?.present && !!s.face.center && s.face.size !== undefined
+
+/** Plausible size and position, and near the calibrated seat once there is one. */
+function boxNearSeat(
+  f: FaceSnapshot,
+  cfg: StateConfig,
   calibrated?: Pick<FaceSnapshot, 'center' | 'size'>
 ): boolean {
-  if (s.validationCode === ValidationCode.noFaceFound) return false
-  if (s.pulse?.stable && Number.isFinite(s.pulse.value)) return true
-  if (s.validationCode === ValidationCode.multipleFaces) return false
+  const { x, y } = f.center!
+  const size = f.size!
   if (
-    s.validationCode !== undefined &&
-    [
-      ValidationCode.ok,
-      ValidationCode.faceNotCentered,
-      ValidationCode.faceSizeOutOfRange,
-      ValidationCode.chestNotVisible,
-      ValidationCode.excessiveMotion,
-      ValidationCode.faceTooClose,
-      ValidationCode.faceTooFar,
-      ValidationCode.faceTooHigh,
-      ValidationCode.faceTooLow,
-      ValidationCode.faceNotForward
-    ].some((code) => code === s.validationCode)
-  )
-    return true
-  const f = s.face
-  if (!faceEnabled || !f?.present || !f.center || f.size === undefined) return false
-  const { x, y } = f.center
-  if (
-    ![x, y, f.size].every(Number.isFinite) ||
-    f.size < cfg.presenceMinFaceSize ||
-    f.size > cfg.presenceMaxFaceSize ||
+    ![x, y, size].every(Number.isFinite) ||
+    size < cfg.presenceMinFaceSize ||
+    size > cfg.presenceMaxFaceSize ||
     x < cfg.presenceMinCenter ||
     x > 1 - cfg.presenceMinCenter ||
     y < cfg.presenceMinCenter ||
@@ -62,8 +45,42 @@ export function hasFace(
     calibrated.size === undefined ||
     (Math.abs(x - calibrated.center.x) <= cfg.presenceMaxCenterShift &&
       Math.abs(y - calibrated.center.y) <= cfg.presenceMaxCenterShift &&
-      f.size >= calibrated.size / cfg.presenceSizeRatio &&
-      f.size <= calibrated.size * cfg.presenceSizeRatio)
+      size >= calibrated.size / cfg.presenceSizeRatio &&
+      size <= calibrated.size * cfg.presenceSizeRatio)
+  )
+}
+
+/**
+ * Raw face-specific validation, pulse or plausible landmarks; bare face objects prove nothing.
+ * A frame's own face box decides first: if it is off the seat, the SDK is reading something
+ * else, so that frame's pulse and code don't count either (empty-chair ghost, Job 10).
+ */
+export function hasFace(
+  s: MetricsSnapshot,
+  faceEnabled: boolean,
+  cfg: StateConfig = stateConfig,
+  calibrated?: Pick<FaceSnapshot, 'center' | 'size'>
+): boolean {
+  if (s.validationCode === ValidationCode.noFaceFound) return false
+  const box = hasBox(s, faceEnabled)
+  if (box && !boxNearSeat(s.face!, cfg, calibrated)) return false
+  if (s.pulse?.stable && Number.isFinite(s.pulse.value)) return true
+  if (s.validationCode === ValidationCode.multipleFaces) return false
+  return (
+    box ||
+    (s.validationCode !== undefined &&
+      [
+        ValidationCode.ok,
+        ValidationCode.faceNotCentered,
+        ValidationCode.faceSizeOutOfRange,
+        ValidationCode.chestNotVisible,
+        ValidationCode.excessiveMotion,
+        ValidationCode.faceTooClose,
+        ValidationCode.faceTooFar,
+        ValidationCode.faceTooHigh,
+        ValidationCode.faceTooLow,
+        ValidationCode.faceNotForward
+      ].some((code) => code === s.validationCode))
   )
 }
 

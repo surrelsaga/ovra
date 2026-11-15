@@ -63,6 +63,14 @@ export const stateConfig = {
   presenceMinCenter: 0.1,
   presenceMaxCenterShift: 0.25,
   presenceSizeRatio: 1.6,
+  /**
+   * Evidence without a face box (steady pulse, or a framing code other than 7) keeps you present
+   * for at most this long after the last face box at your seat (face consent only). An empty chair
+   * can still get fresh frames with codes and even a steady pulse; a seated face gives a box every
+   * second with the shrunk frame. Code 7 (normal frame, chest not visible) never has a box, so it
+   * isn't capped. Same in demo.
+   */
+  presenceNoShapeSec: 20,
   wakeFaceSec: 3,
   wakeWindowSec: 4,
   /** Why line: "Can't see you" shows after this long without presence evidence. */

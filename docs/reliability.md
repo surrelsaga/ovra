@@ -259,3 +259,7 @@ holds, max calibration wait). Dev tools (monitor, harness, video source) run the
 - **Self-serve framing (Job 3, decision 44).**
   - **Preview:** instead of nagging, a display-only camera preview is one click away during a session. It's a second stream of the same camera, shown and never copied.
   - **Hint:** the SDK's own hint appears only after 2 min stuck on one framing code, once per episode.
+- **Code 7 solved by the shrunk frame (decision 48).** Live A/B, same seat: code 0 went from 7–27% to ~75%, steady pulse from 0 s to 36 s, and calibration passed in 83 s instead of failing. It's now the default.
+- **The SDK can die silently (Job 9, decision 49).**
+  - **What happens:** twice in live runs the SDK went into a dead state and refused every frame. Once was after its usage check failed behind a VPN.
+  - **How Ovra copes:** it watches for this, restarts the SDK up to 3 times, and says "Camera reconnecting" instead of marking the user away. If it still can't connect, it says plainly "Couldn't reach Presage. Check your internet or VPN".

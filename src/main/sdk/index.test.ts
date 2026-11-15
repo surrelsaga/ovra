@@ -9,6 +9,7 @@ import { createBus } from '../bus'
 import { createSensing } from '.'
 import { createStateEngine } from '../state'
 import { sensingConfig, type SensingConfig } from './config'
+import { sessionConfig } from '../session/config'
 
 // Fake Electron + IPC: the capture "renderer" answers every capture-stop with status idle.
 const h = vi.hoisted(() => {
@@ -191,6 +192,40 @@ describe('missing API key', () => {
 })
 
 describe('phases and check-in scheduler', () => {
+  it.each([false, true])(
+    'reports startup until running capture and a first frame (demo=%s)',
+    async (demo) => {
+      const t = setup({ config: demo ? sessionConfig.demo.sensing : {} })
+      const latest = (): unknown =>
+        t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload
+      await t.sensing.startCalibration()
+      expect(latest()).toMatchObject({ progress: 0, starting: true, framing: true })
+      await vi.advanceTimersByTimeAsync(9000)
+      expect(latest()).toMatchObject({ progress: 0, starting: true })
+      // A running status alone doesn't prove that frames are arriving.
+      h.handlers['capture:status']('running', { sender: h.wc })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(latest()).toMatchObject({ starting: true })
+      // Validation alone is a frame, even with no pulse/metrics due to poor framing.
+      h.handlers['capture:validation'](
+        { t: Date.now(), code: 7, hint: 'Lean back a little.' },
+        { sender: h.wc }
+      )
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(latest()).toMatchObject({ progress: 0, starting: false, framing: true })
+      await t.sensing.stop()
+      await t.sensing.startCalibration()
+      // A previous stream's running status or frames must not survive a retry.
+      h.handlers['capture:metrics']({ t: Date.now() }, { sender: h.wc })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(latest()).toMatchObject({ starting: true })
+      h.handlers['capture:status']('running', { sender: h.wc })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(latest()).toMatchObject({ starting: false, framing: true })
+      await t.sensing.stop()
+    }
+  )
+
   it('ends a failed window load and allows the next attempt to create a fresh window', async () => {
     const { sensing, names } = setup()
     h.loadPage.mockRejectedValueOnce(new Error('capture page unavailable'))
@@ -286,6 +321,7 @@ describe('phases and check-in scheduler', () => {
     const { sensing, events, names } = setup()
     await sensing.startCalibration()
     expect(sensing.phase()).toBe('calibration')
+    h.handlers['capture:status']('running', { sender: h.wc })
     h.handlers['capture:validation']({ t: Date.now(), code: 0, hint: '' }, { sender: h.wc })
     const progress = (): unknown[] =>
       events.filter((e) => e.name === 'sdk:calibration-progress').map((e) => e.payload)
@@ -296,9 +332,15 @@ describe('phases and check-in scheduler', () => {
       )
       await vi.advanceTimersByTimeAsync(1000)
       // OK shows after 1 s (hint persist) and must hold 3 s before the clock starts.
-      if (i === 2) expect(progress().at(-1)).toEqual({ progress: 0, hint: null, framing: true })
+      if (i === 2)
+        expect(progress().at(-1)).toEqual({
+          progress: 0,
+          hint: null,
+          framing: true,
+          starting: false
+        })
     }
-    expect(progress().at(-1)).toEqual({ progress: 1, hint: null, framing: false })
+    expect(progress().at(-1)).toEqual({ progress: 1, hint: null, framing: false, starting: false })
     expect(progress().filter((p) => (p as { framing: boolean }).framing).length).toBeLessThan(6)
     expect(names().filter((n) => n !== 'sdk:metrics')).toEqual([
       'sdk:checkin-started:calibration',
@@ -826,10 +868,12 @@ describe('calibration live-pattern replay (mock capture only)', () => {
   }
 
   function validation(code: number, hint: string): void {
+    h.handlers['capture:status']('running', { sender: h.wc })
     h.handlers['capture:validation']({ t: Date.now(), code, hint }, { sender: h.wc })
   }
 
   function pulse(): void {
+    h.handlers['capture:status']('running', { sender: h.wc })
     h.handlers['capture:metrics'](
       { t: Date.now(), pulse: { value: 60, stable: true, confidence: 90 } },
       { sender: h.wc }
@@ -843,7 +887,7 @@ describe('calibration live-pattern replay (mock capture only)', () => {
       validation(code, `position ${code}`)
       await vi.advanceTimersByTimeAsync(9000)
       expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual(
-        { progress: 0, hint: `position ${code}`, framing: true }
+        { progress: 0, hint: `position ${code}`, framing: true, starting: false }
       )
     }
     expect(t.ready).toEqual([])
@@ -862,7 +906,7 @@ describe('calibration live-pattern replay (mock capture only)', () => {
         expect(t.ready).toEqual([])
         expect(
           t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload
-        ).toEqual({ progress: 0.5, hint: null, framing: false })
+        ).toEqual({ progress: 0.5, hint: null, framing: false, starting: false })
       }
     }
     expect(t.sensing.phase()).toBe('idle')
@@ -892,7 +936,8 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
       progress: 0,
       hint: 'Place more of the chest in view.',
-      framing: true
+      framing: true,
+      starting: false
     })
     expect(t.events.filter((e) => e.name === 'sdk:checkin-ended')).toHaveLength(1)
     await t.sensing.stop()
@@ -922,7 +967,8 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     expect(t.events.filter((e) => e.name === 'sdk:calibration-progress').at(-1)?.payload).toEqual({
       progress: 0,
       hint: 'Place more of the chest in view.',
-      framing: false
+      framing: false,
+      starting: false
     })
     for (let sec = 0; sec < 40 && t.sensing.phase() === 'calibration'; sec++) {
       pulse()

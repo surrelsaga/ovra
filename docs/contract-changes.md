@@ -1,5 +1,12 @@
 # Contract change requests
 
+## 2026-11-16 — Job 11 — calibration startup stage
+
+- File: src/shared/types.ts
+- Change: optional `starting?: boolean` on `sdk:calibration-progress`; `push:calibration` reuses that payload.
+- Why: show camera startup separately until capture is running and a metrics or validation frame arrives; carries only a flag, no camera data or vitals. Existing producers remain compatible.
+- Status: applied in surrelsaga/ovra-stages (allowed by the Job 11 brief)
+
 Agents: don't edit `src/shared/types.ts` or `package.json`. Add a request here, commit it on your branch,
 and tell the orchestrator. The orchestrator applies it on main and tells everyone to rebase.
 

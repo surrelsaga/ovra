@@ -101,6 +101,7 @@ function fakeRecord(id: string, startedAt: number, lengthMin: number): SessionRe
     'focused',
     'tense',
     'away',
+    'unknown',
     'focused',
     'good',
     'low'
@@ -177,7 +178,9 @@ function fakeServices(bus: Bus, privacy: PrivacyService): { session: () => Sessi
       p = elapsedSec <= 3 ? 0 : Math.min(1, p + 0.2)
       bus.emit('sdk:calibration-progress', {
         progress: p,
-        hint: p === 0 ? 'Move up, or tilt the camera down.' : null
+        hint: p === 0 ? 'Move up, or tilt the camera down.' : null,
+        starting: elapsedSec < 2,
+        framing: p === 0
       })
       setMusic({
         scoringQueue: Math.max(0, music.scoringQueue - 1),
@@ -525,10 +528,12 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await click(main, 'Next')
   await click(main, 'Next')
   await shot(main, dir, '03-onboarding-face')
-  await click(main, 'Vitals and face')
+  await click(main, 'Heart rate, breathing and expressions')
   for (let i = 0; i < 4; i++) await click(main, 'Next')
   await shot(main, dir, '04-onboarding-last')
   await click(main, 'Finish')
+  await wait(300)
+  await click(main, 'Later')
   await shot(main, dir, '05-session-new')
 
   await nav(main, 'music')
@@ -537,7 +542,7 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await shot(main, dir, '07-music-calm')
   await nav(main, 'history')
   await shot(main, dir, '08-history')
-  await click(main, 'Deep work')
+  await click(main, 'Focus')
   await shot(main, dir, '09-history-summary')
   await nav(main, 'privacy')
   await shot(main, dir, '10-privacy')
@@ -547,8 +552,11 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
 
   await nav(main, 'session')
   await click(main, 'Start session')
+  await shot(main, dir, '12a-calibration-starting')
   await wait(1000)
-  await shot(main, dir, '12-calibration')
+  await shot(main, dir, '12b-calibration-framing')
+  await wait(2000)
+  await shot(main, dir, '12c-calibration-steady-pulse')
   await shot(orb, dir, '13-first-camera-on-bubble')
   await wait(8000) // calibration finishes, orb shows
   await shot(orb, dir, '14-first-camera-off-bubble')

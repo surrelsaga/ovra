@@ -141,16 +141,35 @@ describe('calibration preview', () => {
     )
   })
 
-  it('framing check: shows the SDK hint and a Skip that starts the clock', () => {
+  it.each([false, true])('shows startup, framing and steady-pulse stages (demo=%s)', (demo) => {
     const bridge = installFakeBridge()
-    render(<Calibration session={session('calibrating')} settings={settings} />)
-    bridge.push('push:calibration', { progress: 0, hint: 'Lean back a little.', framing: true })
-    expect(screen.getByText('Getting you in view')).toBeInTheDocument()
+    const s = session('calibrating')
+    render(<Calibration session={{ ...s, config: { ...s.config, demo } }} settings={settings} />)
+    expect(screen.getByRole('heading', { name: 'Starting the camera…' })).toBeInTheDocument()
+    expect(screen.queryByText('You’re in view. Keep breathing normally.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+    expect(screen.queryByText(/steady heart rate left/)).toBeNull()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+    bridge.push('push:calibration', { progress: 0, hint: null, framing: true, starting: true })
+    expect(screen.getByRole('heading', { name: 'Starting the camera…' })).toBeInTheDocument()
+    bridge.push('push:calibration', {
+      progress: 0,
+      hint: 'Lean back a little.',
+      framing: true,
+      starting: false
+    })
+    expect(screen.getByRole('heading', { name: 'Getting you in view' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Lean back a little.')
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
     expect(calls(bridge)).toEqual([{ action: 'skip-framing' }])
-    bridge.push('push:calibration', { progress: 0.5, hint: null, framing: false })
+    bridge.push('push:calibration', { progress: 0.5, hint: null, framing: false, starting: false })
+    expect(screen.getByRole('heading', { name: 'Getting to know you' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
     expect(screen.getByText('About 15 s of steady heart rate left')).toBeInTheDocument()
+    expect(
+      screen.getByText('About 15 s of steady heart rate left').closest('.calibration__meta')
+    ).toHaveTextContent('Getting to know you · About 15 s of steady heart rate left')
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
   })
 
   it('failed calibration: plain reason, Try again and Start anyway, camera preview off', () => {

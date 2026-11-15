@@ -114,7 +114,7 @@
 
 /* Away: eclipsed crescent, very dim, still. The full-disk outline keeps it visible on light desktops. */
 .moon[data-away] {
-  --core: var(--orb-dim);
+  --core: var(--away);
   --ink: #262b36;
   opacity: 0.7;
 }

@@ -629,8 +629,13 @@ export interface BusEvents {
    * away and no windows, like a pause. Giving up is an sdk:error with code 'sdk-lost'.
    */
   'sdk:reconnecting': { active: boolean; message?: string }
-  /** Calibration progress, 0–1, with the current hint for the user. framing = clock not started yet. */
-  'sdk:calibration-progress': { progress: number; hint: string | null; framing?: boolean }
+  /** Calibration progress, 0–1. starting = waiting for running capture + first frame; framing = clock not started. */
+  'sdk:calibration-progress': {
+    progress: number
+    hint: string | null
+    framing?: boolean
+    starting?: boolean
+  }
 
   'state:updated': StateUpdate
   /** Baseline built. Payload is only a flag — the baseline itself stays in the state module. */
@@ -748,7 +753,7 @@ export interface IpcPush {
   'push:session': Session | null
   'push:session-tick': SessionTick
   'push:session-summary': SessionSummary
-  'push:calibration': { progress: number; hint: string | null; framing?: boolean }
+  'push:calibration': BusEvents['sdk:calibration-progress']
   /** SDK failure (e.g. credits exhausted) so the main window can show a calm fallback message. */
   'push:sdk-error': SdkError
   'push:state': StateUpdate

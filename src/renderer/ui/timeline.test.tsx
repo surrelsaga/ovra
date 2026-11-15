@@ -22,4 +22,9 @@ it('uses plain labels in the legend and accessible timeline, preserving saved mo
   expect(
     [...container.querySelectorAll('.timeline__seg')].map((s) => s.getAttribute('data-situation'))
   ).toEqual(situations)
+  expect(
+    [...container.querySelectorAll('.timeline__swatch')].map((s) =>
+      s.getAttribute('data-situation')
+    )
+  ).toEqual(situations)
 })

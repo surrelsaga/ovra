@@ -248,7 +248,7 @@
   background: var(--text-muted);
 }
 [data-situation='away'] {
-  background: var(--border-strong);
+  background: var(--away);
 }
 [data-situation='unknown'] {
   background: var(--border);

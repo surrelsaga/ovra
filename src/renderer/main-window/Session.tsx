@@ -185,7 +185,7 @@ export function Calibration({
   session: Session
   settings: AppSettings
 }): React.JSX.Element {
-  const cal = usePush('push:calibration', { progress: 0, hint: null })
+  const cal = usePush('push:calibration', { progress: 0, hint: null, starting: true })
   const music = usePush('push:music', NO_MUSIC)
   const [preview, setPreview] = useState<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState(false)
@@ -194,6 +194,12 @@ export function Calibration({
   // The camera is off while Ovra waits on Try again or Start anyway, so is the preview.
   const previewEnabled = session.status === 'calibrating' && session.sensingEnabled && !failed
   const framing = cal.framing === true
+  const starting = cal.starting === true
+  const stage = starting
+    ? 'Starting the camera…'
+    : framing
+      ? 'Getting you in view'
+      : 'Getting to know you'
   const choose = (action: CalibrationAction): void =>
     void ovra().invoke('session:calibration', { action })
   useEffect(() => {
@@ -255,18 +261,24 @@ export function Calibration({
   return (
     <section className="page page--center" aria-labelledby="calibration-title">
       <MoonOrb mood="calm" listening calibration={cal.progress} away={false} size={128} />
-      <h1 id="calibration-title">Getting to know you</h1>
+      <h1 id="calibration-title" aria-live="polite">
+        {stage}
+      </h1>
       <p className="muted">
-        Sit back so your shoulders and chest are in view, and breathe normally.
+        {starting
+          ? 'This can take a few seconds.'
+          : 'Sit back so your shoulders and chest are in view, and breathe normally.'}
       </p>
-      <div className="calibration-hint" role="status" aria-live="polite">
-        <p className="muted">
-          {cal.hint ? 'Let’s get you in view.' : 'Make yourself comfortable.'}
-        </p>
-        <p className="calibration-hint__text">
-          {cal.hint ?? 'You’re in view. Keep breathing normally.'}
-        </p>
-      </div>
+      {!starting && (
+        <div className="calibration-hint" role="status" aria-live="polite">
+          <p className="muted">
+            {cal.hint ? 'Let’s get you in view.' : 'Make yourself comfortable.'}
+          </p>
+          <p className="calibration-hint__text">
+            {cal.hint ?? 'You’re in view. Keep breathing normally.'}
+          </p>
+        </div>
+      )}
       {previewEnabled && (
         <div className="calibration-preview" aria-label="Live camera preview">
           {devVideo ? (
@@ -302,15 +314,21 @@ export function Calibration({
       <div className="calibration">
         <Progress value={cal.progress} label="Getting to know you progress" />
         <div className="calibration__meta">
-          <span>{framing ? 'Getting you in view' : 'Getting to know you'}</span>
-          {framing ? (
+          <span>
+            {stage}
+            {!starting && !framing && (
+              <>
+                {' · '}
+                <span>
+                  {secLeft > 0 ? `About ${secLeft} s of steady heart rate left` : 'Almost done'}
+                </span>
+              </>
+            )}
+          </span>
+          {!starting && framing && (
             <button type="button" className="text-link" onClick={() => choose('skip-framing')}>
               Skip
             </button>
-          ) : (
-            <span>
-              {secLeft > 0 ? `About ${secLeft} s of steady heart rate left` : 'Almost done'}
-            </span>
           )}
         </div>
         {session.config.music && music.scoringQueue > 0 && (

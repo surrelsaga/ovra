@@ -68,6 +68,7 @@ export function createSensing(deps: SensingDeps): SensingService {
    * when the clock started (OK held framingHoldMs, or Skip). Only steady pulse after clockAt counts.
    */
   let calibration: {
+    hasFrames: boolean
     okSince: number | null
     clockAt: number | null
     pulses: MetricsSnapshot[]
@@ -178,6 +179,7 @@ export function createSensing(deps: SensingDeps): SensingService {
     listening = true
     onCapture('capture:metrics', (m, e) => {
       if (!fromCapture(e) || !current || !privacy.canUseCamera()) return
+      if (calibration) calibration.hasFrames = true
       const face = privacy.canUseFace()
       if (!face) {
         m = { ...m }
@@ -213,6 +215,8 @@ export function createSensing(deps: SensingDeps): SensingService {
     })
     onCapture('capture:validation', (v, e) => {
       if (!fromCapture(e) || !current) return
+      // Validation arrives per frame even when framing prevents any metrics.
+      if (calibration) calibration.hasFrames = true
       validationCode = v.code
       smoother.push(v, Date.now())
       setTimeout(flushValidation, cfg.hintPersistMs)
@@ -416,7 +420,8 @@ export function createSensing(deps: SensingDeps): SensingService {
     bus.emit('sdk:calibration-progress', {
       progress,
       hint: down ? cfg.reconnectingText : smoother.hint(),
-      framing: c.clockAt === null
+      framing: c.clockAt === null,
+      starting: !down && (captureStatus !== 'running' || !c.hasFrames)
     })
   }
 
@@ -489,7 +494,11 @@ export function createSensing(deps: SensingDeps): SensingService {
       smoother.reset()
       validationCode = null
       noFaceFound = false
-      calibration = phase === 'calibration' ? { okSince: null, clockAt: null, pulses: [] } : null
+      calibration =
+        phase === 'calibration'
+          ? { hasFrames: false, okSince: null, clockAt: null, pulses: [] }
+          : null
+      captureStatus = 'starting'
       bus.emit('sdk:checkin-started', { phase })
       push(w, 'push:capture-start', req)
 

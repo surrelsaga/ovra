@@ -36,7 +36,7 @@ export const MOVES: Record<MoveId, Move> = {
         id: 'tilt-left',
         title: 'Tilt left',
         howTo: 'Ease your left ear toward your left shoulder.',
-        durationSec: 25,
+        durationSec: 12,
         animation: 'neck-left',
         check: 'head-tilt-left'
       },
@@ -44,7 +44,23 @@ export const MOVES: Record<MoveId, Move> = {
         id: 'tilt-right',
         title: 'Tilt right',
         howTo: 'Now your right ear toward your right shoulder.',
-        durationSec: 25,
+        durationSec: 12,
+        animation: 'neck-right',
+        check: 'head-tilt-right'
+      },
+      {
+        id: 'tilt-left-again',
+        title: 'Tilt left',
+        howTo: 'Back to the left.',
+        durationSec: 12,
+        animation: 'neck-left',
+        check: 'head-tilt-left'
+      },
+      {
+        id: 'tilt-right-again',
+        title: 'Tilt right',
+        howTo: 'And the right.',
+        durationSec: 12,
         animation: 'neck-right',
         check: 'head-tilt-right'
       },
@@ -52,7 +68,7 @@ export const MOVES: Record<MoveId, Move> = {
         id: 'shoulder-rolls',
         title: 'Shoulder rolls',
         howTo: 'Roll both shoulders slowly back, five times.',
-        durationSec: 25,
+        durationSec: 27,
         animation: 'shoulder-roll',
         check: 'none'
       },

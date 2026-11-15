@@ -1,5 +1,10 @@
 # Demo mode (judge reference)
 
+Demo mode is a quick tour of what Ovra can do (about 16 minutes). It uses your real heart rate
+with the same rules, but reacts much faster, so moods are less certain than in a normal session.
+The demo shows the features; accuracy comes from long normal sessions. For the real experience,
+run a normal session while you work.
+
 Demo mode is a switch on the New session screen. It presets a 20-minute session, leaving margin for
 the roughly 16-minute walk-through, with the camera on the whole time. Ovra still reads your real heart rate and breathing with the same SDK and the **same rules**.
 The only change is how long it waits before it reacts. Nothing is scripted and you can't force a mood: every

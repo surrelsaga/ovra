@@ -414,6 +414,70 @@ describe('classifier', () => {
   })
 })
 
+describe.each([
+  { name: 'normal', c: resolveConfig(), forgetMin: 3 },
+  { name: 'demo', c: resolveConfig(sessionConfig.demo.state), forgetMin: 1 }
+])('no-read forgetting ($name)', ({ c, forgetMin }) => {
+  const window = (signal: WindowEval['signal'], start: number, t: number): WindowEval => ({
+    start,
+    t,
+    signal,
+    pulseDelta: signal === 'low' ? -0.1 : 0.16,
+    backed: false,
+    happyMajority: false,
+    negativeMajority: false
+  })
+
+  it.each(['tense', 'crashing', 'low'] as const)(
+    'forgets %s at the trailing no-read span and stays unknown until a real read',
+    (mood) => {
+      expect(c.noReadForgetMin).toBe(forgetMin)
+      const holdMin =
+        mood === 'low' ? c.lowHoldMin : mood === 'crashing' ? c.crashingTenseMin : c.tenseHoldMin
+      const read = window(mood === 'low' ? 'low' : 'tense', 0, holdMin * MIN)
+      expect(classify([read], 'continuous', null, c).situation).toBe(mood)
+      // A long gap since the read must not count toward the no-read span.
+      const start = read.t + 20 * MIN
+      const history = [read, window('noread', start, start + 10_000)]
+      expect(classify(history, 'continuous', mood, c).situation).toBe(mood)
+      history.push(window('noread', start + 10_000, start + forgetMin * MIN - 1))
+      expect(classify(history, 'continuous', mood, c).situation).toBe(mood)
+      history.push(window('noread', start + 20_000, start + forgetMin * MIN))
+      const forgotten = classify(history, 'continuous', mood, c)
+      expect(forgotten).toEqual({ situation: null, confidence: 0, trend: 'steady' })
+      history.push(window('noread', start + 30_000, start + (forgetMin + 1) * MIN))
+      expect(classify(history, 'continuous', forgotten.situation, c)).toEqual(forgotten)
+      history.push(window('steady', start + (forgetMin + 1) * MIN, start + (forgetMin + 2) * MIN))
+      expect(classify(history, 'continuous', null, c).situation).toBe('focused')
+    }
+  )
+
+  it.each(['focused', 'good'] as const)('keeps %s across prolonged no reads', (mood) => {
+    const read = { ...window('steady', 0, MIN), happyMajority: mood === 'good' }
+    const history = [read, window('noread', MIN, 20 * MIN)]
+    expect(classify(history, 'continuous', mood, c).situation).toBe(mood)
+    expect(classify(history, 'checkins', mood, c).situation).toBe(mood)
+  })
+
+  it('restarts the no-read span after an intervening real window', () => {
+    const history = [
+      window('low', 0, c.lowHoldMin * MIN),
+      window('noread', 10 * MIN, (10 + forgetMin) * MIN - 1),
+      window('unclear', 20 * MIN, 21 * MIN),
+      window('noread', 30 * MIN, 30 * MIN + 10_000)
+    ]
+    expect(classify(history, 'continuous', 'low', c).situation).toBe('low')
+  })
+})
+
+it('does not forget on one failed check-in after a long camera-off gap, but does on two', () => {
+  const read = evaluateWindow(stream(0, 90, { pulse: 54 }), pulseOnly, cfg)
+  const history = [read, evaluateWindow(stream(20 * MIN, 90, {}), pulseOnly, cfg)]
+  expect(classify(history, 'checkins', 'low', cfg).situation).toBe('low')
+  history.push(evaluateWindow(stream(25 * MIN, 90, {}), pulseOnly, cfg))
+  expect(classify(history, 'checkins', 'low', cfg).situation).toBeNull()
+})
+
 describe('config overrides', () => {
   it('applies known numeric keys only', () => {
     const c = resolveConfig({ tensePulsePct: 0.3, bogus: 1, awayNoFaceSec: NaN })

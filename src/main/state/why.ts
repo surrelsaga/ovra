@@ -42,7 +42,13 @@ export function whyLine(
   const last = history[history.length - 1]
   if (!last) return undefined
   if (last.signal === 'noread')
-    return { text: "Couldn't see you clearly · no change", moving: false }
+    return {
+      text:
+        situation === null
+          ? 'Lost track of you for a bit · checking again'
+          : "Couldn't see you clearly · no change",
+      moving: false
+    }
   const up = last.signal === 'tense' || !!last.nearTense
   const down = last.signal === 'low' || !!last.nearLow
 

@@ -31,8 +31,9 @@ export const sessionConfig = {
       continuousWindowSec: 30,
       continuousUpdateSec: 10,
       baselineRefineMin: 2,
-      tenseHoldMin: 0.5,
-      lowHoldMin: 0.5,
+      tenseHoldMin: 0.75,
+      lowHoldMin: 1,
+      noReadForgetMin: 1,
       crashingTenseMin: 2,
       awayNoFaceSec: 15
     },
@@ -61,7 +62,7 @@ export const sessionConfig = {
       {
         after: ['returned'],
         text: 'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.',
-        timeoutMs: 120_000
+        timeoutMs: 150_000
       },
       { after: ['low', 'timeout'], text: 'Demo: let the session wind down to see your summary.' }
     ] as DemoHint[]

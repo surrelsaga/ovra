@@ -32,8 +32,13 @@ usual from the first 30 s of steady heart rate during the session.
 - **Each check looks at:** the last minute.
 - **How often:** every 30 seconds. Demo mode: the last 30 s, every 10 s.
 - **When a check doesn't count:** if it has less than 10 seconds of steady heart rate (you moved a lot,
-  turned away, or the camera couldn't see you well), it's a **"Couldn't see you"**. Ovra changes nothing: no new mood,
-  no music change, and any build-up is paused, not lost.
+  turned away, or the camera couldn't see you well), it's a **"Couldn't see you"**. Any build-up pauses,
+  and music keeps its last choice. Short gaps keep the mood too.
+- **When Ovra forgets:** after trailing no-read windows span **3 min** (**1 min in demo**), Stressed,
+  Very stressed or Tired becomes unknown. Steady and Good mood stay. This measures the last no-read
+  window's end minus the first trailing no-read window's start, not time since the last good reading:
+  waiting between check-ins doesn't trigger it by itself. One failed normal check-in keeps the mood;
+  two in a row can forget it. No new mood is guessed from missing readings.
 
 ## 4. The moods
 
@@ -41,9 +46,9 @@ usual from the first 30 s of steady heart rate during the session.
 | -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **Steady**           | focused    | heart rate within 8% of your usual                                                                                                              | at once                        |
 | **Good mood**        | good       | Steady, plus smiling most of the time (needs 10 s of face)                                                                                      | at once                        |
-| **Stressed**         | tense      | heart rate **15% above** usual, or **10% above** if your time between heartbeats also changes. A clear change in the other direction cancels it | **3 min** in a row (demo 30 s) |
+| **Stressed**         | tense      | heart rate **15% above** usual, or **10% above** if your time between heartbeats also changes. A clear change in the other direction cancels it | **3 min** in a row (demo 45 s) |
 | **Very stressed**    | crashing   | Stressed for **10 min**, or heart rate **20% above** usual with a frowning/upset face                                                           | 10 min (demo 2 min)            |
-| **Tired**            | low        | heart rate **8% below** usual, or blinking a lot more with heart rate a little below (4%)                                                       | **2 min** in a row (demo 30 s) |
+| **Tired**            | low        | heart rate **8% below** usual, or blinking a lot more with heart rate a little below (4%)                                                       | **2 min** in a row (demo 60 s) |
 | **Couldn't see you** | no reading | not enough steady signal yet                                                                                                                    | —                              |
 | **Away**             | away       | see §5                                                                                                                                          | 20 s (demo 15 s)               |
 
@@ -52,6 +57,9 @@ Things that keep it fair:
 - **Almost counts:** a check that _almost_ meets the bar (within 3%) pauses the countdown instead of resetting it.
 - **One odd check isn't enough:** a single check never changes the mood on its own. It must hold.
 - **Unclear checks:** when a check is unclear, the previous mood stays.
+
+The demo holds outlast its 30 s window so a short dip cannot confirm Tired by itself. Allow about
+16 minutes for the full demo walk-through; the rest hint allows 150 s for Tired to appear.
 
 ## 5. Away
 
@@ -67,7 +75,7 @@ Things that keep it fair:
 
 | Mood                                 | Music                                                                                                 | Break reminder (at most one every 20 min)                                  |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Couldn't see you                     | Steady, using your activity's usual songs                                                             | —                                                                          |
+| Couldn't see you                     | Steady before the first mood; after a dropout, keeps its last choice                                  | reminders after sitting only                                               |
 | Steady                               | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | after 45 min seated: neck stretch; 60 min: stand and stretch; 90 min: walk |
 | Good mood                            | Keep it going (brighter songs)                                                                        | reminders after sitting only                                               |
 | Stressed                             | Calm down (calmer songs, from the next song)                                                          | under 5 min stressed: breathe along. Later: neck and shoulders             |
@@ -100,4 +108,5 @@ Music choices say **Pick me up**, **Calm down**, **Quiet**, **Keep it going**, *
 The line below the moon says **"Heart rate higher than when you started"**,
 **"Heart rate lower than when you started"** or **"Heart rate like when you started"**.
 When the camera cannot get a clear reading it says **"Couldn't see you clearly · no change"**.
+After forgetting a mood it says **"Lost track of you for a bit · checking again"** until the next real reading.
 These are descriptions for everyday wellbeing, not diagnoses.

@@ -152,8 +152,14 @@ never saved or sent, and are dropped when the session ends.
 
 - **Old:** at least 3 steady pulse readings (under 1 s of data at 4 readings per second).
 - **New:** at least **10 s of steady pulse** in the window.
-  - A window below that is **no read**. It pauses every hold (adds no time, resets nothing), keeps the
-    current situation and music, and the why line says "Low signal, holding steady".
+  - A window below that is **no read**. It pauses every hold (adds no time, resets nothing), keeps
+    music unchanged, and the why line says "Couldn't see you clearly · no change".
+  - Short gaps keep the current situation. If trailing no-read windows span **3 min** (demo **1 min**),
+    **tense, crashing or low becomes unknown**; focused/good stay. The span is the last no-read `t`
+    minus the first trailing no-read `start`, not time since the last read. A long camera-off gap
+    before a single failed check-in cannot trigger it; two failed normal check-ins in a row can.
+    The why line then says **"Lost track of you for a bit · checking again"** until a real reading
+    returns. Music keeps its last choice, and missing readings cannot revive the forgotten mood.
 
 ### 5.3 Situations
 
@@ -168,11 +174,11 @@ still-sitting calibration. The +10% bar remains available when a steady RMSSD dr
 |---|---|---|
 | **Focused** | Δpulse within ±8% and Δbreathing within ±15% (if present) | Δpulse within ±8%. Breathing ignored |
 | **Good** | Focused + happy is the top expression in more than half the face frames | same, but needs at least 10 s of face frames with expressions. Without them it's just Focused |
-| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+15%** alone, or **+10% with ΔRMSSD ≤ −15%**. Breathing ≥ +15% adds confidence only, never lowers the pulse bar. **Veto:** ΔRMSSD ≥ +15% (body says relaxed). Held **3 min** (demo 30 s), or **2 check-ins** |
+| **Tense** | Δpulse ≥ +10% **and** (RMSSD ≤ −15% **or** Δbreathing ≥ +20%) when either exists; pulse alone otherwise. Held 3 min (demo 30 s) | Δpulse ≥ **+15%** alone, or **+10% with ΔRMSSD ≤ −15%**. Breathing ≥ +15% adds confidence only, never lowers the pulse bar. **Veto:** ΔRMSSD ≥ +15% (body says relaxed). Held **3 min** (demo **45 s**), or **2 check-ins** |
 | **Crashing out** | tense held 10 min (demo 2), or Δpulse ≥ +20% with an angry/sad/disgust majority | same |
-| **Low** | Δpulse ≤ −8% **and** Δbreathing ≤ −15% when breathing exists; or blink rate ≥ +50% with Δpulse ≤ −4%. Held 2 min (demo 30 s) | Δpulse ≤ **−8%**, or blink rate ≥ +50% with Δpulse ≤ −4%. Breathing ignored. Held **2 min** (demo 30 s) |
+| **Low** | Δpulse ≤ −8% **and** Δbreathing ≤ −15% when breathing exists; or blink rate ≥ +50% with Δpulse ≤ −4%. Held 2 min (demo 30 s) | Δpulse ≤ **−8%**, or blink rate ≥ +50% with Δpulse ≤ −4%. Breathing ignored. Held **2 min** (demo **60 s**) |
 | **Near miss** | within 3% of the tense/low bar pauses the hold | within **3 percentage points** of the active tense bar (+15% alone, +10% with HRV backing) or the low bar pauses the hold; adds no qualifying time |
-| **No read** | window skipped; the next real window could reset holds | **pauses** holds, like a near miss |
+| **No read** | window skipped; the next real window could reset holds | **pauses** holds; after 3 min (demo 1 min), forgets tense/crashing/low |
 
 Why the backers changed from "required" to "optional":
 - Breathing needs the chest (code 7) plus decent clothing contrast and light. HRV needs 60 s of clean
@@ -183,6 +189,12 @@ Why the backers changed from "required" to "optional":
 
 **Same in every mode.** Demo mode uses these exact rules and bars; it only shortens waits (windows,
 holds, max calibration wait). Dev tools (monitor, harness, video source) run the same code.
+
+**Demo accuracy (Job 15).** A 30 s hold equalled the demo window, so a short dip could confirm Tired
+using overlapping windows even after fresh readings stopped. Holds now outlast that window (45 s
+tense, 60 s low); no signal bars changed. Prolonged no-reads forget a held mood so standing up for
+its reminder cannot keep it alive indefinitely. The rest hint waits 150 s, and the full walk-through
+takes about 16 min. These changes follow the Job 13 replay; no recorded readings are kept in the repo.
 
 ### 5.4 Presence and away
 

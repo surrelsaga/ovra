@@ -59,8 +59,8 @@ describe('why line', () => {
       negativeMajority: false
     }
     expect(whyLine([short], 'focused', 'continuous', demo)).toEqual({
-      text: 'Heart rate higher than when you started · 20 of 30 s',
-      progress: 20 / 30,
+      text: 'Heart rate higher than when you started · 20 of 45 s',
+      progress: 20 / 45,
       moving: true
     })
     // After tense, it counts toward crashing.
@@ -102,6 +102,39 @@ describe('why line', () => {
     // The hold resumes where it was.
     expect(whyLine([...history, w('tense', 90_000)], 'focused', 'continuous', normal)?.text).toBe(
       'Heart rate higher than when you started · 1 of 3 min'
+    )
+  })
+
+  it.each([normal, demo])('explains a forgotten mood until the next real window', (cfg) => {
+    const read: WindowEval = {
+      start: 0,
+      t: cfg.lowHoldMin * 60_000,
+      signal: 'low',
+      pulseDelta: -0.1,
+      backed: false,
+      happyMajority: false,
+      negativeMajority: false
+    }
+    const history = [read]
+    let situation = classify(history, 'continuous', null, cfg).situation
+    expect(situation).toBe('low')
+    for (const extra of [0, 10_000, 120_000]) {
+      history.push({
+        ...read,
+        signal: 'noread',
+        start: read.t,
+        t: read.t + cfg.noReadForgetMin * 60_000 + extra
+      })
+      situation = classify(history, 'continuous', situation, cfg).situation
+      expect(whyLine(history, situation, 'continuous', cfg)).toEqual({
+        text: 'Lost track of you for a bit · checking again',
+        moving: false
+      })
+    }
+    history.push({ ...read, signal: 'steady', start: 10 * 60_000, t: 11 * 60_000 })
+    situation = classify(history, 'continuous', situation, cfg).situation
+    expect(whyLine(history, situation, 'continuous', cfg)?.text).toBe(
+      'Heart rate like when you started'
     )
   })
 

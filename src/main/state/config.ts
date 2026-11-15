@@ -10,8 +10,10 @@ export const stateConfig = {
   baselineRefineMin: 10,
 
   // One evaluation window (a check-in, or the sliding window in continuous mode).
-  /** Below this many seconds of steady pulse the window is "no read": holds pause, the situation stays. */
+  /** Below this many seconds of steady pulse the window is "no read": holds pause. */
   windowMinPulseSec: 10,
+  /** Forget tense/crashing/low after this span of trailing no-read windows, not time since the last read. */
+  noReadForgetMin: 3,
   /** Good needs at least this many seconds of face frames with expressions; otherwise it's Focused. */
   goodMinFaceSec: 10,
   /** Ignore breathing for a window when talking shows in more than this fraction of face frames. */

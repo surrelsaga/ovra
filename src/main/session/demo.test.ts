@@ -71,6 +71,7 @@ describe('demo pace', () => {
 
     bus.emit('session:started', session(true))
     const c = live().state as StateConfig
+    expect(c).toMatchObject({ tenseHoldMin: 0.75, lowHoldMin: 1, noReadForgetMin: 1 })
     for (const key of Object.keys(stateConfig) as (keyof StateConfig)[]) {
       const want = key in demo.state ? demo.state[key as keyof typeof demo.state] : stateConfig[key]
       expect(c[key], key).toBe(want)
@@ -128,6 +129,42 @@ describe('synthetic exercise curve', () => {
     expect(exerciseRun(resolveConfig({ ...demo.state }))).toContain('tense')
     expect(exerciseRun(resolveConfig())).not.toContain('tense')
   })
+
+  it.each([
+    { dipSec: 10, lowWindows: 1 },
+    { dipSec: 20, lowWindows: 3 }
+  ])(
+    'rejects a $dipSec s dip followed by no reads ($lowWindows low windows)',
+    ({ dipSec, lowWindows }) => {
+      const cfg = resolveConfig(demo.state)
+      const baseline: Baseline = { pulse: 70, samples: 30, builtAt: 0 }
+      // Synthetic log shape: steady, a short dip, then visible but unmeasurable.
+      const snaps: MetricsSnapshot[] = Array.from({ length: 240 }, (_, i) => ({
+        t: i * 1000,
+        ...(i < 40 + dipSec && {
+          pulse: { value: i < 40 ? 70 : 63, confidence: 90, stable: true }
+        })
+      }))
+      const history: WindowEval[] = []
+      let situation: Situation | null = 'focused'
+      const seen: (Situation | null)[] = []
+      for (let t = 30_000; t < 240_000; t += cfg.continuousUpdateSec * 1000) {
+        history.push(
+          evaluateWindow(
+            snaps.filter((s) => s.t <= t && s.t >= t - cfg.continuousWindowSec * 1000),
+            baseline,
+            cfg
+          )
+        )
+        situation = classify(history, 'continuous', situation, cfg).situation
+        seen.push(situation)
+      }
+      expect(history.filter((w) => w.signal === 'low')).toHaveLength(lowWindows)
+      expect(history.at(-1)?.signal).toBe('noread')
+      expect(seen).not.toContain('low')
+      expect(seen.every((s) => s === 'focused')).toBe(true)
+    }
+  )
 })
 
 describe('demo hints', () => {
@@ -140,7 +177,7 @@ describe('demo hints', () => {
     expect(advanceHint(5, 'focused')).toBeNull()
   })
 
-  it('shows each hint after its state happens, then the low step times out after ~2 min', async () => {
+  it('shows each hint after its state happens, then allows 150 s for the low step', async () => {
     vi.useFakeTimers()
     const { bus } = await setup()
     const hints: string[] = []
@@ -173,6 +210,10 @@ describe('demo hints', () => {
       'Demo: breathe slowly, about 6 a minute, and blink often. This mood might not appear.'
     ])
     vi.advanceTimersByTime(120_000)
+    expect(hints).toHaveLength(6)
+    vi.advanceTimersByTime(29_999)
+    expect(hints).toHaveLength(6)
+    vi.advanceTimersByTime(1)
     expect(hints.at(-1)).toBe('Demo: let the session wind down to see your summary.')
     expect(hints.every((h) => h.startsWith('Demo:'))).toBe(true)
 

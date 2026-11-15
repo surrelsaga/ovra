@@ -130,7 +130,7 @@ export function buildBaseline(
   }
 }
 
-/** 'noread': under windowMinPulseSec of steady pulse. Pauses holds like a near miss, keeps the situation. */
+/** 'noread': under windowMinPulseSec of steady pulse. Pauses holds; prolonged runs forget tense/crashing/low. */
 export type WindowSignal = 'tense' | 'low' | 'steady' | 'unclear' | 'noread'
 
 /** One evaluated window. Relative values only; in-memory only. */
@@ -279,7 +279,19 @@ export function classify(
   previous: Situation | null,
   cfg: StateConfig
 ): Classification {
-  // No-read windows pause holds (see streak) and are invisible here, so the situation stays.
+  let noReadStart = history.length
+  while (noReadStart > 0 && history[noReadStart - 1].signal === 'noread') noReadStart--
+  const firstNoRead = history[noReadStart]
+  if (
+    previous !== 'focused' &&
+    previous !== 'good' &&
+    firstNoRead &&
+    history[history.length - 1].t - firstNoRead.start >= cfg.noReadForgetMin * 60_000
+  )
+    // Null stays unknown until a real reading, rather than reviving the old mood from history.
+    return { situation: null, confidence: 0, trend: 'steady' }
+
+  // Short no-read runs pause holds (see streak) and otherwise keep the situation.
   const reads = history.filter((w) => w.signal !== 'noread')
   const last = reads[reads.length - 1]
   if (!last) return { situation: previous, confidence: 0, trend: 'steady' }

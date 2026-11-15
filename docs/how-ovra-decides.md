@@ -24,6 +24,13 @@ is kept in your history.
    minutes are never learned, so stress can't become "normal".
 3. **After that it's fixed** for the rest of the session. Every session starts fresh, and nothing carries over.
 
+**Demo only:** the first **2 minutes after your usual exists** also learn from readable checks that
+look low, near-low or unclear. Checks that look Stressed or almost Stressed never teach it, and
+unreadable checks never count. This lets a short start that read too high come back down. The tradeoff:
+a real tired spell during those first 2 minutes may be learned as usual. After 2 minutes the usual is
+fixed in demo. Normal mode has **no settle period** and keeps the calm-only 10-minute rule above.
+The heart-rate bars, backup rules and minimum readable seconds are the same in both modes.
+
 If getting to know you doesn't reach 30 s, you choose **Try again** or **Start anyway**. Start anyway learns your
 usual from the first 30 s of steady heart rate during the session.
 
@@ -89,6 +96,14 @@ Music rules:
 - **How often:** the music changes direction at most once every 3 minutes. The first real mood can switch at once.
 - **"Leave my music alone":** turns all of this off.
 - **What plays:** songs come from your playlists, never the same song twice in a session.
+
+**Demo timings:** music winds down only in the last **2 minutes**, and every music direction change
+starts a song right away (only Quiet fades). Changes are still at least 20 seconds apart. Break
+reminders are at least 1 minute apart, and **1 more min** puts one off for 1 minute. The seated neck
+stretch comes after 3 minutes; seated stand/walk waits are 60 minutes, so Tired and Very stressed
+can show their own reminders during the tour. Move lengths stay the same. The ordered tour gives
+each attempt a time limit and an honest fallback; early moods are remembered for their own step.
+History and the summary mark these sessions **Demo session · shorter waits**.
 
 ## 7. What changed today and why
 

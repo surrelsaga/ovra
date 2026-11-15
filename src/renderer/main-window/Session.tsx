@@ -225,12 +225,19 @@ export function Calibration({
         <MoonOrb mood="dim" listening={false} away={false} size={128} />
         <h1 id="calibration-title">Getting to know you</h1>
         <div className="calibration-hint" role="alert">
-          <p className="muted">I couldn’t get a steady read this time.</p>
-          <p className="calibration-hint__text">{failed}</p>
-          <p className="muted">
-            Even light on your face and a still moment usually help. Or start now, and I’ll get to
-            know you as we go.
-          </p>
+          {session.calibrationSdkFailed ? (
+            // The SDK failed, not the readings: say why, without posture advice.
+            <p className="calibration-hint__text">{failed}</p>
+          ) : (
+            <>
+              <p className="muted">I couldn’t get a steady read this time.</p>
+              <p className="calibration-hint__text">{failed}</p>
+              <p className="muted">
+                Even light on your face and a still moment usually help. Or start now, and I’ll get
+                to know you as we go.
+              </p>
+            </>
+          )}
         </div>
         <div className="page__actions">
           <Button variant="primary" icon={<RotateCcw />} onClick={() => choose('retry')}>

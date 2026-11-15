@@ -76,6 +76,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let away = false
   let manualAway = false
   let paused = false
+  /** The SDK is restarting after a crash: camera-off, like a pause (no away, no windows). */
+  let reconnecting = false
   let lastEval = 0
   let windows = 0
   let timer: ReturnType<typeof setInterval> | undefined
@@ -117,7 +119,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     lastFace = lastFrame = null
     validationCode = ValidationCode.ok
     wakeBuckets.clear()
-    away = manualAway = paused = false
+    away = manualAway = paused = reconnecting = false
   }
 
   /** Rolling baseline (approach 4): only after a failed calibration, from in-session steady pulse. */
@@ -192,7 +194,11 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
 
   // Continuous mode: away after N s without presence evidence, and a periodic update.
   function tick(): void {
-    if (paused || (phase !== 'continuous' && (mode !== 'continuous' || phase !== 'return-check')))
+    if (
+      paused ||
+      reconnecting ||
+      (phase !== 'continuous' && (mode !== 'continuous' || phase !== 'return-check'))
+    )
       return
     const now = Date.now()
     const c = cfg()
@@ -219,6 +225,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
       (p === 'continuous' || p === 'return-check')
     phase = p
     lastEnded = null
+    reconnecting = false
     phaseStart = lastEval = Date.now()
     buf = []
     sawFace = false
@@ -277,6 +284,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (p !== phase) return
     lastEnded = p
     phase = null
+    reconnecting = false
     const snaps = buf
     buf = []
     stopTimer()
@@ -351,11 +359,22 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     lastFace = lastFrame = null
     phaseStart = Date.now()
   })
+  bus.on('sdk:reconnecting', ({ active }) => {
+    if (!phase) return
+    reconnecting = active
+    wakeBuckets.clear()
+    // Back up: the outage was camera-off time, so the away clock starts over.
+    if (!active) {
+      lastFace = lastFrame = null
+      phaseStart = Date.now()
+    }
+  })
 
   return {
     reset,
     current,
     why() {
+      if (reconnecting) return { text: 'Camera reconnecting', moving: true }
       if (paused || away) return undefined
       // "Start anyway": no baseline yet, music follows the activity default meanwhile.
       if (!baseline)

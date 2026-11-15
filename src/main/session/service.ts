@@ -71,6 +71,8 @@ export function createSessionService(deps: SessionDeps): SessionService {
   let ending: Promise<SessionRecord | null> | null = null
   let dataGeneration = 0
   let recordCameraMode: SessionRecord['cameraMode'] = 'off'
+  /** The SDK is down or gave up: a failed calibration shows this instead of the readings bar. */
+  let sdkTrouble: string | null = null
 
   const announceStatus = (status: SessionStatus, reason: string, source: string): void =>
     bus.emit('monitor:session-change', { t: Date.now(), status, reason, source })
@@ -119,7 +121,9 @@ export function createSessionService(deps: SessionDeps): SessionService {
         // Never run blind: wait for Try again or Start anyway on the calibration screen.
         if (!ok)
           return update(
-            { calibrationFailed: reason ?? "I couldn't get a steady read." },
+            sdkTrouble
+              ? { calibrationFailed: sdkTrouble, calibrationSdkFailed: true }
+              : { calibrationFailed: reason ?? "I couldn't get a steady read." },
             'baseline failed',
             'state:baseline-ready'
           )
@@ -168,8 +172,18 @@ export function createSessionService(deps: SessionDeps): SessionService {
       bus.on('privacy:changed', (p) => {
         if (p.camera !== 'yes') disableSensing('camera consent withdrawn', 'privacy:changed')
       }),
+      bus.on('sdk:reconnecting', ({ active, message }) => {
+        sdkTrouble = active ? (message ?? null) : null
+      }),
       bus.on('sdk:error', (error) => {
-        if (!session?.sensingEnabled || (error.retryable && error.code !== 'start-failed')) return
+        if (!session?.sensingEnabled || error.retryable) return
+        if (error.code === 'sdk-lost') {
+          sdkTrouble = error.message
+          // Calibration shows the reason with Try again (sensing ends the phase itself).
+          if (session.status === 'calibrating') return
+          disableSensing('sensing lost', 'sdk:error')
+          return bubble(`${error.message} ${sessionConfig.carryOnBubble}`)
+        }
         disableSensing('sensing unavailable', 'sdk:error')
         bubble(sessionConfig.cameraFailedBubble)
       })
@@ -193,6 +207,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
 
   /** Calibration, or the camera-failed fallback if sensing can't start. */
   async function calibrate(): Promise<void> {
+    sdkTrouble = null
     try {
       await sensing.resume()
       await sensing.startCalibration()
@@ -208,11 +223,19 @@ export function createSessionService(deps: SessionDeps): SessionService {
     const s = session
     if (s?.status !== 'calibrating' || !s.calibrationFailed) return
     if (action === 'start-anyway') {
-      update({ status: 'running', calibrationFailed: undefined }, 'start anyway', 'ipc/user')
+      update(
+        { status: 'running', calibrationFailed: undefined, calibrationSdkFailed: undefined },
+        'start anyway',
+        'ipc/user'
+      )
       bubble(sessionConfig.startAnywayBubble)
       return startSchedule(s)
     }
-    update({ calibrationFailed: undefined }, 'calibration retry', 'ipc/user')
+    update(
+      { calibrationFailed: undefined, calibrationSdkFailed: undefined },
+      'calibration retry',
+      'ipc/user'
+    )
     state.reset()
     await calibrate()
   }
@@ -231,6 +254,7 @@ export function createSessionService(deps: SessionDeps): SessionService {
     }
     clearRecord()
     resumeAfterReturnCheck = false
+    sdkTrouble = null
     offs = listen()
 
     bus.emit('session:started', session)

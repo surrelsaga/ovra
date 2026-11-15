@@ -14,7 +14,7 @@ vi.mock('@smartspectra/node-sdk/renderer', () => ({
   breathingMetrics: [],
   cardioMetrics: [],
   faceMetrics: [],
-  ProcessingStatus: { kIdle: 0, kStarting: 1, kRunning: 2, kStopping: 3 },
+  ProcessingStatus: { kIdle: 0, kStarting: 1, kRunning: 2, kStopping: 3, kError: 5 },
   SmartSpectraSDK: vi.fn(function (this: Record<string, unknown>) {
     this.processingStatus = 0
     this.on = (name: string, fn: (...args: unknown[]) => void) => (h.events[name] = fn)
@@ -33,6 +33,8 @@ beforeEach(async () => {
   vi.useFakeTimers()
   vi.setSystemTime(1_000_000)
   vi.resetModules()
+  // These cases use the SDK-acquired camera; the shrunk frame is covered by config.test.ts.
+  vi.stubEnv('RENDERER_VITE_OVRA_LIVE_SCALE', '1')
   h.send.mockClear()
   h.destroy.mockClear()
   h.track.readyState = 'live'
@@ -50,6 +52,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 async function start(diagnostics = false): Promise<void> {
@@ -139,5 +142,26 @@ it('forwards raw validation and the SDK frame timestamp instead of refreshing a 
     { t: timestampUs / 1000, validationCode: 7, face: { present: true } },
     { t: timestampUs / 1000, validationCode: 7, face: { present: true } }
   ])
+  await stop()
+})
+
+it('reports SDK errors and the kError status to main without stopping itself', async () => {
+  await start()
+  h.events.error(1, 'SmartSpectra is not in a valid state for this operation', false)
+  h.events.processingStatus(5)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(h.send).toHaveBeenCalledWith('capture:error', {
+    code: 1,
+    message: 'SmartSpectra is not in a valid state for this operation',
+    retryable: false
+  })
+  expect(h.send).toHaveBeenCalledWith('capture:error', {
+    code: 'sdk-status',
+    message: 'SDK processing status is kError',
+    retryable: false
+  })
+  // Main decides whether to restart or give up.
+  expect(h.send).not.toHaveBeenCalledWith('capture:status', 'stopping')
+  expect(h.destroy).not.toHaveBeenCalled()
   await stop()
 })

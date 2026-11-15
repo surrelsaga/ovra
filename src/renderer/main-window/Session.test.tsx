@@ -179,6 +179,26 @@ describe('calibration preview', () => {
     expect(calls(bridge)).toEqual([{ action: 'retry' }, { action: 'start-anyway' }])
   })
 
+  it('failed calibration from the SDK: shows its reason, not the readings advice', () => {
+    const bridge = installFakeBridge()
+    render(
+      <Calibration
+        session={{
+          ...session('calibrating'),
+          calibrationFailed: "Couldn't reach Presage. Check your internet or VPN.",
+          calibrationSdkFailed: true
+        }}
+        settings={settings}
+      />
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't reach Presage. Check your internet or VPN.")
+    expect(alert).not.toHaveTextContent('steady read')
+    expect(alert).not.toHaveTextContent('Even light')
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(calls(bridge)).toEqual([{ action: 'retry' }])
+  })
+
   it('does not request media after consent is absent', () => {
     installFakeBridge()
     const getUserMedia = vi.fn()

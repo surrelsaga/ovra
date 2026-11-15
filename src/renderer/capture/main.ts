@@ -189,10 +189,18 @@ async function start(req: CaptureStartRequest): Promise<void> {
     lastCode = code
     ovra.send('capture:validation', { t: Date.now(), code, hint })
   })
+  // Main decides what a terminal error means (restart or give up), so capture never stops itself.
   sdk.on('error', (code, message, retryable) => {
     ovra.send('capture:error', { code, message, retryable })
-    // Terminal error: release the stream now instead of holding the camera until main stops us.
-    if (!retryable && active === a) enqueue(stop)
+  })
+  // The SDK can sit in kError without a terminal 'error' event (live run, decision 48).
+  sdk.on('processingStatus', (status) => {
+    if (status === ProcessingStatus.kError && active === a)
+      ovra.send('capture:error', {
+        code: 'sdk-status',
+        message: 'SDK processing status is kError',
+        retryable: false
+      })
   })
   sdk.on('streamAvailable', (stream) => {
     a.streams.push(stream)
@@ -216,7 +224,12 @@ async function start(req: CaptureStartRequest): Promise<void> {
     await sdk.start()
     if (active === a) ovra.send('capture:status', 'running')
   } catch (err) {
-    ovra.send('capture:error', { code: 'start-failed', message: errMsg(err), retryable: true })
+    const code = (err as { code?: unknown } | null)?.code
+    ovra.send('capture:error', {
+      code: 'start-failed',
+      message: typeof code === 'number' ? `${errMsg(err)} (SDK code ${code})` : errMsg(err),
+      retryable: true
+    })
     await stop()
   }
 }

@@ -247,20 +247,31 @@ describe('phases and check-in scheduler', () => {
     expect(names()).toEqual(['sdk:checkin-started:continuous', 'sdk:checkin-ended:continuous'])
   })
 
-  it('ends a phase promptly if renderer startup fails', async () => {
-    const { sensing, names } = setup()
-    await sensing.startReturnCheck()
-    h.handlers['capture:error'](
-      { code: 'start-failed', message: 'Video unavailable', retryable: true },
-      { sender: h.wc }
-    )
+  it('retries a failed renderer start, then ends the phase with a plain reason', async () => {
+    const { sensing, names, events } = setup()
+    await sensing.startContinuous()
+    const fail = (): void =>
+      h.handlers['capture:error'](
+        { code: 'start-failed', message: 'Video unavailable', retryable: true },
+        { sender: h.wc }
+      )
+    fail()
+    for (const wait of sensingConfig.restartBackoffMs) {
+      await vi.advanceTimersByTimeAsync(wait)
+      fail()
+    }
     await vi.advanceTimersByTimeAsync(0)
     expect(sensing.phase()).toBe('idle')
-    expect(names()).toEqual([
-      'sdk:checkin-started:return-check',
-      'sdk:error',
-      'sdk:checkin-ended:return-check'
+    expect(h.pushes.filter((p) => p.channel === 'push:capture-start')).toHaveLength(4)
+    expect(names().filter((n) => n.startsWith('sdk:checkin'))).toEqual([
+      'sdk:checkin-started:continuous',
+      'sdk:checkin-ended:continuous'
     ])
+    expect(events.filter((e) => e.name === 'sdk:error').at(-1)?.payload).toEqual({
+      code: 'sdk-lost',
+      message: sensingConfig.lostMessage,
+      retryable: false
+    })
   })
 
   it('says in the dev log when the dev video source does not exist', async () => {
@@ -568,6 +579,218 @@ it('denies a late media permission request after camera consent is revoked', asy
   h.permissionRequest!(h.wc, 'media', answer, { mediaTypes: ['video'] })
   expect(answer).toHaveBeenCalledWith(false)
   expect(h.permissionCheck!(h.wc, 'media')).toBe(false)
+})
+
+describe('SDK crash recovery (decision 48)', () => {
+  const capture = (channel: string, payload: unknown): void =>
+    h.handlers[channel](payload, { sender: h.wc })
+  const starts = (): unknown[] =>
+    h.pushes.filter((p) => p.channel === 'push:capture-start').map((p) => p.payload)
+  const reconnecting = (events: Setup['events']): unknown[] =>
+    events.filter((e) => e.name === 'sdk:reconnecting').map((e) => e.payload)
+
+  it('restarts the same stream on kError without ending the phase, and says it is reconnecting', async () => {
+    const t = setup()
+    t.bus.on('sdk:reconnecting', (payload) => t.events.push({ name: 'sdk:reconnecting', payload }))
+    await t.sensing.startContinuous()
+    capture('capture:status', 'running')
+    capture('capture:error', {
+      code: 'sdk-status',
+      message: 'SDK processing status is kError',
+      retryable: false
+    })
+    // Repeated signals from the same dead instance don't use up attempts.
+    capture('capture:error', { code: 1, message: 'not in a valid state', retryable: false })
+    expect(reconnecting(t.events)).toEqual([{ active: true, message: sensingConfig.lostMessage }])
+    await vi.advanceTimersByTimeAsync(sensingConfig.restartBackoffMs[0])
+    expect(starts()).toHaveLength(2)
+    expect(starts()[1]).toMatchObject({ phase: 'continuous', apiKey: 'test-key' })
+    capture('capture:status', 'running')
+    expect(reconnecting(t.events).at(-1)).toEqual({ active: false })
+    expect(t.sensing.phase()).toBe('continuous')
+    expect(t.names().filter((n) => n.startsWith('sdk:checkin'))).toEqual([
+      'sdk:checkin-started:continuous'
+    ])
+    // Raw SDK errors reach the bus for logging, marked retryable because Ovra handles them.
+    expect(
+      t.events
+        .filter((e) => e.name === 'sdk:error')
+        .every((e) => (e.payload as { retryable: boolean }).retryable)
+    ).toBe(true)
+    await t.sensing.stop()
+  })
+
+  it('treats the SDK log of refused frames as a dead pipeline', async () => {
+    const { bindSmartSpectraIpc } = await import('@smartspectra/node-sdk/main')
+    const t = setup()
+    await t.sensing.startContinuous()
+    const logger = vi.mocked(bindSmartSpectraIpc).mock.calls.at(-1)![1]!.logger!
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    logger(
+      'warn',
+      'dropped frame (1 total): SmartSpectra is not in a valid state for this operation'
+    )
+    await vi.advanceTimersByTimeAsync(sensingConfig.restartBackoffMs[0])
+    expect(starts()).toHaveLength(1) // capture wasn't running yet: start churn, not a crash
+    capture('capture:status', 'running')
+    logger(
+      'warn',
+      'dropped frame (30 total): SmartSpectra is not in a valid state for this operation'
+    )
+    await vi.advanceTimersByTimeAsync(sensingConfig.restartBackoffMs[0])
+    expect(starts()).toHaveLength(2)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[smartspectra/main] dropped frame'))
+    warn.mockRestore()
+    await t.sensing.stop()
+  })
+
+  it('gives up with the network message after a network/auth error, and never logs the key', async () => {
+    const t = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await t.sensing.startContinuous()
+    capture('capture:status', 'running')
+    capture('capture:error', {
+      code: 2,
+      message: 'Usage verification failed for test-key',
+      retryable: false
+    })
+    for (const wait of sensingConfig.restartBackoffMs) {
+      await vi.advanceTimersByTimeAsync(wait)
+      capture('capture:error', { code: 1, message: 'not in a valid state', retryable: false })
+    }
+    await vi.advanceTimersByTimeAsync(0)
+    const errors = t.events.filter((e) => e.name === 'sdk:error').map((e) => e.payload)
+    expect(errors.at(-1)).toEqual({
+      code: 'sdk-lost',
+      message: sensingConfig.networkMessage,
+      retryable: false
+    })
+    expect(JSON.stringify(errors)).not.toContain('test-key')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('test-key')
+    expect(t.sensing.phase()).toBe('idle')
+    warn.mockRestore()
+  })
+
+  it('gives a stream that ran a while a fresh set of restarts', async () => {
+    const t = setup()
+    await t.sensing.startContinuous()
+    const crash = (): void =>
+      capture('capture:error', { code: 8, message: 'Processing failed', retryable: false })
+    for (let i = 0; i < 5; i++) {
+      capture('capture:status', 'running')
+      await vi.advanceTimersByTimeAsync(sensingConfig.restartHealthyMs)
+      crash()
+      await vi.advanceTimersByTimeAsync(sensingConfig.restartBackoffMs[0])
+    }
+    expect(t.sensing.phase()).toBe('continuous')
+    expect(starts()).toHaveLength(6)
+    await t.sensing.stop()
+  })
+
+  it('shows "Camera reconnecting" as the calibration hint while the SDK is down', async () => {
+    const t = setup()
+    await t.sensing.startCalibration()
+    capture('capture:status', 'running')
+    capture('capture:error', { code: 1, message: 'not in a valid state', retryable: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    const progress = t.events.filter((e) => e.name === 'sdk:calibration-progress')
+    expect(progress.at(-1)?.payload).toMatchObject({ hint: sensingConfig.reconnectingText })
+    await t.sensing.stop()
+  })
+})
+
+describe('calibration hands over to continuous on the running stream (decision 48)', () => {
+  function run(mode: 'continuous' | 'checkins'): Setup & {
+    engine: ReturnType<typeof createStateEngine>
+    ready: { ok: boolean }[]
+  } {
+    const t = setup({ config: sensingConfig })
+    const engine = createStateEngine({ bus: t.bus, privacy: t.privacy })
+    const ready: { ok: boolean }[] = []
+    t.bus.on('state:baseline-ready', (r) => {
+      ready.push(r)
+      // What the session does on success.
+      if (r.ok && mode === 'continuous') void t.sensing.startContinuous()
+      if (r.ok && mode === 'checkins') t.sensing.startCheckins(5)
+    })
+    t.bus.emit('session:started', {
+      id: 's',
+      config: {
+        activity: 'focus',
+        lengthMin: 60,
+        cameraMode: mode,
+        checkinIntervalMin: 5,
+        music: false
+      },
+      startedAt: Date.now(),
+      status: 'calibrating',
+      sensingEnabled: true
+    })
+    return { ...t, engine, ready }
+  }
+  async function calibrate(t: Setup): Promise<void> {
+    await t.sensing.startCalibration()
+    h.handlers['capture:validation']({ t: Date.now(), code: 0, hint: '' }, { sender: h.wc })
+    for (let i = 0; i < 60 && t.sensing.phase() === 'calibration'; i++) {
+      h.handlers['capture:metrics'](
+        { t: Date.now(), pulse: { value: 60, stable: true, confidence: 90 } },
+        { sender: h.wc }
+      )
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+  }
+
+  it('continuous: no stop/start, calibration ends and continuous starts on the same stream', async () => {
+    const t = run('continuous')
+    await calibrate(t)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.ready).toEqual([{ ok: true }])
+    expect(t.sensing.phase()).toBe('continuous')
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start'])
+    expect(t.names().filter((n) => n.startsWith('sdk:checkin'))).toEqual([
+      'sdk:checkin-started:calibration',
+      'sdk:checkin-ended:calibration',
+      'sdk:checkin-started:continuous'
+    ])
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('check-ins: the camera still turns off after calibration', async () => {
+    const t = run('checkins')
+    await calibrate(t)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.ready).toEqual([{ ok: true }])
+    expect(t.sensing.phase()).toBe('idle')
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start', 'push:capture-stop'])
+    await t.sensing.stop()
+    t.engine.dispose()
+  })
+
+  it('turns the camera off if the state still rejects the baseline after a hand-over', async () => {
+    const t = setup({ config: sensingConfig })
+    t.bus.emit('session:started', {
+      id: 's',
+      config: {
+        activity: 'focus',
+        lengthMin: 60,
+        cameraMode: 'continuous',
+        checkinIntervalMin: 5,
+        music: false
+      },
+      startedAt: Date.now(),
+      status: 'calibrating',
+      sensingEnabled: true
+    })
+    // Sensing's bar passed, but the state's verdict fails (no engine here).
+    t.bus.on('sdk:checkin-ended', ({ phase }) => {
+      if (phase === 'calibration') t.bus.emit('state:baseline-ready', { ok: false, reason: 'x' })
+    })
+    await calibrate(t)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.sensing.phase()).toBe('idle')
+    expect(h.pushes.map((p) => p.channel)).toEqual(['push:capture-start', 'push:capture-stop'])
+  })
 })
 
 describe('calibration live-pattern replay (mock capture only)', () => {

@@ -6,10 +6,12 @@ import { bindSmartSpectraIpc } from '@smartspectra/node-sdk/main'
 import type {
   Bus,
   CaptureDiagnostics,
+  CaptureStatus,
   CameraMode,
   MetricsSnapshot,
   CaptureStartRequest,
   PrivacyService,
+  SdkError,
   SensingPhase,
   SensingService
 } from '@shared/types'
@@ -69,6 +71,20 @@ export function createSensing(deps: SensingDeps): SensingService {
   } | null = null
   let faceEnabled = privacy.canUseFace()
   let telemetryEnabled = privacy.get().telemetry
+  /** The session's camera mode: a continuous session keeps the calibration stream running. */
+  let sessionMode: CameraMode | null = null
+  /** The running stream's start request, reused to restart it after an SDK crash. */
+  let lastReq: CaptureStartRequest | null = null
+  let captureStatus: CaptureStatus = 'idle'
+  /**
+   * SDK crash recovery (decision 48). down: waiting out the backoff, or a restart was sent and
+   * hasn't reported running yet. upSince: last time the stream reported running.
+   */
+  let down: 'waiting' | 'starting' | null = null
+  let attempts = 0
+  let upSince: number | null = null
+  let networkTrouble = false
+  let restartTimer: ReturnType<typeof setTimeout> | null = null
 
   const report = (err: unknown): void =>
     bus.emit('sdk:error', {
@@ -76,6 +92,62 @@ export function createSensing(deps: SensingDeps): SensingService {
       message: err instanceof Error ? err.message : String(err),
       retryable: true
     })
+
+  const looksNetwork = (err: SdkError): boolean =>
+    (typeof err.code === 'number' && cfg.networkErrorCodes.includes(err.code)) ||
+    cfg.networkErrorPattern.test(err.message)
+
+  function clearRecovery(): void {
+    if (restartTimer) clearTimeout(restartTimer)
+    restartTimer = null
+    down = null
+  }
+
+  /** Fresh phase: a full set of restarts and no memory of earlier trouble. */
+  function resetRecovery(): void {
+    clearRecovery()
+    attempts = 0
+    upSince = null
+    networkTrouble = false
+  }
+
+  /**
+   * The SDK is dead (terminal error, kError status, or frames refused). Restart the same stream
+   * after a short backoff without ending the logical phase; give up when the attempts run out.
+   */
+  function sdkDied(err: SdkError): void {
+    if (!current || down === 'waiting' || stopping) return
+    if (upSince !== null && Date.now() - upSince >= cfg.restartHealthyMs) {
+      attempts = 0
+      networkTrouble = false
+    }
+    upSince = null
+    networkTrouble ||= looksNetwork(err)
+    const message = networkTrouble ? cfg.networkMessage : cfg.lostMessage
+    if (attempts >= cfg.restartBackoffMs.length) {
+      clearRecovery()
+      if (!app.isPackaged) console.warn(`[sensing] SDK restarts used up; giving up: ${message}`)
+      bus.emit('sdk:error', { code: 'sdk-lost', message, retryable: false })
+      stopCapture().catch(report)
+      return
+    }
+    const wait = cfg.restartBackoffMs[attempts++]
+    if (!app.isPackaged)
+      console.warn(
+        `[sensing] SDK down; restart ${attempts}/${cfg.restartBackoffMs.length} in ${wait} ms`
+      )
+    if (!down) bus.emit('sdk:reconnecting', { active: true, message })
+    down = 'waiting'
+    const g = gen
+    restartTimer = setTimeout(() => {
+      restartTimer = null
+      if (g !== gen || !current || !lastReq || !win || win.isDestroyed()) return
+      down = 'starting'
+      // The capture renderer stops the dead SDK instance before starting a fresh one.
+      lastReq = { ...lastReq, phase: current }
+      push(win, 'push:capture-start', lastReq)
+    }, wait)
+  }
 
   const fromCapture = (e: IpcMainEvent): boolean =>
     !!win && !win.isDestroyed() && e.sender === win.webContents
@@ -126,8 +198,9 @@ export function createSensing(deps: SensingDeps): SensingService {
         !app.isPackaged &&
         process.env.OVRA_MONITOR === '1' &&
         fromCapture(e) &&
-        (current === diag.phase ||
-          (current === 'return-check' && mode === 'continuous' && diag.phase === 'continuous')) &&
+        // A logical phase (return check, calibration handed over) keeps the stream's phase label.
+        current !== null &&
+        diag.phase === lastReq?.phase &&
         privacy.canUseCamera()
       )
         bus.emit('monitor:diag', { ...diag, phase: current! })
@@ -138,15 +211,34 @@ export function createSensing(deps: SensingDeps): SensingService {
       smoother.push(v, Date.now())
       setTimeout(flushValidation, cfg.hintPersistMs)
     })
-    onCapture('capture:error', (err, e) => {
+    onCapture('capture:error', (raw, e) => {
       if (!fromCapture(e)) return
-      bus.emit('sdk:error', err)
-      if (!err.retryable || err.code === 'start-failed') stopCapture().catch(report)
+      // SDK messages are untrusted text: never let a key through to logs.
+      const key = deps.getApiKey()
+      const err = key ? { ...raw, message: raw.message.split(key).join('[key]') } : raw
+      if (!app.isPackaged)
+        console.warn(
+          `[sensing] SDK error code=${err.code} retryable=${err.retryable} message=${JSON.stringify(err.message)}`
+        )
+      const dead =
+        !err.retryable ||
+        err.code === 'start-failed' ||
+        // While restarting, any SDK error (e.g. its startup watchdog) means this attempt failed.
+        (down === 'starting' && typeof err.code === 'number')
+      // Ovra retries the SDK itself, so only giving up ('sdk-lost') is non-retryable on the bus.
+      bus.emit('sdk:error', { ...err, retryable: true })
+      if (dead) sdkDied(err)
     })
     onCapture('capture:status', (s, e) => {
       if (!fromCapture(e)) return
+      captureStatus = s
       bus.emit('monitor:capture-status', { status: s })
       if (s === 'idle' || s === 'error') resolveStop(s === 'idle')
+      if (s !== 'running' || !current) return
+      upSince = Date.now()
+      if (down !== 'starting') return
+      down = null
+      bus.emit('sdk:reconnecting', { active: false })
     })
   }
 
@@ -200,7 +292,17 @@ export function createSensing(deps: SensingDeps): SensingService {
     })
     win = w
     nativeWork.start()
-    bindSmartSpectraIpc(w)
+    bindSmartSpectraIpc(w, {
+      logger: (level, msg) => {
+        const line = `[smartspectra/main] ${msg}`
+        if (level === 'error') console.error(line)
+        else if (level === 'warn') console.warn(line)
+        else console.log(line)
+        // A dead pipeline refuses every frame; only the SDK's own log says so.
+        if (win === w && captureStatus === 'running' && cfg.deadPipelinePattern.test(msg))
+          sdkDied({ code: 'frames-refused', message: msg, retryable: false })
+      }
+    })
     listen()
     return loadPage(w, 'capture').then(
       () => w,
@@ -230,6 +332,7 @@ export function createSensing(deps: SensingDeps): SensingService {
   /** Keep the camera indicator on until tracks have ended or the capture context is destroyed. */
   async function stopCapture(): Promise<void> {
     clearPhaseTimers()
+    clearRecovery()
     calibration = null
     if (stopping) return stopping
     const phase = current
@@ -283,9 +386,24 @@ export function createSensing(deps: SensingDeps): SensingService {
         : Math.min(1, steadyPulseSec(c.pulses) / stateCfg().baselineMinPulseSec)
     bus.emit('sdk:calibration-progress', {
       progress,
-      hint: smoother.hint(),
+      hint: down ? cfg.reconnectingText : smoother.hint(),
       framing: c.clockAt === null
     })
+  }
+
+  /**
+   * Continuous session: calibration ends as a logical phase on the running stream (no stop/start),
+   * so the SDK's 12/30/60 s warm-ups carry into continuous mode, like the return check.
+   */
+  function handOver(g: number): void {
+    if (g !== gen || current !== 'calibration') return
+    clearPhaseTimers()
+    calibration = null
+    current = 'continuous'
+    // The state builds the baseline here; on success the session's startContinuous() is a no-op.
+    bus.emit('sdk:checkin-ended', { phase: 'calibration' })
+    if (g === gen && current === 'continuous')
+      bus.emit('sdk:checkin-started', { phase: 'continuous' })
   }
 
   async function endTimed(g: number): Promise<void> {
@@ -337,6 +455,8 @@ export function createSensing(deps: SensingDeps): SensingService {
       }
       current = phase
       started = true
+      lastReq = req
+      resetRecovery()
       smoother.reset()
       validationCode = null
       noFaceFound = false
@@ -356,8 +476,9 @@ export function createSensing(deps: SensingDeps): SensingService {
           emitProgress()
           if (calibration?.clockAt == null) return
           // Reuse the state's bar so insufficient readings get until the hard cap.
-          if ('baseline' in buildBaseline(calibration.pulses, stateCfg(), Date.now()))
-            endTimed(g).catch(report)
+          if (!('baseline' in buildBaseline(calibration.pulses, stateCfg(), Date.now()))) return
+          if (sessionMode === 'continuous' && !paused && !down) handOver(g)
+          else endTimed(g).catch(report)
         }, cfg.progressEveryMs)
       }
     } catch (err) {
@@ -366,6 +487,18 @@ export function createSensing(deps: SensingDeps): SensingService {
       throw err
     }
   }
+
+  bus.on('session:started', (s) => {
+    sessionMode = s.config.cameraMode
+  })
+  bus.on('session:ended', () => {
+    sessionMode = null
+  })
+  // The state can still disagree with our bar after a hand-over: don't keep the camera on for a
+  // failed calibration (the session waits on Try again or Start anyway).
+  bus.on('state:baseline-ready', ({ ok }) => {
+    if (!ok && current === 'continuous' && mode !== 'continuous') stopCapture().catch(report)
+  })
 
   bus.on('privacy:changed', () => {
     const face = privacy.canUseFace()

@@ -274,6 +274,8 @@ export interface Session {
   sensingEnabled: boolean
   /** Calibration failed (plain-words reason); the session waits on Try again or Start anyway. */
   calibrationFailed?: string
+  /** The SDK failed (crash or network), not the readings: the screen shows the reason, not advice. */
+  calibrationSdkFailed?: boolean
 }
 
 /** The calibration screen's choices: Skip (framing check), Try again or Start anyway (after a failure). */
@@ -622,6 +624,11 @@ export interface BusEvents {
   'sdk:metrics': MetricsSnapshot
   'sdk:validation': ValidationEvent
   'sdk:error': SdkError
+  /**
+   * The SDK died and Ovra is restarting it (active), or it's back (inactive). While active, no
+   * away and no windows, like a pause. Giving up is an sdk:error with code 'sdk-lost'.
+   */
+  'sdk:reconnecting': { active: boolean; message?: string }
   /** Calibration progress, 0–1, with the current hint for the user. framing = clock not started yet. */
   'sdk:calibration-progress': { progress: number; hint: string | null; framing?: boolean }
 

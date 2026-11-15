@@ -313,8 +313,9 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
   })
   bus.on('privacy:camera-paused', () => (cameraPaused = true))
   bus.on('privacy:camera-resumed', () => (cameraPaused = false))
+  // Retryable errors are handled (the SDK is restarted); only a real loss reaches the main window.
   bus.on('sdk:error', (error) => {
-    if (wins) push(wins.main, 'push:sdk-error', error)
+    if (wins && !error.retryable) push(wins.main, 'push:sdk-error', error)
   })
   return service
 }

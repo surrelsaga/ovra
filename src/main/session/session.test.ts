@@ -388,6 +388,65 @@ it('terminal SDK errors stop retries and leave the timer and timed nudges runnin
   await t.svc.end()
 })
 
+describe('SDK lost (decision 48)', () => {
+  const lost = {
+    code: 'sdk-lost',
+    message: "Couldn't reach Presage. Check your internet or VPN.",
+    retryable: false
+  }
+
+  it('mid-session: says why and carries on with the timer, music and break reminders', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('state:baseline-ready', { ok: true })
+    t.bus.emit('sdk:error', { code: 1, message: 'not in a valid state', retryable: true })
+    expect(t.svc.current()?.sensingEnabled).toBe(true) // Ovra is restarting it
+    t.bus.emit('sdk:error', lost)
+    expect(t.svc.current()).toMatchObject({ status: 'running', sensingEnabled: false })
+    expect(t.sensing.stop).toHaveBeenCalledOnce()
+    expect(t.seen['orb:bubble']?.at(-1)?.text).toBe(
+      `${lost.message} ${sessionConfig.carryOnBubble}`
+    )
+    expect(t.moves.stopSession).not.toHaveBeenCalled()
+    await t.svc.end()
+  })
+
+  it('during calibration: shows the SDK reason instead of the readings bar, with Try again', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('sdk:error', lost)
+    expect(t.svc.current()).toMatchObject({ status: 'calibrating', sensingEnabled: true })
+    t.bus.emit('state:baseline-ready', {
+      ok: false,
+      reason: 'I only got 0 of 30 s of steady heart rate.'
+    })
+    expect(t.svc.current()).toMatchObject({
+      calibrationFailed: lost.message,
+      calibrationSdkFailed: true
+    })
+    await t.svc.calibrationChoice('retry')
+    expect(t.svc.current()?.calibrationSdkFailed).toBeUndefined()
+    expect(t.sensing.startCalibration).toHaveBeenCalledTimes(2)
+    // A plain unsteady failure on the retry is reported as before.
+    t.bus.emit('state:baseline-ready', { ok: false, reason: 'I only got 4 of 30 s.' })
+    expect(t.svc.current()).toMatchObject({ calibrationFailed: 'I only got 4 of 30 s.' })
+    expect(t.svc.current()?.calibrationSdkFailed).toBeUndefined()
+    await t.svc.end()
+  })
+
+  it('calibration ending while the SDK is still reconnecting blames the SDK, not the user', async () => {
+    const t = setup()
+    await t.svc.start(cfg)
+    t.bus.emit('sdk:reconnecting', { active: true, message: 'The camera reading stopped.' })
+    t.bus.emit('state:baseline-ready', { ok: false, reason: 'I only got 0 of 30 s.' })
+    expect(t.svc.current()).toMatchObject({
+      calibrationFailed: 'The camera reading stopped.',
+      calibrationSdkFailed: true
+    })
+    await t.svc.end()
+  })
+})
+
 describe('monitor session sources', () => {
   it.each(['ipc/user', 'quit'] as const)('reports %s without changing cleanup', async (source) => {
     const t = setup(false)

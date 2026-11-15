@@ -17,6 +17,8 @@ export const sessionConfig = {
   bubbleTtlMs: 8000,
   /** "Start anyway" after a failed calibration: the baseline builds from in-session steady pulse. */
   startAnywayBubble: "I'll get to know you as we go. Until then, music follows what you're doing.",
+  /** After the SDK couldn't be restarted, appended to its plain reason. */
+  carryOnBubble: 'The session carries on with the timer, music and break reminders.',
   cameraFailedBubble:
     "The camera didn't start, so this session runs on the timer, music and regular breaks.",
   /**

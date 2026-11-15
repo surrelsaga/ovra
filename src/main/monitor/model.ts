@@ -68,6 +68,15 @@ export function createMonitorModel(
     bus.on('monitor:capture-status', (s) => {
       capture = s.status
     }),
+    // The SDK's own error code and message (main already redacted any key).
+    bus.on('sdk:error', (e) =>
+      announce(`sdk-error code=${e.code} message=${JSON.stringify(e.message)}`)
+    ),
+    bus.on('sdk:reconnecting', (r) =>
+      announce(
+        r.active ? `sdk=reconnecting reason=${JSON.stringify(r.message ?? '')}` : 'sdk=reconnected'
+      )
+    ),
     bus.on('sdk:checkin-started', ({ phase: next }) => setPhase(next)),
     bus.on('sdk:checkin-ended', () => setPhase(deps.sensing.phase())),
     // These are the app's existing debounced validation changes. Raw code counts use capture:diag.

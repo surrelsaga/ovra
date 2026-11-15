@@ -12,6 +12,22 @@ export const sensingConfig = {
   progressEveryMs: 1_000,
   /** Max wait for the capture renderer to confirm the stream stopped. */
   stopTimeoutMs: 5_000,
+  /**
+   * SDK crash recovery (decision 48): one restart per entry, waiting this long first. When they run
+   * out, sensing gives up and the session carries on without the camera.
+   */
+  restartBackoffMs: [1_000, 3_000, 5_000],
+  /** A stream that has run this long since its last (re)start earns a fresh set of restarts. */
+  restartHealthyMs: 60_000,
+  /** SDK error codes that mean Presage couldn't be reached: auth, network, server. */
+  networkErrorCodes: [2, 5, 6] as number[],
+  networkErrorPattern:
+    /network|internet|offline|connect|auth|usage verification|timed? ?out|dns|ssl|certificate|firewall/i,
+  /** Main-process SDK log line for a dead pipeline (frames dropped because the SDK is in kError). */
+  deadPipelinePattern: /not in a valid state/i,
+  reconnectingText: 'Camera reconnecting',
+  lostMessage: "The camera reading stopped and didn't come back.",
+  networkMessage: "Couldn't reach Presage. Check your internet or VPN.",
   /** Dev/test only: overrides the user's check-in interval (start to start). null = use the user's. */
   checkinIntervalMs: null as number | null
 }

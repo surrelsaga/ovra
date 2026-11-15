@@ -60,7 +60,7 @@ Things that keep it fair:
 - **Away:** after 20 s of no face, or if the camera picture freezes.
 - **Back:** a face for 3 of 4 seconds, or a heart reading.
 - **The SDK keeps running** while you're away, so it doesn't need to warm up again.
-- **Known issue (open):** in Daniel's test, away never triggered over 20+ minutes out of the chair. The
+- **Fixed, to confirm in a real room (decision 50):** a face box off your seat no longer counts, and without any face shape (except chest-out-of-view) presence lasts at most 20 s. Away never firing over 20+ min in Daniel's earlier test should be gone.
   camera kept reporting something as a face. To be checked with the empty-chair test, then fixed.
 
 ## 6. What happens for each mood

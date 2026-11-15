@@ -15,6 +15,7 @@ import {
 } from '@shared/types'
 import { situationLines, targetLines, windowsConfig as cfg } from './config'
 import { bindFramingHint } from './framing'
+import { SPOTIFY_CLOSED_HINT, SPOTIFY_HINT } from '../music/config'
 
 /** What the forwarder needs from the window layer. Faked in tests. */
 export interface ShellControl {
@@ -65,6 +66,7 @@ export function bindForwarding(
   /** Advice waiting for a free bubble; interrupted demo hints may be shown again. */
   let pendingHint: { text: string; ttlMs: number; action?: OrbView['bubbleAction'] } | undefined
   let shownTtlMs = 0
+  let pendingSpotify: string | undefined
 
   const update = (patch: Partial<OrbView>): void => {
     view = { ...view, ...patch }
@@ -73,6 +75,21 @@ export function bindForwarding(
 
   const isHint = (text: string | undefined): text is string =>
     !!text?.startsWith(cfg.demoHintPrefix)
+  const isSpotifyHint = (text: string | undefined): boolean =>
+    text === SPOTIFY_HINT || text === SPOTIFY_CLOSED_HINT
+
+  const showSpotifyHint = (): boolean => {
+    if (
+      !pendingSpotify ||
+      (status !== 'running' && !(status === 'calibrating' && view.listening)) ||
+      view.bubble
+    )
+      return false
+    const text = pendingSpotify
+    pendingSpotify = undefined
+    say(text)
+    return true
+  }
 
   const say = (
     text: string,
@@ -92,6 +109,7 @@ export function bindForwarding(
     update({ bubble: text, bubbleAction: action })
     bubbleTimer = setTimeout(() => {
       update({ bubble: undefined, bubbleAction: undefined })
+      if (showSpotifyHint()) return
       const hint = pendingHint
       pendingHint = undefined
       if (hint) say(hint.text, hint.ttlMs, false, hint.action)
@@ -142,6 +160,7 @@ export function bindForwarding(
     clearInterval(whyTimer)
     whyTimer = undefined
     pendingHint = undefined
+    pendingSpotify = undefined
     situation = null
     targetWord = null
     teachingUntil = 0
@@ -172,6 +191,7 @@ export function bindForwarding(
         update({ nextCheckAt: nextCheck() })
       }
       if (s.status === 'running' && prev !== 'running' && prev !== 'on-break') shell.showOrb()
+      if (s.status === 'running') showSpotifyHint()
       if (s.status === 'ended' && prev !== 'ended') endSession()
     }),
     bus.on('session:tick', (t) => send('push:session-tick', t)),
@@ -199,6 +219,16 @@ export function bindForwarding(
     }),
     bus.on('music:status', (m) => {
       send('push:music', m)
+      if (m.available) {
+        pendingSpotify = undefined
+        if (isSpotifyHint(view.bubble)) {
+          clearTimeout(bubbleTimer)
+          update({ bubble: undefined, bubbleAction: undefined })
+          const hint = pendingHint
+          pendingHint = undefined
+          if (hint) say(hint.text, hint.ttlMs, false, hint.action)
+        }
+      }
       targetWord = m.target ? TARGET_WORD[m.target] : null
       if (m.nowPlaying && !m.nowPlaying.isAd) {
         update({
@@ -248,6 +278,7 @@ export function bindForwarding(
       }
       shell.showOrb()
       if (status === 'calibrating') shell.showMain()
+      showSpotifyHint()
     }),
     bus.on('sdk:checkin-ended', ({ phase }) => {
       if (phase === 'calibration' || phase === 'return-check')
@@ -268,6 +299,12 @@ export function bindForwarding(
     }),
     bus.on('privacy:changed', (p) => send('push:privacy', p)),
     bus.on('orb:bubble', (b) => {
+      // Wait for the orb and camera teaching so the only Spotify notice isn't lost.
+      if (isSpotifyHint(b.text)) {
+        pendingSpotify = b.text
+        showSpotifyHint()
+        return
+      }
       // A demo hint never interrupts another bubble; it waits for it to clear.
       if ((isHint(b.text) || b.action) && view.bubble)
         pendingHint = { text: b.text, ttlMs: b.ttlMs ?? cfg.bubbleTtlMs, action: b.action }

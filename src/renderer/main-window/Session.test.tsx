@@ -33,6 +33,27 @@ const settings: AppSettings = {
 const calls = (bridge: ReturnType<typeof installFakeBridge>): unknown[] =>
   bridge.invokes.filter((i) => i.channel === 'session:calibration').map((i) => i.req)
 
+it('shows Spotify availability during music sessions and removes the note on opening', () => {
+  const bridge = installFakeBridge()
+  const s = session('running')
+  const view = render(<Running session={{ ...s, config: { ...s.config, music: true } }} />)
+  expect(screen.getByRole('status')).toHaveTextContent("Spotify isn't open")
+  const music = {
+    available: true,
+    leaveAlone: false,
+    target: null,
+    nowPlaying: null,
+    scoringQueue: 0,
+    scoredCount: 0
+  }
+  bridge.push('push:music', music)
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  bridge.push('push:music', { ...music, available: false })
+  expect(screen.getByText("Spotify isn't open")).toBeInTheDocument()
+  view.rerender(<Running session={s} />)
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+})
+
 describe('calibration preview', () => {
   it('counts only the remaining queue and hides music progress when it is empty', () => {
     const bridge = installFakeBridge()

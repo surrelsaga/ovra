@@ -346,15 +346,18 @@ export function Calibration({
 
 export function Running({
   session,
+  initialMusic = NO_MUSIC,
   sdkFailed = false,
   cameraConsent = false,
   showCameraInitially = false
 }: {
   session: Session
+  initialMusic?: MusicStatus
   sdkFailed?: boolean
   cameraConsent?: boolean
   showCameraInitially?: boolean
 }): React.JSX.Element {
+  const music = usePush('push:music', initialMusic)
   const [showCamera, setShowCamera] = useState(showCameraInitially)
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
   const mainWindow = usePush('push:main-window', {
@@ -386,6 +389,11 @@ export function Running({
       {sdkFailed && (
         <p className="muted" role="status">
           Couldn’t start the camera check. Your session will keep running with timed breaks.
+        </p>
+      )}
+      {session.config.music && !music.available && (
+        <p className="muted" role="status">
+          Spotify isn&apos;t open
         </p>
       )}
       {cameraConsent && session.sensingEnabled && (

@@ -1,6 +1,9 @@
 // Owner: Agent C (music). Every tunable number for the music module lives here.
 import type { Activity, MusicTarget } from '@shared/types'
 
+export const SPOTIFY_HINT = 'Open Spotify to get music.'
+export const SPOTIFY_CLOSED_HINT = 'Spotify closed. Open it again for music.'
+
 export const musicConfig = {
   controller: {
     /** How often onTrackChange polls Spotify. */
@@ -8,7 +11,7 @@ export const musicConfig = {
     restartSlackMs: 1000,
     /** osascript timeout. */
     osascriptTimeoutMs: 5000,
-    /** Spotify wasn't running at session start: check again this often and start once it is. */
+    /** Check for Spotify opening or closing, and start music once it opens. */
     unavailableRetryMs: 10_000
   },
   switching: {

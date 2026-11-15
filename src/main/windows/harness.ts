@@ -24,6 +24,7 @@ import { handle } from '../ipc'
 import { createPrivacy, registerPrivacyIpc } from '../privacy'
 import { createStorage } from '../storage'
 import { createWindows, registerWindowsIpc, type ShellWindows } from '.'
+import { SPOTIFY_HINT, SPOTIFY_CLOSED_HINT } from '../music/config'
 
 const MIN = 60_000
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -561,6 +562,30 @@ async function tour(shell: ShellWindows, bus: Bus, dir: string): Promise<void> {
   await wait(8000) // calibration finishes, orb shows
   await shot(orb, dir, '14-first-camera-off-bubble')
   await pillTour(orb, bus, dir)
+
+  const spotifyStatus: MusicStatus = {
+    available: false,
+    leaveAlone: false,
+    target: 'steady',
+    nowPlaying: null,
+    scoringQueue: 0,
+    scoredCount: SONGS.length
+  }
+  bus.emit('music:status', spotifyStatus)
+  bus.emit('orb:bubble', { text: SPOTIFY_HINT })
+  await shot(orb, dir, 'spotify-not-open-orb')
+  shell.showMain()
+  await nav(main, 'music')
+  await shot(main, dir, 'spotify-not-open-music')
+  await nav(main, 'session')
+  await shot(main, dir, 'spotify-not-open-session')
+  bus.emit('music:status', { ...spotifyStatus, available: true })
+  await shot(orb, dir, 'spotify-open-orb')
+  await shot(main, dir, 'spotify-open-session')
+  bus.emit('music:status', spotifyStatus)
+  bus.emit('orb:bubble', { text: SPOTIFY_CLOSED_HINT })
+  await shot(orb, dir, 'spotify-closed-orb')
+  bus.emit('music:status', { ...spotifyStatus, available: true })
 
   for (const [i, step] of orbSteps(bus).entries()) {
     step.run()

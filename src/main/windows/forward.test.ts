@@ -1,7 +1,14 @@
 import { createBus } from '../bus'
-import { DEFAULT_PRIVACY, type MoveStep, type OrbView, type Session } from '@shared/types'
+import {
+  DEFAULT_PRIVACY,
+  DEFAULT_SETTINGS,
+  type MoveStep,
+  type OrbView,
+  type Session
+} from '@shared/types'
 import { bindForwarding, breathAt, type ShellControl } from './forward'
 import { windowsConfig } from './config'
+import { SPOTIFY_HINT, SPOTIFY_CLOSED_HINT } from '../music/config'
 
 function fakeShell(): ShellControl & {
   pushes: [string, unknown][]
@@ -44,6 +51,90 @@ const breatheStep: MoveStep = {
   animation: 'breathe',
   check: 'breathing-slows'
 }
+
+it('queues the initial Spotify hint behind camera teaching and clears it on opening', () => {
+  vi.useFakeTimers()
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell(), {
+    getSettings: () => ({ ...DEFAULT_SETTINGS, cameraTeachCount: 0 }),
+    setSettings: vi.fn().mockResolvedValue(undefined)
+  })
+  const music = {
+    available: false,
+    leaveAlone: false,
+    target: null,
+    nowPlaying: null,
+    scoringQueue: 0,
+    scoredCount: 0
+  }
+  try {
+    bus.emit('session:status', session('calibrating'))
+    bus.emit('sdk:checkin-started', { phase: 'calibration' })
+    bus.emit('orb:bubble', { text: SPOTIFY_HINT })
+    expect(fw.orb().bubble).toMatch(/Camera on/)
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
+    expect(fw.orb().bubble).toBe(SPOTIFY_HINT)
+    bus.emit('music:status', { ...music, available: true })
+    expect(fw.orb().bubble).toBeUndefined()
+    bus.emit('session:status', session('running'))
+    bus.emit('orb:bubble', { text: SPOTIFY_CLOSED_HINT })
+    expect(fw.orb().bubble).toBe(SPOTIFY_CLOSED_HINT)
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs * 2)
+    expect(fw.orb().bubble).toBeUndefined()
+  } finally {
+    fw.dispose()
+    vi.useRealTimers()
+  }
+})
+
+it('discards queued Spotify advice when Spotify opens or the session ends', () => {
+  vi.useFakeTimers()
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell())
+  try {
+    bus.emit('session:status', session('calibrating'))
+    bus.emit('orb:bubble', { text: SPOTIFY_HINT })
+    bus.emit('music:status', {
+      available: true,
+      leaveAlone: false,
+      target: null,
+      nowPlaying: null,
+      scoringQueue: 0,
+      scoredCount: 0
+    })
+    bus.emit('session:status', session('running'))
+    expect(fw.orb().bubble).toBeUndefined()
+    bus.emit('orb:bubble', { text: 'Another note' })
+    bus.emit('orb:bubble', { text: SPOTIFY_CLOSED_HINT })
+    bus.emit('session:status', session('ended'))
+    bus.emit('session:status', { ...session('running'), id: 's2' })
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs * 2)
+    expect(fw.orb().bubble).toBeUndefined()
+  } finally {
+    fw.dispose()
+    vi.useRealTimers()
+  }
+})
+
+it('shows queued Spotify advice when calibration opens the orb without a camera lesson', () => {
+  vi.useFakeTimers()
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell())
+  try {
+    bus.emit('session:status', session('calibrating'))
+    bus.emit('orb:bubble', { text: SPOTIFY_HINT })
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
+    expect(fw.orb().bubble).toBeUndefined()
+    bus.emit('sdk:checkin-started', { phase: 'calibration' })
+    expect(fw.orb().bubble).toBe(SPOTIFY_HINT)
+    vi.advanceTimersByTime(windowsConfig.bubbleTtlMs)
+    bus.emit('session:status', session('running'))
+    expect(fw.orb().bubble).toBeUndefined()
+  } finally {
+    fw.dispose()
+    vi.useRealTimers()
+  }
+})
 
 describe('bus → push forwarding', () => {
   afterEach(() => vi.useRealTimers())

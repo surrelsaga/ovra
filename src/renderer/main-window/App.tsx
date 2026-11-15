@@ -94,6 +94,7 @@ export default function App(): React.JSX.Element {
         }
       }),
       ovra().on('push:settings', (settings) => setData((d) => d && { ...d, settings })),
+      ovra().on('push:music', (music) => setData((d) => d && { ...d, music })),
       ovra().on('push:session', (s) => {
         setSession(s)
         if (s?.id !== activeSessionId.current) {
@@ -125,6 +126,7 @@ export default function App(): React.JSX.Element {
         <Running
           key={`${active.id}:${cameraRequest}`}
           session={active}
+          initialMusic={data.music}
           sdkFailed={sdkFailed}
           cameraConsent={data.privacy.camera === 'yes'}
           showCameraInitially={cameraRequest > 0}

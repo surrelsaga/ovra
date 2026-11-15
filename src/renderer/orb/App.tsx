@@ -114,6 +114,7 @@ function useClickThrough(dragging: () => boolean): boolean {
 export default function App(): React.JSX.Element {
   const view = usePush('push:orb', START)
   const music = usePush('push:music', NO_MUSIC)
+  const session = usePush('push:session', null)
   // Optimistic toggle until the next music status push arrives.
   const [override, setOverride] = useState<{ value: boolean; from: MusicStatus } | null>(null)
   const leaveAlone = override?.from === music ? override.value : music.leaveAlone
@@ -207,6 +208,10 @@ export default function App(): React.JSX.Element {
         {view.away ? (
           <p className="pill" data-hit>
             {awayText(now - (view.awaySince ?? now))}
+          </p>
+        ) : session && session.status !== 'ended' && session.config.music && !music.available ? (
+          <p className="pill" data-hit role="status">
+            Spotify isn&apos;t open
           </p>
         ) : view.paused ? (
           <p className="pill pill--paused" data-hit>

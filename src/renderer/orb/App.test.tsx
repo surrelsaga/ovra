@@ -10,6 +10,40 @@ const moon = (): HTMLElement => screen.getByRole('img', { name: /Ovra moon/ })
 const ignoreCalls = (b: ReturnType<typeof installFakeBridge>): unknown[] =>
   b.invokes.filter((c) => c.channel === 'window:orb-ignore-mouse').map((c) => c.req)
 
+it('shows Spotify is closed in a music session and clears the note when it opens', () => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  const s = {
+    id: 's1',
+    config: {
+      activity: 'focus',
+      lengthMin: 60,
+      cameraMode: 'checkins',
+      checkinIntervalMin: 5,
+      music: true
+    },
+    startedAt: 0,
+    status: 'running',
+    sensingEnabled: false
+  } as const
+  bridge.push('push:session', s)
+  expect(screen.getByRole('status')).toHaveTextContent("Spotify isn't open")
+  const music = {
+    available: true,
+    leaveAlone: false,
+    target: null,
+    nowPlaying: null,
+    scoringQueue: 0,
+    scoredCount: 0
+  }
+  bridge.push('push:music', music)
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  bridge.push('push:music', { ...music, available: false })
+  bridge.push('push:session', { ...s, config: { ...s.config, music: false } })
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+})
+
 describe('orb window', () => {
   afterEach(() => vi.useRealTimers())
 

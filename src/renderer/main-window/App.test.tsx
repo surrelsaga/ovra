@@ -96,3 +96,25 @@ it('skips the first-session reminder when a playlist has already been added', as
   expect(screen.queryByRole('dialog')).toBeNull()
   expect(bridge.invokes.filter((i) => i.channel === 'session:start')).toHaveLength(1)
 })
+
+it('keeps Spotify status current when switching between Music and Session', async () => {
+  const bridge = setup(true, true, [{ uri: 'spotify:playlist:1' }])
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Start session' }))
+  await screen.findByRole('heading', { name: 'Session running' })
+  expect(screen.getByText("Spotify isn't open")).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Music' }))
+  await act(async () => {
+    bridge.push('push:music', {
+      available: true,
+      leaveAlone: false,
+      target: 'steady',
+      nowPlaying: null,
+      scoringQueue: 0,
+      scoredCount: 0
+    })
+  })
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /^Session/ }))
+  expect(screen.queryByText("Spotify isn't open")).toBeNull()
+})

@@ -123,6 +123,7 @@ async function setup(
     songs?: Song[]
     privacy?: Partial<PrivacySettings>
     targetGap?: { minTargetChangeMs: number }
+    leaveAlone?: boolean
   } = {}
 ) {
   const bus = createBus()
@@ -132,7 +133,7 @@ async function setup(
   const setSettings = vi.fn(async () => DEFAULT_SETTINGS)
   const privacy = {
     get: () => ({ ...DEFAULT_PRIVACY, ...opts.privacy }),
-    getSettings: () => DEFAULT_SETTINGS,
+    getSettings: () => ({ ...DEFAULT_SETTINGS, leaveMusicAlone: opts.leaveAlone ?? false }),
     setSettings
   } as unknown as PrivacyService
   const events: { name: keyof BusEvents; payload: unknown }[] = []
@@ -310,7 +311,7 @@ describe('music service', () => {
     state('crashing') // settle tries to switch right away
     await vi.advanceTimersByTimeAsync(0)
     expect(events.filter((e) => e.name === 'orb:bubble')).toEqual([
-      { name: 'orb:bubble', payload: { text: 'Open Spotify to let me pick music' } }
+      { name: 'orb:bubble', payload: { text: 'Open Spotify to get music.' } }
     ])
     expect(controller.calls).toEqual([])
     expect(music.status().available).toBe(false)
@@ -335,6 +336,62 @@ describe('music service', () => {
     tick()
     await vi.advanceTimersByTimeAsync(0)
     expect(controller.calls).toHaveLength(1)
+  })
+
+  it.each([false, true])(
+    'reports Spotify closing once per opening, including leave-alone=%s',
+    async (leaveAlone) => {
+      const t = await setup({ leaveAlone })
+      t.controller.running = false
+      const hints = (): unknown[] =>
+        t.events.filter((e) => e.name === 'orb:bubble').map((e) => e.payload)
+      const tick = async (): Promise<void> => {
+        await vi.advanceTimersByTimeAsync(musicConfig.controller.unavailableRetryMs)
+        t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 0, remainingSec: 3600 })
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      await t.music.startSession(session())
+      await tick()
+      await tick()
+      expect(hints()).toEqual([{ text: 'Open Spotify to get music.' }])
+      t.controller.running = true
+      await tick()
+      expect(t.music.status().available).toBe(true)
+      if (!leaveAlone) t.controller.start('spotify:track:steady')
+      t.controller.calls = []
+      t.controller.running = false
+      t.controller.np = null
+      await tick()
+      expect(t.music.status()).toMatchObject({ available: false, nowPlaying: null })
+      await tick()
+      expect(hints()).toEqual([
+        { text: 'Open Spotify to get music.' },
+        { text: 'Spotify closed. Open it again for music.' }
+      ])
+      expect(t.controller.calls).toEqual([])
+      t.controller.running = true
+      await tick()
+      expect(t.music.status().available).toBe(true)
+      expect(t.controller.calls).toHaveLength(leaveAlone ? 0 : 1)
+      t.controller.running = false
+      await tick()
+      expect(hints()).toHaveLength(3)
+      await t.music.stopSession()
+      await t.music.startSession({ ...session(), id: 's2' })
+      expect(hints().at(-1)).toEqual({ text: 'Open Spotify to get music.' })
+      expect(hints()).toHaveLength(4)
+      await t.music.stopSession()
+    }
+  )
+
+  it('starts a pick when switching is turned back on after Spotify opens', async () => {
+    const t = await setup({ leaveAlone: true })
+    await t.music.startSession(session())
+    expect(t.controller.calls).toEqual([])
+    t.music.setLeaveAlone(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.controller.calls).toEqual(['play spotify:track:steady'])
+    await t.music.stopSession()
   })
 
   it('keeps the 3 minute gap after the first situation', async () => {

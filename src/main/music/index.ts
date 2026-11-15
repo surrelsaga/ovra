@@ -12,7 +12,7 @@ import type {
 } from '@shared/types'
 import { TARGET_WORD } from '@shared/types'
 import { handle } from '../ipc'
-import { FALLBACK_PLAYLISTS, musicConfig } from './config'
+import { FALLBACK_PLAYLISTS, musicConfig, SPOTIFY_CLOSED_HINT, SPOTIFY_HINT } from './config'
 import { createLibrary, parsePlaylistUrl } from './library'
 import { applyOutcome, judgePlay } from './library/learning'
 import { createScorer } from './scoring'
@@ -40,8 +40,6 @@ export interface MusicDeps {
   rng?: () => number
   fetch?: typeof fetch
 }
-
-const SPOTIFY_HINT = 'Open Spotify to let me pick music'
 
 interface PlayRecord {
   songId: string
@@ -82,6 +80,7 @@ export function createMusic(deps: MusicDeps): MusicService {
   let endTimer: ReturnType<typeof setTimeout> | null = null
   let play: PlayRecord | null = null
   let hintShown = false
+  let spotifyWasOpen = false
   let pausedForBreak = false
   let settleFade: Promise<void> | null = null
   let cancelSettleFade: (() => void) | null = null
@@ -110,18 +109,39 @@ export function createMusic(deps: MusicDeps): MusicService {
   function hint(): void {
     if (hintShown) return
     hintShown = true
-    bus.emit('orb:bubble', { text: SPOTIFY_HINT })
+    bus.emit('orb:bubble', { text: spotifyWasOpen ? SPOTIFY_CLOSED_HINT : SPOTIFY_HINT })
+  }
+
+  function observeAvailability(running: boolean): void {
+    available = running
+    if (running) {
+      if (session) spotifyWasOpen = true
+      hintShown = false
+    } else if (session) {
+      safe(abortSettleFade())
+      if (endTimer) clearTimeout(endTimer)
+      endTimer = null
+      if (verifyTimer) clearTimeout(verifyTimer)
+      verifyTimer = null
+      pendingPick = null
+      finishPlay()
+      nowPlaying = null
+      hint()
+    }
+    emitStatus()
   }
 
   async function checkAvailability(): Promise<void> {
-    if (session || checkingAvailability) return
+    if (checkingAvailability) return
     checkingAvailability = true
     const g = generation
+    const activeSession = session
     try {
       const running = await controller.isAvailable().catch(() => false)
-      if (g !== generation || session) return
-      available = running
-      emitStatus()
+      if (g !== generation || session !== activeSession) return
+      const wasAvailable = available
+      observeAvailability(running)
+      if (session && running && !wasAvailable && !leaveAlone && !pausedForBreak) await playNext()
     } finally {
       checkingAvailability = false
     }
@@ -257,7 +277,7 @@ export function createMusic(deps: MusicDeps): MusicService {
     const activeSession = session
     const g = generation
     try {
-      const running = await controller.isAvailable()
+      const running = await controller.isAvailable().catch(() => false)
       if (
         g !== generation ||
         session !== activeSession ||
@@ -265,8 +285,8 @@ export function createMusic(deps: MusicDeps): MusicService {
         leaveAlone
       )
         return
-      available = running
-      if (!available) return hint()
+      observeAvailability(running)
+      if (!running) return
       const cur = nowPlaying ? library.get(nowPlaying.id) : undefined
       const context = {
         now: now(),
@@ -428,9 +448,9 @@ export function createMusic(deps: MusicDeps): MusicService {
       if (verifyTimer) clearTimeout(verifyTimer)
       verifyTimer = null
     }
-    available = true
     const prev = nowPlaying
     nowPlaying = t
+    observeAvailability(true)
     scheduleEnd(t)
     if (prev?.id === t.id && (prev.state !== t.state || t.state !== 'playing')) return emitStatus()
     finishPlay()
@@ -475,11 +495,9 @@ export function createMusic(deps: MusicDeps): MusicService {
     if (!session || tick.sessionId !== session.id) return
     remainingSec = tick.remainingSec
     evaluate()
-    // Spotify wasn't running at start (the orb said "Open Spotify"): start once it's open.
-    if (available || nowPlaying || leaveAlone) return
     if (now() - lastRetry < musicConfig.controller.unavailableRetryMs) return
     lastRetry = now()
-    safe(playNext())
+    safe(checkAvailability())
   })
   bus.on('break:away', () => {
     safe(abortSettleFade())
@@ -515,7 +533,7 @@ export function createMusic(deps: MusicDeps): MusicService {
 
   return {
     status() {
-      safe(checkAvailability())
+      if (!session) safe(checkAvailability())
       return status()
     },
     async library() {
@@ -541,6 +559,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       if (!value) {
         if (nowPlaying) scheduleEnd(nowPlaying)
         evaluate()
+        if (!nowPlaying) safe(playNext())
       }
       emitStatus()
     },
@@ -571,6 +590,7 @@ export function createMusic(deps: MusicDeps): MusicService {
       hasSituation = false
       remainingSec = undefined
       hintShown = false
+      spotifyWasOpen = false
       played.clear()
       unavailableSongs.clear()
       picks = 0
@@ -578,13 +598,15 @@ export function createMusic(deps: MusicDeps): MusicService {
       nowPlaying = null
       lastRetry = now()
       const startedGeneration = generation
+      stopPolling = controller.onTrackChange(onTrack)
+      evaluate()
+      const running = await controller.isAvailable().catch(() => false)
+      if (generation !== startedGeneration || session !== s) return
+      observeAvailability(running)
       await library.refresh(now())
       if (generation !== startedGeneration || session !== s) return
       library.songs().forEach((song) => scorer.enqueue(song))
-      stopPolling = controller.onTrackChange(onTrack)
-      evaluate()
-      if (leaveAlone) available = await controller.isAvailable()
-      else await playNext().catch(() => {})
+      if (running && !leaveAlone) await playNext().catch(() => {})
       emitStatus()
     },
     async stopSession() {

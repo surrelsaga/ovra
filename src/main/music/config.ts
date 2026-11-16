@@ -49,6 +49,8 @@ export const musicConfig = {
     skipPollMs: 250,
     /** Playlist switches (the only pop-up) at most this often, except at session start. */
     switchGapMs: 3 * 60_000,
+    /** Completed songs per playlist before a variety switch, at the next song change. */
+    switchAfterSongs: { focus: 12, reading: 12, creative: 7, everyday: 7, unwind: 7 },
     /** Fast refocus: put the user's app back once Spotify comes to the front. */
     refocusPollMs: 50,
     refocusGiveUpMs: 1500
@@ -75,7 +77,7 @@ export const musicConfig = {
     playlistHint: 0.2,
     pickSlack: 0.5,
     topK: 5,
-    /** Dev evals only: sessions never add editorial picks (each would need a pop-up switch). */
+    /** Dev evals only: sessions use editorial playlists only as a switch fallback. */
     fallbackMinDistance: 1.5,
     fallbackEvery: 10
   },

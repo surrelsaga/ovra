@@ -1,6 +1,7 @@
 # Music module (Agent C) report
 
 ## What works
+
 - `SpotifyMacController` (`src/main/music/controller/`): every command is `execFile('osascript', ['-e', …])`, guarded by
   `if application "Spotify" is running` so it never launches Spotify. Strict URI regex before any script.
   Parses `,`/`.` positions, ads (`spotify:ad:` → `isAd`), empty fields. `onTrackChange` polls every 2 s
@@ -21,11 +22,12 @@
   without writing back. Session `config.music === false` or privacy music `none` → does nothing.
 
 ## Steering without the Spotify pop-up (decision 61, Job 20)
+
 - `play track` (with or without a context) always brings Spotify to the front; `next track`, pause,
   resume and volume never do. So during a session Ovra sends `play track` only to **start or switch a
   playlist**; everything else is silent skips.
 - **Start:** save the user's shuffle/repeat, turn shuffle on, then one `play track <best song> in
-  context <playlist>` for the user's playlist with the most fitting unplayed songs (scored fits rank
+context <playlist>` for the user's playlist with the most fitting unplayed songs (scored fits rank
   first). It runs at session start, while Ovra's calibration window is in front. With no pasted
   playlists the target's editorial playlist is used instead.
 - **Steer:** on every new song (track polling), on Quiet, and on every target change in demo
@@ -38,9 +40,25 @@
   fades down over 2.5 s, skips to a calm fit, fades back up. Same Job 6 rules (±2 tolerance, always
   restored unless the user changed it, also after errors, breaks, leave-alone, stop).
 - **Switch** (the only pop-up mid-session): when a chain reaches 8 skips, or the playlist has no
-  fitting unplayed song left, play the best song of the best *other* playlist, at most once per
-  3 min (start and the dev simulator's "Switch music now" are exempt). If no switch is allowed or
-  possible, the song stays (no pointless skipping). Switches get the decision-58 readiness check.
+  fitting unplayed song left, play a fitting song from another user playlist. For variety, also
+  switch at the next song change after **12 completed songs for Focus/Reading**, or **7 for
+  Creative/Everyday tasks/Unwind**. Prefer playlists not used this session, then the most scored
+  fits. Every switch resets the count, including an early mood-driven switch. Switches stay at
+  least **3 min apart** (start and the dev simulator's "Switch music now" are exempt), with the
+  decision-58 readiness and playing confirmation checks.
+- **Count:** session memory only, per playlist context. A song counts at a track change only after
+  its active playback time reaches its duration, allowing the controller's 2 s polling interval.
+  Paused time, ads and app skips do not count; user skips before the end do not count either.
+  Spotify exposes no end/skip reason, so a skip within the last 2 s can look like completion.
+  Spotify also cannot report playlist context: the count belongs to the playlist Ovra last started.
+- **Editorial fallback** (decision 64): if no other user playlist has a fitting unplayed song,
+  switch to the target's configured Spotify mood playlist. Its public catalog is read only when
+  needed; if unreadable, start the playlist URI. This is a playlist switch, never a per-song
+  editorial pick. With just one user playlist and no fit elsewhere, stay rather than pop Spotify up.
+  With no user playlists, the existing editorial start remains. Leave-alone and breaks still block
+  switching; ads and paused tracks are left alone.
+- **Demo:** the existing session overlay lowers only the count to **3 songs for every activity**,
+  then restores it on exit. The playlist switch gap remains 3 min; real fit/skip rules still apply.
 - **Fast refocus** (inside `SpotifyMacController.play`, so the shared interface is unchanged):
   `lsappinfo front` before the command; if that app isn't Spotify, poll `lsappinfo front` every 50 ms
   (up to 1.5 s) and, once Spotify is in front, `open -a <that app's bundle path>`. LaunchServices
@@ -51,11 +69,12 @@
   is logged once per session and the current song stays.
 - **Session end:** shuffle and repeat go back to what they were, unless the user turned shuffle off
   during the session (they took over).
-- **Dropped:** the 1-in-10 Spotify editorial picks during sessions (each would need a pop-up switch).
-  App skips are never learned as the user's quick skips.
+- **Dropped:** the old 1-in-10 per-song editorial picks; editorial fallback now happens only at a
+  playlist switch. App skips are never learned as the user's quick skips.
 - Numbers live in `musicConfig.steering`.
 
 ## Real-world checks
+
 - `npx tsx --tsconfig tsconfig.node.json src/main/music/dev/spotify-check.ts`: played Never Gonna Give You Up by URI,
   read it 3× (position 1.3 s → 3.6 s → 5.9 s), `next` → onTrackChange fired with the next track, paused at the end.
   12 s total, volume 15 %. A shell-injection URI was rejected.
@@ -64,17 +83,20 @@
   fake song confidence 0.2.
 
 ## Simplified / stubbed
+
 - Settle fades to a low volume over 2.5 s, skips to a calm song, then returns to the starting volume over 2.5 s.
   The fade stops and restores the starting volume when the session ends, a break starts, Leave-alone is enabled,
   data is deleted, or playback fails. If the user changes volume during the fade, it stops and leaves their value.
   Controllers without a volume reader, or with an unreadable volume, switch immediately without fading.
 - LLM daily cap is in memory (resets on restart).
-- Fallback mood playlists in `src/main/music/config.ts` are placeholders and are skipped until Daniel fills them.
+- Editorial mood playlist links live in `src/main/music/config.ts` (verified by public embed reads on 2026-11-14).
 
 ## Needs Daniel
-- Real public playlist links in `FALLBACK_PLAYLISTS` (`src/main/music/config.ts`).
+
+- A live Spotify check of playlist variety and fast refocus after merge (Job 21 used mocks only).
 - The Electron app will trigger its own macOS Automation prompt for Spotify on first use.
 
 ## Notes for integration
+
 - `SessionRecord.learnedSongIds` has no source: `MusicService` doesn't expose which songs it learned from this session.
   Session (B) can't fill it yet; a `learnedSongIds()` method or a bus event would be needed if it matters.

@@ -258,6 +258,7 @@ export interface TargetGap {
   minTargetChangeMs: number
   windDownSec?: number
   switchNow?: boolean
+  switchAfterSongs?: Record<Activity, number>
 }
 
 /**

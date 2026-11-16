@@ -15,7 +15,7 @@ import { memoryStorage } from './dev/memory-storage'
 import { readFileSync } from 'node:fs'
 import { createMusic, registerMusicIpc } from '.'
 import { handle } from '../ipc'
-import { musicConfig } from './config'
+import { FALLBACK_PLAYLISTS, musicConfig } from './config'
 import type { TargetGap } from './selector'
 import { sessionConfig } from '../session/config'
 import { SpotifyMacController } from './controller'
@@ -1335,13 +1335,15 @@ describe('steering inside a playlist (decision 61)', () => {
     expect(t.controller.calls).toEqual(['play spotify:track:p1'])
     expect(t.controller.contexts.at(-1)).toBe(PL)
 
-    // Every fit is heard now: nothing better without a pop-up, so the song stays (no skip).
+    // Every own fit is heard now: the next switch falls back to the target's editorial playlist.
     await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
     t.controller.start('spotify:track:p1')
     t.controller.calls = []
     t.controller.start('spotify:track:dark')
     await vi.advanceTimersByTimeAsync(1000)
-    expect(t.controller.calls).toEqual([])
+    expect(t.controller.calls.filter((c) => c.startsWith('play '))).toEqual([
+      `play ${FALLBACK_PLAYLISTS.steady[0].replace('https://open.spotify.com/playlist/', 'spotify:playlist:')}`
+    ])
     await t.music.stopSession()
   })
 
@@ -1372,4 +1374,246 @@ describe('steering inside a playlist (decision 61)', () => {
     expect(t.controller.calls).toEqual([])
     await t.music.stopSession()
   })
+})
+
+describe('playlist variety (decision 64)', () => {
+  const PL3 = 'spotify:playlist:1111111111111111111111'
+  const fit = { energy: 2 as const, vocals: 'instrumental' as const }
+  const shortCount: TargetGap = {
+    minTargetChangeMs: musicConfig.switching.minTargetChangeMs,
+    switchAfterSongs: { focus: 2, reading: 2, creative: 2, everyday: 2, unwind: 2 }
+  }
+  const pool = (prefix: string, count: number, uri = PL): Song[] =>
+    Array.from({ length: count }, (_, i) => song(`${prefix}${i}`, fit, [uri]))
+  const plays = (t: Awaited<ReturnType<typeof setup>>): string[] =>
+    t.controller.calls.filter((c) => c.startsWith('play '))
+
+  async function boundary(
+    t: Awaited<ReturnType<typeof setup>>,
+    id: string,
+    ms = 200_000
+  ): Promise<void> {
+    await vi.advanceTimersByTimeAsync(ms)
+    t.controller.start(id)
+    await vi.advanceTimersByTimeAsync(0)
+  }
+
+  it.each(['focus', 'reading', 'creative', 'everyday', 'unwind'] as const)(
+    'switches after exactly the configured number of completed songs for %s, never mid-song',
+    async (activity) => {
+      const count = musicConfig.steering.switchAfterSongs[activity]
+      const scores = {
+        ...fit,
+        energy: musicConfig.activityLean[activity].min,
+        mood: 'bright' as const
+      }
+      const own = pool('own', count + 2).map((s) => ({ ...s, scores: { ...s.scores!, ...scores } }))
+      const other = pool('other', 2, PL2).map((s) => ({
+        ...s,
+        scores: { ...s.scores!, ...scores }
+      }))
+      const t = await setup({ songs: [...own, ...other], playlists: [PL, PL2] })
+      await t.music.startSession(session({ activity }))
+      t.controller.start(own[0].id)
+      await vi.advanceTimersByTimeAsync(0)
+      for (let i = 1; i < count; i++) await boundary(t, own[i].id)
+      await vi.advanceTimersByTimeAsync(200_000)
+      expect(plays(t)).toHaveLength(1)
+      t.controller.start(own[count].id)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(plays(t)).toHaveLength(2)
+      expect(t.controller.contexts).toEqual([PL, PL2])
+      await t.music.stopSession()
+    }
+  )
+
+  it('ignores user skips, app skips, ads and paused time', async () => {
+    const own = pool('own', 12)
+    const t = await setup({
+      songs: [...own, ...pool('other', 3, PL2), song('loud', { energy: 5, mood: 'dark' })],
+      playlists: [PL, PL2],
+      targetGap: shortCount
+    })
+    await t.music.startSession(session())
+    t.controller.start(own[0].id)
+    await boundary(t, own[1].id, 5000) // quick user skip
+    await boundary(t, own[2].id, 100_000) // later user skip, still not completed
+    await boundary(t, 'spotify:track:loud', 5000)
+    t.controller.queue = [own[3].id]
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toContain('next')
+    await vi.advanceTimersByTimeAsync(5000)
+    t.controller.np = { ...t.controller.np!, id: 'spotify:ad:x', uri: 'spotify:ad:x', isAd: true }
+    t.controller.cb?.(t.controller.np)
+    await boundary(t, own[4].id)
+    expect(plays(t)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    t.controller.np = { ...t.controller.np!, state: 'paused' }
+    t.controller.cb?.(t.controller.np)
+    await vi.advanceTimersByTimeAsync(200_000)
+    t.controller.np = { ...t.controller.np!, state: 'playing' }
+    t.controller.cb?.(t.controller.np)
+    await boundary(t, own[5].id, 5000) // the long pause is not listening
+    await boundary(t, own[6].id)
+    expect(plays(t)).toHaveLength(1)
+    await boundary(t, own[7].id)
+    expect(t.controller.contexts).toEqual([PL, PL2])
+    await t.music.stopSession()
+  })
+
+  it('counts completed short songs too, without treating an early skip as a play', async () => {
+    const a = pool('a', 5)
+    const t = await setup({
+      songs: [...a, ...pool('b', 3, PL2)],
+      playlists: [PL, PL2],
+      targetGap: shortCount
+    })
+    await t.music.startSession(session())
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.controller.start(a[0].id, 20_000)
+    await vi.advanceTimersByTimeAsync(20_000)
+    t.controller.start(a[1].id, 20_000)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(plays(t)).toHaveLength(1)
+    await boundary(t, a[2].id, 20_000)
+    expect(t.controller.contexts).toEqual([PL, PL2])
+    await t.music.stopSession()
+  })
+
+  it('prefers an unused playlist over a used playlist with more fits and resets on each switch', async () => {
+    const a = pool('a', 8)
+    const b = pool('b', 5, PL2)
+    const c = pool('c', 3, PL3)
+    const t = await setup({
+      songs: [...a, ...b, ...c],
+      playlists: [PL, PL2, PL3],
+      targetGap: shortCount
+    })
+    await t.music.startSession(session())
+    t.controller.start(a[0].id)
+    await boundary(t, a[1].id)
+    await boundary(t, a[2].id)
+    expect(t.controller.contexts).toEqual([PL, PL2])
+    t.controller.start(t.controller.np!.id)
+    await vi.advanceTimersByTimeAsync(0)
+    await boundary(t, b[1].id)
+    expect(t.controller.contexts).toEqual([PL, PL2])
+    await boundary(t, b[2].id)
+    expect(t.controller.contexts).toEqual([PL, PL2, PL3])
+    await t.music.stopSession()
+    // Session history and the count start fresh.
+    await t.music.startSession({ ...session(), id: 'new' })
+    expect(t.controller.contexts.at(-1)).toBe(PL)
+    await t.music.stopSession()
+  })
+
+  it('resets the count after an early mood-driven switch', async () => {
+    const a = pool('a', 8)
+    const b = pool('b', 5, PL3).map((s) => ({ ...s, scores: { ...s.scores!, energy: 1 as const } }))
+    const t = await setup({ songs: [...a, ...b], playlists: [PL, PL3], targetGap: shortCount })
+    await t.music.startSession(session())
+    t.controller.start(a[0].id)
+    await boundary(t, a[1].id)
+    t.state('tense')
+    await vi.advanceTimersByTimeAsync(0)
+    // Calm down needs energy 1 after the kept energy-2 song; no fit remains in PL.
+    await boundary(t, a[2].id, 5000)
+    expect(t.controller.contexts).toEqual([PL, PL3])
+    t.controller.start(t.controller.np!.id)
+    await vi.advanceTimersByTimeAsync(0)
+    await boundary(t, b[1].id)
+    expect(plays(t)).toHaveLength(2)
+    await boundary(t, b[2].id)
+    expect(plays(t)).toHaveLength(3) // both own alternatives exhausted for Calm down: editorial
+    await t.music.stopSession()
+  })
+
+  it('falls back to the matching editorial playlist only on a switch, including an unreadable catalog', async () => {
+    const a = pool('a', 5)
+    const t = await setup({
+      songs: [...a, song('wrong', { energy: 5, mood: 'dark' }, [PL2])],
+      playlists: [PL, PL2],
+      targetGap: shortCount
+    })
+    await t.music.startSession(session())
+    expect(t.controller.contexts).toEqual([PL])
+    t.controller.start(a[0].id)
+    await boundary(t, a[1].id)
+    await boundary(t, a[2].id)
+    const editorial = FALLBACK_PLAYLISTS.steady[0].replace(
+      'https://open.spotify.com/playlist/',
+      'spotify:playlist:'
+    )
+    expect(plays(t)).toEqual([`play ${a[0].id}`, `play ${editorial}`])
+    await t.music.stopSession()
+  })
+
+  it('stays with a single playlist, without reading editorial playlists', async () => {
+    const a = pool('a', 5)
+    const fetch = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    const t = await setup({ songs: a, fetch, targetGap: shortCount })
+    await t.music.startSession(session())
+    fetch.mockClear()
+    t.controller.start(a[0].id)
+    await boundary(t, a[1].id)
+    await boundary(t, a[2].id)
+    t.state('tense')
+    await boundary(t, a[3].id)
+    expect(plays(t)).toHaveLength(1)
+    expect(fetch).not.toHaveBeenCalled()
+    await t.music.stopSession()
+  })
+
+  it('keeps the switch gap and waits for another song change after it expires', async () => {
+    const a = pool('a', 8)
+    const t = await setup({
+      songs: [...a, ...pool('b', 3, PL2)],
+      playlists: [PL, PL2],
+      targetGap: shortCount
+    })
+    await t.music.startSession(session())
+    t.controller.start(a[0].id, 40_000)
+    await vi.advanceTimersByTimeAsync(40_000)
+    t.controller.start(a[1].id, 40_000)
+    await vi.advanceTimersByTimeAsync(40_000)
+    t.controller.start(a[2].id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(plays(t)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.state('focused')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(plays(t)).toHaveLength(1)
+    t.controller.start(a[3].id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.controller.contexts).toEqual([PL, PL2])
+    await t.music.stopSession()
+  })
+
+  it.each(['focus', 'reading', 'creative', 'everyday', 'unwind'] as const)(
+    'uses the demo overlay count of 3 for %s',
+    async (activity) => {
+      const scores = {
+        ...fit,
+        energy: musicConfig.activityLean[activity].min,
+        mood: 'bright' as const
+      }
+      const a = pool('a', 8).map((s) => ({ ...s, scores: { ...s.scores!, ...scores } }))
+      const b = pool('b', 3, PL2).map((s) => ({ ...s, scores: { ...s.scores!, ...scores } }))
+      const t = await setup({
+        songs: [...a, ...b],
+        playlists: [PL, PL2],
+        targetGap: { ...shortCount, switchAfterSongs: sessionConfig.demo.musicSwitchAfterSongs }
+      })
+      await t.music.startSession(session({ activity, demo: true }))
+      t.controller.start(a[0].id)
+      await boundary(t, a[1].id)
+      await boundary(t, a[2].id)
+      expect(plays(t)).toHaveLength(1)
+      await boundary(t, a[3].id)
+      expect(t.controller.contexts).toEqual([PL, PL2])
+      await t.music.stopSession()
+    }
+  )
 })

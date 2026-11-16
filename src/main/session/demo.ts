@@ -42,7 +42,8 @@ export function bindDemo(deps: DemoDeps): () => void {
     moves.returnCheck = { ...moves.returnCheck, durationSec: demo.returnCheckSec }
     Object.assign(musicGap, demo.musicTargetGap, {
       windDownSec: demo.musicWindDownSec,
-      switchNow: demo.musicSwitchNow
+      switchNow: demo.musicSwitchNow,
+      switchAfterSongs: demo.musicSwitchAfterSongs
     })
     Object.assign(sensing, demo.sensing)
     return () => {
@@ -53,6 +54,7 @@ export function bindDemo(deps: DemoDeps): () => void {
       Object.assign(moves, saved.moves)
       delete musicGap.windDownSec
       delete musicGap.switchNow
+      delete musicGap.switchAfterSongs
       Object.assign(musicGap, saved.musicGap)
       Object.assign(sensing, saved.sensing)
     }

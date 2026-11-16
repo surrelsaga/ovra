@@ -100,13 +100,18 @@ Music rules:
   window to the front; skipping never does. So Ovra starts one of your playlists at the start (the
   one with the most songs that fit, shuffle on, while Ovra's own window is in front) and then steers
   inside it: when a new song doesn't fit, it skips to the next one, with the volume turned down
-  during the skips (at most 8 in a row). Ads are left alone. Only when the playlist has nothing
-  fitting left, or 8 skips didn't find one, does Ovra change playlist; Spotify then flashes up for a
-  moment and Ovra puts your app straight back. That happens at most once every 3 minutes. Your
-  shuffle and repeat settings come back when the session ends.
+  during the skips (at most 8 in a row). Ads are left alone. Ovra changes playlist when nothing
+  fitting is left or 8 skips didn't find one. For variety it also switches after **12 songs in
+  Focus/Reading**, or **7 in Creative/Everyday tasks/Unwind**, always at a song change. Skips, ads
+  and time paused don't count. Every switch starts the count again. Playlists you haven't heard
+  this session come first, as long as they have a fitting song. If none of your other playlists
+  fits, Ovra uses Spotify's matching mood playlist; with just one of your playlists, it stays.
+  Spotify flashes up briefly at a switch and Ovra puts your app straight back, at most once every
+  3 minutes. Your shuffle and repeat settings come back when the session ends.
 
 **Demo timings:** music winds down only in the last **2 minutes**, and every music direction change
-is acted on right away (skips if the song doesn't fit; only Quiet fades). Changes are still at least 20 seconds apart. Break
+is acted on right away (skips if the song doesn't fit; only Quiet fades). Changes are still at least 20 seconds apart.
+Playlist variety uses **3 songs for every activity**, with the same 3-minute gap between playlist switches. Break
 reminders are at least 1 minute apart, and **1 more min** puts one off for 1 minute. The seated neck
 stretch comes after 3 minutes; seated stand/walk waits are 60 minutes, so Tired and Very stressed
 can show their own reminders during the tour. Move lengths stay the same. The ordered tour gives

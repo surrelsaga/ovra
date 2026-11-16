@@ -48,6 +48,7 @@ export const sessionConfig = {
     snoozeMin: 1,
     musicWindDownSec: 120,
     musicSwitchNow: true,
+    musicSwitchAfterSongs: { focus: 3, reading: 3, creative: 3, everyday: 3, unwind: 3 },
     hintTtlMs: 25_000,
     doneDelayMs: 8_000,
     /** Sequential tour; early events are remembered, never used to jump forward. */

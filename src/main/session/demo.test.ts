@@ -82,7 +82,8 @@ describe('demo pace', () => {
     expect(live().musicGap).toMatchObject({
       minTargetChangeMs: 20_000,
       windDownSec: 120,
-      switchNow: true
+      switchNow: true,
+      switchAfterSongs: { focus: 3, reading: 3, creative: 3, everyday: 3, unwind: 3 }
     })
     expect(live().snooze).toBe(1)
     expect(live().nudge).toBe(1)

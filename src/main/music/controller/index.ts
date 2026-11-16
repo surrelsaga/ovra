@@ -11,6 +11,28 @@ const exec = promisify(execFile)
 export const SPOTIFY_URI = /^spotify:(track|playlist|album|artist|episode|show):[A-Za-z0-9]{1,64}$/
 
 export type OsascriptRunner = (script: string) => Promise<string>
+export type CommandRunner = (cmd: string, args: string[]) => Promise<string>
+
+/** Shuffle and repeat, saved at session start and restored at the end (decision 61). */
+export interface PlayMode {
+  shuffle: boolean
+  repeat: boolean
+}
+export interface PlayModeControl {
+  playMode(): Promise<PlayMode | null>
+  setPlayMode(mode: PlayMode): Promise<void>
+}
+
+/** LaunchServices tools: no Automation or Accessibility permission (unlike System Events). */
+const runCommand: CommandRunner = async (cmd, args) => {
+  const { stdout } = await exec(cmd, args, { timeout: musicConfig.controller.osascriptTimeoutMs })
+  return stdout.trim()
+}
+
+const SPOTIFY_BUNDLE = 'com.spotify.client'
+/** `lsappinfo front` prints `ASN:0x0-0x2c02c:`, `find` prints `ASN:0x0-0x44044-"Spotify":`. */
+const asn = (out: string): string | null => /ASN:0x[0-9a-f]+-0x[0-9a-f]+/i.exec(out)?.[0] ?? null
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** Runs one AppleScript with execFile (no shell). Returns stdout without the trailing newline. */
 export const runOsascript: OsascriptRunner = async (script) => {
@@ -59,8 +81,12 @@ function assertUri(uri: string): void {
   if (!SPOTIFY_URI.test(uri)) throw new Error('music controller: invalid Spotify URI')
 }
 
-export class SpotifyMacController implements MusicController {
-  constructor(private run: OsascriptRunner = runOsascript) {}
+export class SpotifyMacController implements MusicController, PlayModeControl {
+  constructor(
+    private run: OsascriptRunner = runOsascript,
+    // A fake AppleScript runner (tests) never reaches the real LaunchServices tools either.
+    private sh: CommandRunner = run === runOsascript ? runCommand : async () => ''
+  ) {}
 
   private tell(cmd: string): Promise<string> {
     return this.run(`${IF_RUNNING} tell application "Spotify" to ${cmd}`)
@@ -77,9 +103,74 @@ export class SpotifyMacController implements MusicController {
   async play(uri: string, contextUri?: string): Promise<void> {
     assertUri(uri)
     if (contextUri !== undefined) assertUri(contextUri)
+    const before = await this.frontApp()
     await this.tell(
       contextUri ? `play track "${uri}" in context "${contextUri}"` : `play track "${uri}"`
     )
+    if (before) await this.refocus(before)
+  }
+
+  /** The app in front before a `play track`, unless it is Spotify (the user is there themselves). */
+  private async frontApp(): Promise<{ asn: string; path: string } | null> {
+    try {
+      const front = asn(await this.sh('lsappinfo', ['front']))
+      const spotify = asn(await this.sh('lsappinfo', ['find', `bundleid=${SPOTIFY_BUNDLE}`]))
+      if (!front || front === spotify) return null
+      const out = await this.sh('lsappinfo', ['info', '-only', 'bundlepath', front])
+      const path = /"LSBundlePath"="(.+)"/.exec(out)?.[1]
+      return path?.endsWith('.app') ? { asn: front, path } : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * `play track` always brings Spotify to the front (decision 61). Put the user's app back as soon as
+   * Spotify is in front. `open -a <path>` reactivates that exact running app (`open -b` could pick
+   * another copy with the same bundle id, e.g. a second Electron.app in dev).
+   */
+  private async refocus(before: { asn: string; path: string }): Promise<void> {
+    const { refocusPollMs, refocusGiveUpMs } = musicConfig.steering
+    try {
+      const spotify = asn(await this.sh('lsappinfo', ['find', `bundleid=${SPOTIFY_BUNDLE}`]))
+      if (!spotify) return
+      for (let waited = 0; waited <= refocusGiveUpMs; waited += refocusPollMs) {
+        const front = asn(await this.sh('lsappinfo', ['front']))
+        if (front === spotify) {
+          await this.sh('open', ['-a', before.path])
+          return
+        }
+        // The user moved to another app themselves: leave it.
+        if (front && front !== before.asn) return
+        await sleep(refocusPollMs)
+      }
+    } catch {
+      // Refocus is a nicety; playback already started.
+    }
+  }
+
+  async playMode(): Promise<PlayMode | null> {
+    try {
+      const [shuffle, repeat] = (
+        await this.run(
+          `${IF_RUNNING}\n  tell application "Spotify" to return (shuffling as text) & tab & (repeating as text)\nend if\nreturn ""`
+        )
+      )
+        .trim()
+        .split('\t')
+      const bool = (v: string | undefined): boolean | null =>
+        v === 'true' ? true : v === 'false' ? false : null
+      const s = bool(shuffle)
+      const r = bool(repeat)
+      return s === null || r === null ? null : { shuffle: s, repeat: r }
+    } catch {
+      return null
+    }
+  }
+
+  async setPlayMode(mode: PlayMode): Promise<void> {
+    await this.tell(`set shuffling to ${mode.shuffle === true}`)
+    await this.tell(`set repeating to ${mode.repeat === true}`)
   }
 
   /** Dev check only: save everything before touching playback, restore even after failure or Ctrl+C. */

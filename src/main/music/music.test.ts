@@ -63,7 +63,18 @@ class FakeController implements MusicController {
   }
   pause = async (): Promise<void> => void this.calls.push('pause')
   resume = async (): Promise<void> => void this.calls.push('resume')
-  next = async (): Promise<void> => {}
+  /** What Spotify plays after each `next track`; empty = Spotify refuses the skip. */
+  queue: string[] = []
+  next = async (): Promise<void> => {
+    this.calls.push('next')
+    const id = this.queue.shift()
+    if (id) this.start(id)
+  }
+  mode = { shuffle: false, repeat: true }
+  playMode = async (): Promise<{ shuffle: boolean; repeat: boolean }> => ({ ...this.mode })
+  setPlayMode = async (mode: { shuffle: boolean; repeat: boolean }): Promise<void> => {
+    this.mode = { ...mode }
+  }
   setVolume = async (volume: number): Promise<void> => {
     this.volume = volume
   }
@@ -91,12 +102,17 @@ class FakeController implements MusicController {
   }
 }
 
-const song = (id: string, s: Partial<SongScores>): Song => ({
+const PL = 'spotify:playlist:37i9dQZF1DXcBWIGoYBM5M'
+const PL2 = 'spotify:playlist:37i9dQZF1DX4sWSpwq3LiO'
+
+const song = (id: string, s: Partial<SongScores>, playlists = [PL]): Song => ({
   id: `spotify:track:${id}`,
   title: id,
   artist: 'a',
   firstSeenAt: 0,
   playCount: 0,
+  playlists,
+  origin: 'mine',
   scores: {
     energy: 3,
     mood: 'neutral',
@@ -138,11 +154,16 @@ async function setup(
     privacy?: Partial<PrivacySettings>
     targetGap?: TargetGap
     leaveAlone?: boolean
+    playlists?: string[]
   } = {}
 ) {
   const bus = createBus()
   const storage = memoryStorage()
   storage.files.set('songs', structuredClone(opts.songs ?? LIBRARY))
+  storage.files.set(
+    'playlists',
+    (opts.playlists ?? [PL]).map((uri) => ({ uri, url: uri, addedAt: 0 }))
+  )
   const controller = new FakeController()
   const setSettings = vi.fn(async () => DEFAULT_SETTINGS)
   const privacy = {
@@ -219,7 +240,7 @@ describe('music service', () => {
       songs: [
         song('vocal', { energy: 2, vocals: 'heavy' }),
         song('instrumental', { energy: 2, vocals: 'instrumental' }),
-        song('settle', { energy: 1, mood: 'bright', vocals: 'heavy' })
+        song('settle', { energy: 1, mood: 'bright', vocals: 'light' })
       ]
     })
     await music.startSession(session({ activity: 'reading' }))
@@ -228,7 +249,12 @@ describe('music service', () => {
     state('crashing')
     await vi.advanceTimersByTimeAsync(0)
     expect(music.status().target).toBe('settle')
-    expect(controller.calls.at(-1)).toBe('play spotify:track:vocal')
+    // Quiet's own rules: light singing is fine here although Reading's lean would skip it.
+    controller.queue = ['spotify:track:settle']
+    controller.start('spotify:track:vocal')
+    await vi.advanceTimersByTimeAsync(5 * musicConfig.switching.settleFadeMs)
+    expect(controller.calls.slice(1)).toEqual(['next'])
+    expect(controller.np?.id).toBe('spotify:track:settle')
   })
 
   describe.each([false, true])('neutral start (demo: %s)', (demo) => {
@@ -268,11 +294,12 @@ describe('music service', () => {
         const t = await setup({ targetGap: demo ? { minTargetChangeMs: 15_000 } : undefined })
         await t.music.startSession(session({ activity: 'everyday', demo }))
         await vi.advanceTimersByTimeAsync(1000)
+        t.controller.queue = ['spotify:track:calm']
         t.state(situation)
-        await vi.advanceTimersByTimeAsync(0)
+        await vi.advanceTimersByTimeAsync(5 * musicConfig.switching.settleFadeMs)
         expect(t.targets()).toEqual(['steady', target])
-        if (target === 'settle') expect(t.controller.calls.at(-1)).toBe('play spotify:track:calm')
-        else expect(t.controller.calls).toHaveLength(1)
+        // Quiet skips at once; other first targets wait for the next song.
+        expect(t.controller.calls.slice(1)).toEqual(target === 'settle' ? ['next'] : [])
         t.state(null)
         expect(t.music.status().target).toBe(target)
         await t.music.stopSession()
@@ -280,17 +307,20 @@ describe('music service', () => {
     )
   })
 
-  it('the first ease-down target still waits for the next track', async () => {
+  it('a normal target change waits for the next song, then skips silently to a fit', async () => {
     const t = await setup()
     await t.music.startSession(session())
-    t.controller.start('spotify:track:loud', 5000)
     t.controller.calls = []
     t.state('tense')
     await vi.advanceTimersByTimeAsync(0)
     expect(t.music.status().target).toBe('ease-down')
     expect(t.controller.calls).toEqual([])
-    await vi.advanceTimersByTimeAsync(3500)
-    expect(t.controller.calls).toEqual(['play spotify:track:mid'])
+    // The song ends; Spotify's shuffle plays loud, then mid, then calm.
+    t.controller.queue = ['spotify:track:mid', 'spotify:track:calm']
+    t.controller.start('spotify:track:loud')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(t.controller.calls).toEqual(['next', 'next'])
+    expect(t.controller.np?.id).toBe('spotify:track:calm')
     await t.music.stopSession()
   })
 
@@ -438,42 +468,29 @@ describe('music service', () => {
     expect(targets()).toEqual(['steady', 'ease-down'])
   })
 
-  it('switches only between tracks: ease-down waits for the song to end', async () => {
+  it('Quiet skips right away until a calm fit, and keeps the song when nothing calmer is left', async () => {
     const { music, controller, state } = await setup()
     await music.startSession(session())
     controller.calls = []
     await vi.advanceTimersByTimeAsync(3 * MIN)
-    controller.start('spotify:track:loud') // user put on an energy-5 song
-    state('tense')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(controller.calls).toEqual([]) // not mid-song
-    await vi.advanceTimersByTimeAsync(200_000 - 1500)
-    // One step below energy 5, not dark, not recent: "mid" (energy 4).
-    expect(controller.calls).toEqual(['play spotify:track:mid'])
-  })
-
-  it('settle switches right away and keeps picking even if only unsure songs exist', async () => {
-    const { music, controller, state } = await setup()
-    await music.startSession(session())
-    controller.calls = []
-    controller.start('spotify:track:loud')
-    await vi.advanceTimersByTimeAsync(3 * MIN)
+    controller.queue = ['spotify:track:loud', 'spotify:track:calm']
     state('crashing')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(controller.calls).toEqual(['play spotify:track:calm'])
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(controller.calls).toEqual(['next', 'next'])
 
     const unsure = await setup({
       songs: [song('maybe', { energy: 1, mood: 'bright', confidence: 0.2 })]
     })
     await unsure.music.startSession(session())
-    unsure.controller.calls = [] // Steady at start may pick an unsure song (1 in 5)
+    unsure.controller.calls = []
     await vi.advanceTimersByTimeAsync(3 * MIN)
     unsure.state('crashing')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(unsure.controller.calls).toEqual(['play spotify:track:maybe'])
+    await vi.advanceTimersByTimeAsync(2000)
+    // Unsure songs never count as calm, but skipping can't reach anything better.
+    expect(unsure.controller.calls).toEqual([])
   })
 
-  it('fades down, switches, and restores the starting volume for Settle', async () => {
+  it('Quiet fades down, skips to a calm fit, and fades back to the starting volume', async () => {
     const { music, controller, state } = await setup()
     const volumes: number[] = []
     controller.getVolume = async () => controller.volume
@@ -484,10 +501,12 @@ describe('music service', () => {
     await music.startSession(session())
     controller.calls = []
     await vi.advanceTimersByTimeAsync(3 * MIN)
+    controller.queue = ['spotify:track:calm']
     state('crashing')
     await vi.advanceTimersByTimeAsync(2500)
-    expect(controller.calls).toEqual(['play spotify:track:calm'])
+    expect(volumes).toEqual([50, 39, 29, 18, 8])
     await vi.advanceTimersByTimeAsync(2500)
+    expect(controller.calls).toEqual(['next'])
     expect(volumes).toEqual([50, 39, 29, 18, 8, 18, 29, 39, 50, 60])
     expect(controller.volume).toBe(60)
   })
@@ -529,14 +548,14 @@ describe('music service', () => {
         volumes.push(v)
         t.controller.volume = v + offset
       }
-      const play = vi.spyOn(t.controller, 'play')
+      const next = vi.spyOn(t.controller, 'next')
       await t.music.startSession(session())
       await vi.advanceTimersByTimeAsync(3 * MIN)
-      play.mockClear()
+      t.controller.queue = ['spotify:track:calm']
       t.state('crashing')
-      await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
+      await vi.advanceTimersByTimeAsync(3 * musicConfig.switching.settleFadeMs)
       expect(volumes).toEqual([50, 39, 29, 18, 8, 18, 29, 39, 50, 60])
-      expect(play).toHaveBeenCalledExactlyOnceWith('spotify:track:calm', expect.any(String))
+      expect(next).toHaveBeenCalledOnce()
     }
   )
 
@@ -617,7 +636,7 @@ describe('music service', () => {
     }
   )
 
-  it('switches without a fade when volume cannot be read and restores after play failure', async () => {
+  it('skips without a fade when volume cannot be read and restores after a failed skip', async () => {
     const t = await setup()
     t.controller.getVolume = async () => null
     await t.music.startSession(session())
@@ -625,18 +644,15 @@ describe('music service', () => {
     await vi.advanceTimersByTimeAsync(3 * MIN)
     t.state('crashing')
     await vi.advanceTimersByTimeAsync(0)
-    expect(t.controller.calls).toEqual(['play spotify:track:calm'])
+    expect(t.controller.calls).toEqual(['next'])
 
     const failed = await setup()
     failed.controller.getVolume = async () => failed.controller.volume
     failed.controller.setVolume = async (v) => {
       failed.controller.volume = v
     }
-    const originalPlay = failed.controller.play
-    let playCount = 0
-    failed.controller.play = async (uri) => {
-      if (playCount++) throw new Error('play failed')
-      await originalPlay(uri)
+    failed.controller.next = async () => {
+      throw new Error('skip failed')
     }
     await failed.music.startSession(session())
     await vi.advanceTimersByTimeAsync(3 * MIN)
@@ -652,9 +668,10 @@ describe('music service', () => {
     const setVolume = vi.spyOn(t.controller, 'setVolume')
     await t.music.startSession(session())
     t.controller.calls = []
+    t.controller.queue = ['spotify:track:calm']
     t.state('crashing')
     await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
-    expect(t.controller.calls).toEqual(['play spotify:track:calm'])
+    expect(t.controller.calls).toEqual(['next'])
     expect(setVolume).not.toHaveBeenCalled()
     expect(t.controller.volume).toBe(60)
   })
@@ -699,32 +716,50 @@ describe('music service', () => {
     await t.music.stopSession()
   })
 
-  it('demo switches on every target change, fading only for Quiet', async () => {
-    const t = await setup({
-      targetGap: {
-        ...sessionConfig.demo.musicTargetGap,
-        switchNow: sessionConfig.demo.musicSwitchNow,
-        windDownSec: sessionConfig.demo.musicWindDownSec
+  it.each([true, false])(
+    'demo=%s: demo steers at once on a target change, normal waits for the next song',
+    async (demo) => {
+      const t = await setup({
+        songs: [
+          song('dark', { energy: 3, mood: 'dark', vocals: 'instrumental' }),
+          song('bright', { energy: 3, mood: 'bright', vocals: 'instrumental' }),
+          song('soft', { energy: 1, mood: 'bright', vocals: 'instrumental' })
+        ],
+        targetGap: demo
+          ? {
+              ...sessionConfig.demo.musicTargetGap,
+              switchNow: sessionConfig.demo.musicSwitchNow,
+              windDownSec: sessionConfig.demo.musicWindDownSec
+            }
+          : undefined
+      })
+      const volumes: number[] = []
+      t.controller.getVolume = async () => t.controller.volume
+      t.controller.setVolume = async (v) => {
+        t.controller.volume = v
+        volumes.push(v)
       }
-    })
-    const volume = vi.spyOn(t.controller, 'setVolume')
-    t.controller.getVolume = async () => t.controller.volume
-    await t.music.startSession(session({ demo: true }))
-    for (const situation of ['tense', 'low', 'good', 'focused'] as const) {
-      const count = t.controller.calls.length
-      t.state(situation)
-      await vi.advanceTimersByTimeAsync(0)
-      expect(t.controller.calls.length, situation).toBe(count + 1)
-      expect(volume).not.toHaveBeenCalled()
+      await t.music.startSession(session({ demo }))
+      expect(t.controller.calls).toEqual(['play spotify:track:dark'])
+      t.controller.queue = ['spotify:track:bright', 'spotify:track:soft']
+      t.state('good')
+      await vi.advanceTimersByTimeAsync(1000)
+      if (!demo) {
+        expect(t.controller.calls).toHaveLength(1)
+        return t.music.stopSession()
+      }
+      // The skip is ducked to a quarter of the user's level and brought back.
+      expect(t.controller.calls.slice(1)).toEqual(['next'])
+      expect(volumes).toEqual([15, 60])
       await vi.advanceTimersByTimeAsync(20_000)
+      t.state('crashing')
+      await vi.advanceTimersByTimeAsync(3 * musicConfig.switching.settleFadeMs)
+      expect(t.music.status().target).toBe('settle')
+      expect(t.controller.calls.slice(1)).toEqual(['next', 'next'])
+      expect(t.controller.volume).toBe(60)
+      await t.music.stopSession()
     }
-    t.state('crashing')
-    await vi.advanceTimersByTimeAsync(2 * musicConfig.switching.settleFadeMs)
-    expect(t.music.status().target).toBe('settle')
-    expect(volume).toHaveBeenCalled()
-    expect(t.controller.volume).toBe(60)
-    await t.music.stopSession()
-  })
+  )
 
   it('plays one of the user playlists at start when no song fits', async () => {
     const { music, controller } = await setup({ songs: [] })
@@ -762,7 +797,8 @@ describe('music service', () => {
   })
 
   it('learns from the body: settle votes and quick skips', async () => {
-    const { music, controller, state } = await setup({ songs: [] })
+    // Leave-alone keeps learning and keeps steering out of the user's skips.
+    const { music, controller, state } = await setup({ songs: [], leaveAlone: true })
     await music.startSession(session())
     state('tense')
     controller.start('spotify:track:a')
@@ -863,21 +899,19 @@ it('deletion cancels a music start which is still waiting for its library', asyn
   expect(t.controller.calls).toEqual([])
 })
 
-it('picks catalog tracks with playlist context repeatedly at the same target', async () => {
+it('starts a catalog track in its playlist context, then lets the playlist run', async () => {
   const html = readFileSync(new URL('./library/fixtures/piano.html', import.meta.url), 'utf8')
   const f = vi.fn(async () => new Response(html))
-  const t = await setup({ songs: [], fetch: f })
-  const p = await t.music.addPlaylist('spotify:playlist:37i9dQZF1DX4sWSpwq3LiO')
+  const t = await setup({ songs: [], fetch: f, playlists: [] })
+  const p = await t.music.addPlaylist(PL2)
   await t.music.startSession(session())
-  for (let i = 0; i < 3; i++) {
-    const uri = t.controller.calls.at(-1)!.slice('play '.length)
-    expect(uri).toMatch(/^spotify:track:/)
-    expect(t.controller.contexts.at(-1)).toBe(p.uri)
-    t.controller.start(uri, 5000)
-    await vi.advanceTimersByTimeAsync(3500)
-  }
-  expect(t.controller.calls).toHaveLength(4)
-  expect(new Set(t.controller.calls.slice(0, 3)).size).toBe(3)
+  expect(t.controller.calls).toHaveLength(1)
+  expect(t.controller.calls[0]).toMatch(/^play spotify:track:/)
+  expect(t.controller.contexts[0]).toBe(p.uri)
+  // Song ends: Spotify's own shuffle moves on; no further play track (no pop-up).
+  t.controller.start(t.controller.np!.id, 5000)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(t.controller.calls.filter((c) => c.startsWith('play'))).toHaveLength(1)
   await t.music.stopSession()
 })
 
@@ -1116,23 +1150,6 @@ describe('playback confirmation', () => {
     await t.music.stopSession()
   })
 
-  it('verifies a Settle play from the command time without repeating the volume fade', async () => {
-    const t = await setup()
-    await t.music.startSession(session())
-    await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs)
-    const play = loadPaused(t)
-    t.controller.getVolume = async () => t.controller.volume
-    const volume = vi.spyOn(t.controller, 'setVolume')
-    t.state('crashing')
-    await vi.advanceTimersByTimeAsync(musicConfig.switching.settleFadeMs)
-    expect(play).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(musicConfig.controller.playVerifyMs)
-    expect(play).toHaveBeenCalledTimes(2)
-    expect(volume).toHaveBeenCalledTimes(2 * musicConfig.switching.settleFadeSteps)
-    expect(t.controller.volume).toBe(60)
-    await t.music.stopSession()
-  })
-
   it.each(['stop', 'leave-alone', 'break', 'delete', 'privacy', 'closed'] as const)(
     'cancels pending retries on %s',
     async (reason) => {
@@ -1190,4 +1207,169 @@ it('simulator switchNow preserves leave-alone and no-session guards', async () =
   await music.switchNow()
   expect(controller.calls).toEqual([])
   await music.stopSession()
+})
+
+describe('steering inside a playlist (decision 61)', () => {
+  const MANY = [
+    song('s1', { energy: 3, vocals: 'instrumental' }, [PL, PL2]),
+    song('s2', { energy: 3, vocals: 'instrumental' }, [PL2]),
+    song('s3', { energy: 3, vocals: 'instrumental' }, [PL2]),
+    song('loud1', { energy: 5, mood: 'dark' }),
+    song('loud2', { energy: 5, mood: 'dark' }),
+    song('loud3', { energy: 5, mood: 'dark' }),
+    song('mine', { energy: 3, vocals: 'instrumental' })
+  ]
+
+  it('starts the playlist with the most fitting songs, shuffle on, and restores shuffle/repeat at the end', async () => {
+    const t = await setup({ songs: MANY, playlists: [PL, PL2] })
+    await t.music.startSession(session())
+    expect(t.controller.calls).toEqual(['play spotify:track:s1'])
+    expect(t.controller.contexts).toEqual([PL2])
+    expect(t.controller.mode).toEqual({ shuffle: true, repeat: true })
+    await t.music.stopSession()
+    expect(t.controller.mode).toEqual({ shuffle: false, repeat: true })
+
+    // The user turned shuffle off themselves: they took over, leave it.
+    await t.music.startSession({ ...session(), id: 's2' })
+    t.controller.mode = { shuffle: false, repeat: false }
+    await t.music.stopSession()
+    expect(t.controller.mode).toEqual({ shuffle: false, repeat: false })
+  })
+
+  it('keeps a fitting song, ducks a skip to a quarter, and leaves ads alone', async () => {
+    const t = await setup({
+      songs: [...MANY, song('spare', { energy: 3, vocals: 'instrumental' })]
+    })
+    const volumes: number[] = []
+    t.controller.getVolume = async () => t.controller.volume
+    t.controller.setVolume = async (v) => {
+      t.controller.volume = v
+      volumes.push(v)
+    }
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.controller.start('spotify:track:mine')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual([])
+
+    t.controller.np = { ...t.controller.np!, id: 'spotify:ad:x', uri: 'spotify:ad:x', artist: '' }
+    t.controller.np.isAd = true
+    t.controller.cb?.(t.controller.np)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual([])
+
+    t.controller.queue = ['spotify:track:loud2', 'spotify:track:spare']
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(t.controller.calls).toEqual(['next', 'next'])
+    expect(volumes).toEqual([15, 60])
+    // App skips are not the user's quick skips.
+    const songs = new Map((await t.music.library()).songs.map((s) => [s.id, s]))
+    expect(songs.get('spotify:track:loud1')?.learned?.quickSkips ?? 0).toBe(0)
+    await t.music.stopSession()
+  })
+
+  it('treats the same title by the same lead artist as a repeat', async () => {
+    const t = await setup({
+      songs: [
+        song('a', { energy: 3, vocals: 'instrumental' }),
+        { ...song('a2', { energy: 3, vocals: 'instrumental' }), title: 'a', artist: 'a, b' },
+        song('b', { energy: 3, vocals: 'instrumental' })
+      ]
+    })
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:a')
+    t.controller.calls = []
+    t.controller.queue = ['spotify:track:b']
+    const dup = { ...t.controller.np!, id: 'spotify:track:a2', uri: 'spotify:track:a2' }
+    t.controller.np = { ...dup, artist: 'a, b' }
+    t.controller.cb?.(t.controller.np)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual(['next'])
+    await t.music.stopSession()
+  })
+
+  it('switches playlist after the skip cap, refocusing via the controller, at most once per gap', async () => {
+    const loud = Array.from({ length: 12 }, (_, i) => song(`l${i}`, { energy: 5, mood: 'dark' }))
+    const t = await setup({ songs: [...loud, ...MANY], playlists: [PL, PL2] })
+    await t.music.startSession(session())
+    expect(t.controller.contexts).toEqual([PL2])
+    t.controller.calls = []
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.controller.queue = loud.slice(1).map((s) => s.id)
+    t.controller.start(loud[0].id)
+    await vi.advanceTimersByTimeAsync(10_000)
+    const { maxSkips } = musicConfig.steering
+    expect(t.controller.calls.filter((c) => c === 'next')).toHaveLength(maxSkips)
+    expect(t.controller.calls.at(-1)).toMatch(/^play spotify:track:(mine|s1)$/)
+    expect(t.controller.contexts.at(-1)).toBe(PL)
+
+    // Another capped chain inside the gap keeps the song instead of popping Spotify up again.
+    t.controller.calls = []
+    t.controller.queue = loud.map((s) => s.id).reverse()
+    t.controller.start('spotify:track:loud3')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(t.controller.calls.filter((c) => c.startsWith('play'))).toEqual([])
+    await t.music.stopSession()
+  })
+
+  it('switches at once when the playlist has no fitting unplayed song left, else keeps the song', async () => {
+    const fit = { energy: 3 as const, vocals: 'instrumental' as const }
+    const t = await setup({
+      songs: [
+        song('p1', fit),
+        song('fitA', fit, [PL2]),
+        song('fitB', fit, [PL2]),
+        song('dark', { energy: 5, mood: 'dark' }, [PL2])
+      ],
+      playlists: [PL, PL2]
+    })
+    await t.music.startSession(session())
+    expect(t.controller.contexts).toEqual([PL2])
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.controller.calls = []
+    t.controller.start('spotify:track:fitA')
+    t.controller.start('spotify:track:fitB')
+    t.controller.start('spotify:track:dark')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual(['play spotify:track:p1'])
+    expect(t.controller.contexts.at(-1)).toBe(PL)
+
+    // Every fit is heard now: nothing better without a pop-up, so the song stays (no skip).
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.controller.start('spotify:track:p1')
+    t.controller.calls = []
+    t.controller.start('spotify:track:dark')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual([])
+    await t.music.stopSession()
+  })
+
+  it('keeps the song and logs once when Spotify refuses a skip', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const t = await setup({ songs: MANY })
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.skipWaitMs + 1000)
+    t.controller.start('spotify:track:loud2')
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.skipWaitMs + 1000)
+    expect(t.controller.calls).toEqual(['next', 'next'])
+    expect(t.controller.np?.id).toBe('spotify:track:loud2')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+    await t.music.stopSession()
+  })
+
+  it('never steers during leave-alone or a break', async () => {
+    const t = await setup({ songs: MANY })
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:mine')
+    t.bus.emit('break:away', { since: Date.now(), manual: true })
+    t.controller.calls = []
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(t.controller.calls).toEqual([])
+    await t.music.stopSession()
+  })
 })

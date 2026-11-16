@@ -22,8 +22,6 @@ export const musicConfig = {
   switching: {
     /** At most one target change per this long. */
     minTargetChangeMs: 3 * 60_000,
-    /** Start our pick this long before the current song ends. */
-    endLeadMs: 1500,
     /** Settle fades down and back up over this duration each. */
     settleFadeMs: 2500,
     settleFadeSteps: 5,
@@ -32,8 +30,28 @@ export const musicConfig = {
     settleVolumeTolerance: 2,
     /** Last minutes of a session switch the target to wind-down. */
     windDownSec: 10 * 60,
-    /** Demo only: start the new target before the current track ends. */
+    /** Demo only: steer to the new target at once instead of at the next song. */
     switchNow: false
+  },
+  /**
+   * Decision 61: `play track` always brings Spotify to the front, `next track` never does. Ovra starts
+   * one playlist and steers inside it with skips; a playlist switch is the only pop-up.
+   */
+  steering: {
+    /** A song fits when its pick distance is at most this (same scale as selection.pickSlack). */
+    fitDistance: 0.5,
+    /** Skips per chain before switching playlist (or keeping the song when a switch isn't allowed). */
+    maxSkips: 8,
+    /** Volume during a skip chain, as a share of the user's level. */
+    duckRatio: 0.25,
+    /** After `next track`, wait this long for a new song before treating the skip as refused. */
+    skipWaitMs: 3000,
+    skipPollMs: 250,
+    /** Playlist switches (the only pop-up) at most this often, except at session start. */
+    switchGapMs: 3 * 60_000,
+    /** Fast refocus: put the user's app back once Spotify comes to the front. */
+    refocusPollMs: 50,
+    refocusGiveUpMs: 1500
   },
   catalog: {
     embedUrl: 'https://open.spotify.com/embed/playlist/',
@@ -57,6 +75,7 @@ export const musicConfig = {
     playlistHint: 0.2,
     pickSlack: 0.5,
     topK: 5,
+    /** Dev evals only: sessions never add editorial picks (each would need a pop-up switch). */
     fallbackMinDistance: 1.5,
     fallbackEvery: 10
   },

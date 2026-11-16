@@ -193,15 +193,28 @@ export function songDistance(s: Song, target: MusicTarget, ctx: PickContext): nu
   )
 }
 
+/** Same title by the same lead artist under another id (single, album, feat. version) counts as heard. */
+export function songKey(title: string, artist: string): string {
+  return `${title}\n${artist.split(',')[0]}`.normalize('NFKC').toLowerCase().trim()
+}
+
+/**
+ * Steering: may this song keep playing for the target? Same distance as picks, minus the
+ * cross-session cooldown (a playlist song heard a few hours ago still fits). Unscored songs come
+ * from the user's own playlists, so they may play, except for the calm targets (PLAN §6).
+ */
+export function fitsNow(s: Song | undefined, target: MusicTarget, ctx: PickContext): boolean {
+  if (!s?.scores) return target !== 'settle' && target !== 'ease-down'
+  return songDistance({ ...s, lastPlayedAt: undefined }, target, ctx) <= cfg.steering.fitDistance
+}
+
 /** User playlists and heard tracks lead; outside picks cannot exceed one in ten. */
 export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): Song | null {
   const c = cfg.selection
   const playable = songs.filter((s) => s.playable !== false)
   const own = playable.filter((s) => s.origin !== 'fallback')
   const outside = playable.filter((s) => s.origin === 'fallback')
-  // Same title by the same lead artist under another id (single, album, feat. version) counts as heard.
-  const key = (s: Song): string =>
-    `${s.title}\n${s.artist.split(',')[0]}`.normalize('NFKC').toLowerCase().trim()
+  const key = (s: Song): string => songKey(s.title, s.artist)
   const heard = new Set(
     playable.filter((s) => s.id === ctx.currentId || ctx.played?.has(s.id)).map(key)
   )
@@ -228,6 +241,8 @@ export function pickSong(songs: Song[], target: MusicTarget, ctx: PickContext): 
   const outsideAllowed =
     (ctx.fallbackPicks ?? 0) < Math.floor(((ctx.picks ?? 0) + 1) / c.fallbackEvery)
   if (trusted.length) pool = trusted
+  // No playlists of the user's own: the target's editorial playlist is the library.
+  else if (!pool.length) pool = available(outside)
   else if (outsideAllowed && outside.length && best > c.fallbackMinDistance)
     pool = available(outside)
   if (!pool.length) return null

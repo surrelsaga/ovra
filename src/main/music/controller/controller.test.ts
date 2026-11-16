@@ -173,3 +173,72 @@ it('notifies when a one-song playlist restarts the same track', async () => {
     vi.useRealTimers()
   }
 })
+
+describe('play track pop-up refocus (decision 61)', () => {
+  const OVRA = 'ASN:0x0-0x2c02c:'
+  const SPOTIFY = 'ASN:0x0-0x44044-"Spotify":'
+  /** Fake LaunchServices: `fronts` is what `lsappinfo front` answers on each call. */
+  function make(fronts: string[]): { c: SpotifyMacController; cmds: string[] } {
+    const cmds: string[] = []
+    const c = new SpotifyMacController(
+      async () => '',
+      async (cmd, args) => {
+        cmds.push([cmd, ...args].join(' '))
+        if (args[0] === 'front') return fronts.length > 1 ? fronts.shift()! : fronts[0]
+        if (args[0] === 'find') return SPOTIFY
+        if (args[0] === 'info') return '"LSBundlePath"="/Applications/Ovra.app"'
+        return ''
+      }
+    )
+    return { c, cmds }
+  }
+
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('puts the previous app back as soon as Spotify comes to the front', async () => {
+    const { c, cmds } = make([OVRA, 'ASN:0x0-0x2c02c:', SPOTIFY])
+    const done = c.play('spotify:track:a', 'spotify:playlist:b')
+    await vi.advanceTimersByTimeAsync(200)
+    await done
+    expect(cmds.filter((x) => x.startsWith('open'))).toEqual(['open -a /Applications/Ovra.app'])
+  })
+
+  it('never refocuses when the user was in Spotify, and gives up after the limit', async () => {
+    const inSpotify = make([SPOTIFY])
+    await inSpotify.c.play('spotify:track:a')
+    expect(inSpotify.cmds.some((x) => x.startsWith('open'))).toBe(false)
+
+    const never = make([OVRA])
+    const done = never.c.play('spotify:track:a')
+    await vi.advanceTimersByTimeAsync(2000)
+    await done
+    expect(never.cmds.some((x) => x.startsWith('open'))).toBe(false)
+  })
+
+  it('leaves a different app the user switched to alone', async () => {
+    const { c, cmds } = make([OVRA, 'ASN:0x0-0x99:'])
+    await c.play('spotify:track:a')
+    expect(cmds.some((x) => x.startsWith('open'))).toBe(false)
+  })
+})
+
+describe('shuffle and repeat', () => {
+  it('reads and sets shuffle/repeat only while Spotify runs', async () => {
+    const scripts: string[] = []
+    const c = new SpotifyMacController(async (s) => {
+      scripts.push(s)
+      return 'true\tfalse'
+    })
+    expect(await c.playMode()).toEqual({ shuffle: true, repeat: false })
+    await c.setPlayMode({ shuffle: false, repeat: true })
+    expect(scripts.every((s) => s.startsWith('if application "Spotify" is running then'))).toBe(
+      true
+    )
+    expect(scripts.slice(1)).toEqual([
+      expect.stringContaining('set shuffling to false'),
+      expect.stringContaining('set repeating to true')
+    ])
+    expect(await new SpotifyMacController(async () => '').playMode()).toBeNull()
+  })
+})

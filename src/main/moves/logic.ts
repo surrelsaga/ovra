@@ -21,7 +21,8 @@ export interface NudgeInput {
 /** PLAN.md §7 triggers, first match wins. Null = nothing to suggest. */
 export function pickMove(
   input: NudgeInput,
-  cfg: MovesConfig
+  cfg: MovesConfig,
+  seatedNudges: Partial<Record<MoveId, number>> = {}
 ): { moveId: MoveId; reason: NudgeReason; message: string } | null {
   const t = cfg.triggers
   const { situation: s, seatedMinutes: seated, tenseMinutes } = input
@@ -33,12 +34,14 @@ export function pickMove(
 
   if (upset && tenseMinutes >= t.stepOutsideTenseMin) return pick('step-outside', s)
   if (s === 'crashing') return pick('walk', 'crashing')
-  if (seated >= t.walkSeatedMin) return pick('walk', 'seated')
+  if (seated - (seatedNudges.walk ?? 0) >= t.walkSeatedMin) return pick('walk', 'seated')
   if (s === 'tense' && tenseMinutes < t.earlyTenseMaxMin) return pick('breathe', 'tense')
   if (s === 'low') return pick('stand-stretch', 'low')
-  if (seated >= t.standSeatedMin) return pick('stand-stretch', 'seated')
+  if (seated - (seatedNudges['stand-stretch'] ?? 0) >= t.standSeatedMin)
+    return pick('stand-stretch', 'seated')
   if (s === 'tense') return pick('neck-stretch', 'tense')
-  if (seated >= t.neckSeatedMin) return pick('neck-stretch', 'seated')
+  if (seated - (seatedNudges['neck-stretch'] ?? 0) >= t.neckSeatedMin)
+    return pick('neck-stretch', 'seated')
   return null
 }
 

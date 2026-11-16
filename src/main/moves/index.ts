@@ -71,6 +71,8 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
   let beforeBreak: Situation | null = null
   /** Timed (no-sensing) seated clock. */
   let seatedSince = 0
+  let seatedNudges: Partial<Record<MoveId, number>> = {}
+  let lastSeatedMinutes = 0
   /** Last seated face position, the reference for the stand-up check. */
   let lastFace: FacePos | null = null
   let nudgeCount = 0
@@ -117,10 +119,17 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
   }
 
   const maybeNudge = (input: NudgeInput): void => {
-    if (!session || session.status !== 'running' || !idle()) return
+    if (!session || session.status !== 'running') return
+    if (input.seatedMinutes < lastSeatedMinutes) seatedNudges = {}
+    lastSeatedMinutes = input.seatedMinutes
+    if (!idle()) return
     if (!canNudge(Date.now(), lastNudgeAt, privacy.getSettings().nudgeMinIntervalMin)) return
-    const pick = pickMove(input, cfg)
-    if (pick) showNudge(pick.moveId, pick.message)
+    const pick = pickMove(input, cfg, seatedNudges)
+    if (pick) {
+      // Consume the seated trigger when shown; the explicit snooze still gets its one retry.
+      if (pick.reason === 'seated') seatedNudges[pick.moveId] = input.seatedMinutes
+      showNudge(pick.moveId, pick.message)
+    }
   }
 
   // --- Guided move -----------------------------------------------------------
@@ -243,6 +252,8 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
     bus.emit('break:returned', { awayMs: now - since })
     if (active) completeMove(active.anyVerified || sawAway)
     seatedSince = now
+    seatedNudges = {}
+    lastSeatedMinutes = 0
     startReturnCheck(now)
   }
 
@@ -347,6 +358,8 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
     tenseSince = null
     lastNudgeAt = null
     lastFace = null
+    seatedNudges = {}
+    lastSeatedMinutes = 0
   }
 
   return {

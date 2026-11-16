@@ -26,6 +26,7 @@ interface SetupOpts {
   camera?: boolean
   mode?: 'checkins' | 'continuous'
   config?: MovesConfig
+  nudgeInterval?: number
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -34,7 +35,10 @@ function setup(opts: SetupOpts = {}) {
   const privacy = {
     canUseCamera: () => opts.camera ?? true,
     canUseFace: () => opts.face ?? true,
-    getSettings: () => DEFAULT_SETTINGS
+    getSettings: () => ({
+      ...DEFAULT_SETTINGS,
+      nudgeMinIntervalMin: opts.nudgeInterval ?? DEFAULT_SETTINGS.nudgeMinIntervalMin
+    })
   } as unknown as PrivacyService
   const moves: MovesService = createMoves({ bus, privacy }, opts.config)
   const log: { event: BusEventName; payload: unknown }[] = []
@@ -95,6 +99,86 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('nudges', () => {
+  for (const demo of [false, true]) {
+    for (const [moveId, trigger] of [
+      ['neck-stretch', 'neckSeatedMin'],
+      ['stand-stretch', 'standSeatedMin'],
+      ['walk', 'walkSeatedMin']
+    ] as const) {
+      it.each(['go', 'skip', 'snooze'] as const)(
+        `demo=${demo}: ${moveId} after %s waits another full seated threshold`,
+        (response) => {
+          const interval = demo ? sessionConfig.demo.nudgeMinIntervalMin : 20
+          const threshold = demo ? sessionConfig.demo.triggers[trigger] : cfg.triggers[trigger]
+          const t = setup({
+            nudgeInterval: interval,
+            config: {
+              ...cfg,
+              snoozeMin: demo ? sessionConfig.demo.snoozeMin : cfg.snoozeMin,
+              triggers: {
+                ...cfg.triggers,
+                neckSeatedMin: Infinity,
+                standSeatedMin: Infinity,
+                walkSeatedMin: Infinity,
+                [trigger]: threshold
+              }
+            }
+          })
+          t.state({ seatedMinutes: threshold })
+          expect(t.events('move:nudge').at(-1)?.moveId).toBe(moveId)
+          t.moves.respond(t.nudgeId(), response)
+          if (response === 'go') t.moves.endMove()
+          if (response === 'snooze') {
+            vi.advanceTimersByTime((demo ? sessionConfig.demo.snoozeMin : cfg.snoozeMin) * MIN)
+            expect(t.events('move:nudge')).toHaveLength(2)
+            t.moves.endMove() // dismiss the ignored snooze retry
+          }
+          const count = t.events('move:nudge').length
+          vi.advanceTimersByTime(interval * MIN)
+          t.state({ seatedMinutes: threshold + interval })
+          expect(t.events('move:nudge')).toHaveLength(count)
+          vi.advanceTimersByTime(threshold * MIN)
+          t.state({ seatedMinutes: threshold * 2 })
+          expect(t.events('move:nudge')).toHaveLength(count + 1)
+          t.moves.stopSession()
+        }
+      )
+    }
+  }
+
+  it('a fresh seated stretch resets reminder history and mood reminders stay independent', () => {
+    const t = setup()
+    t.state({ seatedMinutes: 45 })
+    t.moves.respond(t.nudgeId(), 'skip')
+    vi.advanceTimersByTime(20 * MIN)
+    t.state({ situation: 'tense', seatedMinutes: 50 })
+    expect(t.events('move:nudge').at(-1)?.moveId).toBe('breathe')
+    t.moves.respond(t.nudgeId(), 'skip')
+    t.state({ seatedMinutes: 0 })
+    vi.advanceTimersByTime(45 * MIN)
+    t.state({ seatedMinutes: 45 })
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
+      'neck-stretch',
+      'breathe',
+      'neck-stretch'
+    ])
+  })
+
+  it('timed reminders also wait for another full threshold', () => {
+    const t = setup({ camera: false })
+    const tick = (): void =>
+      t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 0, remainingSec: 0 })
+    vi.advanceTimersByTime(45 * MIN)
+    tick()
+    t.moves.respond(t.nudgeId(), 'skip')
+    vi.advanceTimersByTime(20 * MIN)
+    tick()
+    t.moves.respond(t.nudgeId(), 'skip') // independent stand reminder
+    vi.advanceTimersByTime(20 * MIN)
+    tick()
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch', 'stand-stretch'])
+  })
+
   it('nudges on a trigger and shows the prompt', () => {
     const t = setup()
     t.state({ situation: 'tense' })

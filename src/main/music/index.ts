@@ -813,7 +813,22 @@ export function createMusic(deps: MusicDeps): MusicService & {
     if (!session) return
     const g = generation
     t = library.resolve(t)
-    if (t.id === skippedId) return
+    if (t.id === skippedId) {
+      if (nowPlaying?.id === skippedId) return
+      const previous = nowPlaying
+      // A skipped id can really play again later; confirm it rather than trust a delayed poll.
+      safe(
+        controller.current().then((actual) => {
+          if (!actual || g !== generation || nowPlaying !== previous) return
+          actual = library.resolve(actual)
+          if (actual.id !== t.id) return
+          skippedId = null
+          judgedId = null
+          onTrack(actual)
+        })
+      )
+      return
+    }
     if (
       pendingPick &&
       (t.isAd ||

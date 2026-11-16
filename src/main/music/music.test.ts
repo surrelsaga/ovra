@@ -1307,6 +1307,21 @@ describe('steering inside a playlist (decision 61)', () => {
     await t.music.stopSession()
   })
 
+  it('confirms a real replay of the last skipped id after a different song', async () => {
+    const t = await setup({ songs: [...MANY, song('spare', { energy: 3 })] })
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.controller.queue = ['spotify:track:mine', 'spotify:track:spare']
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual(['next'])
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual(['next', 'next'])
+    expect(t.music.status().nowPlaying?.id).toBe('spotify:track:spare')
+    await t.music.stopSession()
+  })
+
   it('stops a skip chain when the next item is an ad', async () => {
     const t = await setup({ songs: MANY })
     await t.music.startSession(session())

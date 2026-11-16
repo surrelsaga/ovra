@@ -184,7 +184,7 @@ async function tour(face = true, demoOn = true) {
   const t = await setup(face)
   const hints: string[] = []
   t.bus.on('orb:bubble', (b) => {
-    expect(b.ttlMs).toBe(25_000)
+    expect(b.ttlMs).toBe(b.previewMood ? demo.previewMs : demo.hintTtlMs)
     hints.push(b.text)
   })
   const state = (situation: Situation, away = false): void =>
@@ -331,4 +331,46 @@ describe('demo steps', () => {
     t.state('good')
     expect(t.hints).toHaveLength(1)
   })
+})
+
+it('gives the longer exercises time to settle while keeping a no-mood tour within 18 minutes', () => {
+  expect(demo.steps[3].text).toContain('about 90 s')
+  expect(demo.steps[3].limitMs).toBeGreaterThanOrEqual(90_000 + 75_000)
+  expect(demo.steps[5].text).toContain('about 2 min')
+  expect(demo.steps[5].text).toContain('frown')
+  expect(demo.steps[5].limitMs).toBeGreaterThanOrEqual(120_000 + 75_000)
+  const noMoodSteps = demo.steps.filter((s) => !('needs' in s))
+  const maxTour =
+    demo.sensing.calibrationMaxMs +
+    noMoodSteps.reduce((ms, s) => ms + (s.limitMs ?? 0), 0) +
+    (noMoodSteps.length - 1) * demo.doneDelayMs
+  expect(maxTour).toBeGreaterThanOrEqual(16 * 60_000)
+  expect(maxTour).toBeLessThanOrEqual(18 * 60_000)
+})
+
+it('emits only a labelled view bubble on a missed mood, never state, history, music or moves', async () => {
+  vi.useFakeTimers()
+  const t = await tour()
+  const emit = vi.spyOn(t.bus, 'emit')
+  t.calibrated()
+  emit.mockClear()
+  vi.advanceTimersByTime(demo.steps[0].limitMs!)
+  expect(emit.mock.calls).toEqual([
+    [
+      'orb:bubble',
+      {
+        text: demo.steps[0].fallback,
+        ttlMs: demo.previewMs,
+        previewMood: 'calm'
+      }
+    ]
+  ])
+  // The preview must not mark a goal as seen or enable the real Stressed breathing step.
+  t.next()
+  t.timeout(1)
+  t.timeout(2)
+  t.timeout(3)
+  expect(t.hints.at(-1)).toBe(demo.steps[5].text)
+  expect(t.hints.some((h) => h.includes('5/9'))).toBe(false)
+  t.dispose()
 })

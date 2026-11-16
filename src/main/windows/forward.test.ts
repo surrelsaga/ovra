@@ -444,3 +444,51 @@ describe('demo badge, why line and demo hints', () => {
     fw.dispose()
   })
 })
+
+it('queues a labelled demo preview with its bubble, restores the latest real moon, and ignores it in normal mode', () => {
+  vi.useFakeTimers()
+  const bus = createBus()
+  const fw = bindForwarding(bus, fakeShell())
+  const demoSession = {
+    ...session('running'),
+    config: { ...session('running').config, demo: true }
+  }
+  bus.emit('session:started', demoSession)
+  bus.emit('session:status', demoSession)
+  bus.emit('orb:bubble', { text: 'Other advice', ttlMs: 1000 })
+  bus.emit('orb:bubble', {
+    text: 'Demo: 4/9 · Preview: this is how Stressed looks.',
+    ttlMs: 3000,
+    previewMood: 'uneasy'
+  })
+  expect(fw.orb().previewMood).toBeUndefined()
+  vi.advanceTimersByTime(1000)
+  expect(fw.orb()).toMatchObject({
+    mood: 'calm',
+    previewMood: 'uneasy',
+    bubble: expect.stringContaining('Preview:')
+  })
+  // Real readings still update normally; no situation bubble when it stays the same.
+  bus.emit('state:updated', {
+    t: 1,
+    situation: 'focused',
+    confidence: 1,
+    seatedMinutes: 0,
+    away: false,
+    trend: 'steady'
+  })
+  expect(fw.orb().mood).toBe('calm')
+  // An ordinary bubble interrupts and clears the visual preview immediately.
+  expect(fw.orb().previewMood).toBeUndefined()
+  vi.advanceTimersByTime(7000)
+  expect(fw.orb().previewMood).toBe('uneasy')
+  vi.advanceTimersByTime(3000)
+  expect(fw.orb().previewMood).toBeUndefined()
+  expect(fw.orb().mood).toBe('calm')
+  bus.emit('session:status', { ...demoSession, status: 'ended' })
+  bus.emit('session:started', session('running'))
+  bus.emit('orb:bubble', { text: 'Demo: Preview', ttlMs: 3000, previewMood: 'stormy' })
+  expect(fw.orb().previewMood).toBeUndefined()
+  fw.dispose()
+  vi.useRealTimers()
+})

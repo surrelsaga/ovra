@@ -64,7 +64,14 @@ export function bindForwarding(
   let breathTimer: ReturnType<typeof setInterval> | undefined
   let whyTimer: ReturnType<typeof setInterval> | undefined
   /** Advice waiting for a free bubble; interrupted demo hints may be shown again. */
-  let pendingHint: { text: string; ttlMs: number; action?: OrbView['bubbleAction'] } | undefined
+  let pendingHint:
+    | {
+        text: string
+        ttlMs: number
+        action?: OrbView['bubbleAction']
+        previewMood?: OrbView['previewMood']
+      }
+    | undefined
   let shownTtlMs = 0
   let pendingSpotify: string | undefined
 
@@ -95,24 +102,30 @@ export function bindForwarding(
     text: string,
     ttlMs: number = cfg.bubbleTtlMs,
     teaching = false,
-    action?: OrbView['bubbleAction']
+    action?: OrbView['bubbleAction'],
+    previewMood?: OrbView['previewMood']
   ): void => {
     if (!teaching && Date.now() < teachingUntil) {
-      if (isHint(text) || action) pendingHint = { text, ttlMs, action }
+      if (isHint(text) || action) pendingHint = { text, ttlMs, action, previewMood }
       return
     }
     if (teaching) teachingUntil = Date.now() + ttlMs
     if (isHint(view.bubble) && !isHint(text) && !pendingHint?.action)
-      pendingHint = { text: view.bubble, ttlMs: shownTtlMs, action: view.bubbleAction }
+      pendingHint = {
+        text: view.bubble,
+        ttlMs: shownTtlMs,
+        action: view.bubbleAction,
+        previewMood: view.previewMood
+      }
     clearTimeout(bubbleTimer)
     shownTtlMs = ttlMs
-    update({ bubble: text, bubbleAction: action })
+    update({ bubble: text, bubbleAction: action, previewMood: view.demo ? previewMood : undefined })
     bubbleTimer = setTimeout(() => {
-      update({ bubble: undefined, bubbleAction: undefined })
+      update({ bubble: undefined, bubbleAction: undefined, previewMood: undefined })
       if (showSpotifyHint()) return
       const hint = pendingHint
       pendingHint = undefined
-      if (hint) say(hint.text, hint.ttlMs, false, hint.action)
+      if (hint) say(hint.text, hint.ttlMs, false, hint.action, hint.previewMood)
     }, ttlMs)
   }
 
@@ -175,7 +188,8 @@ export function bindForwarding(
   const offs = [
     bus.on('session:started', (s) => {
       send('push:session', s)
-      if (s.config.demo) update({ demo: true })
+      pendingHint = undefined
+      update({ demo: s.config.demo || undefined, previewMood: undefined })
       clearInterval(whyTimer)
       if (why) whyTimer = setInterval(refreshWhy, cfg.whyTickMs)
     }),
@@ -223,10 +237,10 @@ export function bindForwarding(
         pendingSpotify = undefined
         if (isSpotifyHint(view.bubble)) {
           clearTimeout(bubbleTimer)
-          update({ bubble: undefined, bubbleAction: undefined })
+          update({ bubble: undefined, bubbleAction: undefined, previewMood: undefined })
           const hint = pendingHint
           pendingHint = undefined
-          if (hint) say(hint.text, hint.ttlMs, false, hint.action)
+          if (hint) say(hint.text, hint.ttlMs, false, hint.action, hint.previewMood)
         }
       }
       targetWord = m.target ? TARGET_WORD[m.target] : null
@@ -266,7 +280,7 @@ export function bindForwarding(
         if (!teachOff && Date.now() < teachingUntil) {
           clearTimeout(bubbleTimer)
           teachingUntil = 0
-          update({ bubble: undefined, bubbleAction: undefined })
+          update({ bubble: undefined, bubbleAction: undefined, previewMood: undefined })
         }
         if (teachOff) {
           teachCount++
@@ -307,8 +321,13 @@ export function bindForwarding(
       }
       // A demo hint never interrupts another bubble; it waits for it to clear.
       if ((isHint(b.text) || b.action) && view.bubble)
-        pendingHint = { text: b.text, ttlMs: b.ttlMs ?? cfg.bubbleTtlMs, action: b.action }
-      else say(b.text, b.ttlMs, false, b.action)
+        pendingHint = {
+          text: b.text,
+          ttlMs: b.ttlMs ?? cfg.bubbleTtlMs,
+          action: b.action,
+          previewMood: view.demo ? b.previewMood : undefined
+        }
+      else say(b.text, b.ttlMs, false, b.action, b.previewMood)
     })
   ]
   const stopFraming = bindFramingHint(bus)

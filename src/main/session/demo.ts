@@ -1,6 +1,12 @@
 // Demo mode (decision 28): real sensing and thresholds, shorter waits, next-step hints in the bubble.
 // Everything here is in memory and lasts one demo session; settings.json is never touched.
-import type { AppSettings, Bus, PrivacyService, Situation } from '@shared/types'
+import {
+  ORB_MOOD,
+  type AppSettings,
+  type Bus,
+  type PrivacyService,
+  type Situation
+} from '@shared/types'
 import type { MovesConfig } from '../moves/config'
 import type { TargetGap } from '../music/selector'
 import type { SensingConfig } from '../sdk/config'
@@ -87,7 +93,13 @@ export function bindDemo(deps: DemoDeps): () => void {
     waiting = step.goal.length > 0
     if (step.limitMs)
       timer = setTimeout(() => {
-        say(step.fallback!)
+        if (step.preview)
+          bus.emit('orb:bubble', {
+            text: step.fallback!,
+            ttlMs: demo.previewMs,
+            previewMood: ORB_MOOD[step.preview]
+          })
+        else say(step.fallback!)
         done()
       }, step.limitMs)
   }

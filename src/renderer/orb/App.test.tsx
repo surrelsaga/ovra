@@ -387,3 +387,27 @@ it.each([
   )
   expect(screen.getByText(label)).toHaveClass(`word--${word.toLowerCase()}`)
 })
+
+it('previews only the labelled demo moon and keeps the actual why and music visible', () => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  const view: OrbView = {
+    ...base,
+    demo: true,
+    mood: 'bright',
+    previewMood: 'uneasy',
+    bubble: "Demo: 4/9 · Stressed didn't show for you. Preview: this is how Stressed looks.",
+    why: { text: 'Heart rate like when you started', moving: true },
+    nowPlaying: { name: 'Real song', artist: 'Real artist', word: 'Focus' }
+  }
+  bridge.push('push:orb', view)
+  expect(moon()).toHaveAttribute('data-mood', 'uneasy')
+  expect(moon()).toHaveAccessibleName(/demo preview/)
+  expect(screen.getByText(view.bubble!)).toBeInTheDocument()
+  expect(screen.getByTestId('why-line')).toHaveTextContent(view.why!.text)
+  expect(screen.getByText('Real song', { exact: false })).toBeInTheDocument()
+  bridge.push('push:orb', { ...view, previewMood: undefined })
+  expect(moon()).toHaveAttribute('data-mood', 'bright')
+  bridge.push('push:orb', { ...view, demo: false })
+  expect(moon()).toHaveAttribute('data-mood', 'bright')
+})

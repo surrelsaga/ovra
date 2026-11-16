@@ -88,6 +88,8 @@ export class SpotifyMacController implements MusicController, PlayModeControl {
     private sh: CommandRunner = run === runOsascript ? runCommand : async () => ''
   ) {}
 
+  refocusResult = 'not attempted'
+
   private tell(cmd: string): Promise<string> {
     return this.run(`${IF_RUNNING} tell application "Spotify" to ${cmd}`)
   }
@@ -103,6 +105,7 @@ export class SpotifyMacController implements MusicController, PlayModeControl {
   async play(uri: string, contextUri?: string): Promise<void> {
     assertUri(uri)
     if (contextUri !== undefined) assertUri(contextUri)
+    this.refocusResult = 'front app unavailable'
     const before = await this.frontApp()
     await this.tell(
       contextUri ? `play track "${uri}" in context "${contextUri}"` : `play track "${uri}"`
@@ -115,6 +118,7 @@ export class SpotifyMacController implements MusicController, PlayModeControl {
     try {
       const front = asn(await this.sh('lsappinfo', ['front']))
       const spotify = asn(await this.sh('lsappinfo', ['find', `bundleid=${SPOTIFY_BUNDLE}`]))
+      if (front === spotify && front) this.refocusResult = 'already in Spotify'
       if (!front || front === spotify) return null
       const out = await this.sh('lsappinfo', ['info', '-only', 'bundlepath', front])
       const path = /"LSBundlePath"="(.+)"/.exec(out)?.[1]
@@ -133,18 +137,27 @@ export class SpotifyMacController implements MusicController, PlayModeControl {
     const { refocusPollMs, refocusGiveUpMs } = musicConfig.steering
     try {
       const spotify = asn(await this.sh('lsappinfo', ['find', `bundleid=${SPOTIFY_BUNDLE}`]))
-      if (!spotify) return
+      if (!spotify) {
+        this.refocusResult = 'Spotify unavailable'
+        return
+      }
       for (let waited = 0; waited <= refocusGiveUpMs; waited += refocusPollMs) {
         const front = asn(await this.sh('lsappinfo', ['front']))
         if (front === spotify) {
           await this.sh('open', ['-a', before.path])
+          this.refocusResult = 'previous app requested'
           return
         }
         // The user moved to another app themselves: leave it.
-        if (front && front !== before.asn) return
+        if (front && front !== before.asn) {
+          this.refocusResult = 'user changed app'
+          return
+        }
         await sleep(refocusPollMs)
       }
+      this.refocusResult = 'timed out; Spotify did not come forward'
     } catch {
+      this.refocusResult = 'failed'
       // Refocus is a nicety; playback already started.
     }
   }

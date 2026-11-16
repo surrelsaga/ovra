@@ -2,6 +2,7 @@
 import type {
   Bus,
   MusicController,
+  MusicDecision,
   MusicService,
   MusicStatus,
   MusicTarget,
@@ -137,9 +138,32 @@ export function createMusic(deps: MusicDeps): MusicService & {
     target: tracker.current(),
     nowPlaying,
     scoringQueue: scorer.pending(),
-    scoredCount: library.songs().filter((s) => s.scores).length
+    scoredCount: library.songs().filter((s) => s.scores).length,
+    playlist: contextUri
+      ? {
+          uri: contextUri,
+          name: library.playlists().find((p) => p.uri === contextUri)?.name,
+          played: contextSongs
+        }
+      : undefined
   })
   const emitStatus = (): void => bus.emit('music:status', status())
+  const playlistName = (uri: string | undefined): string =>
+    library.playlists().find((p) => p.uri === uri)?.name || uri || 'none'
+  const decision = (
+    action: MusicDecision['action'],
+    reason: string,
+    from?: string,
+    to?: string
+  ): void =>
+    bus.emit('monitor:music', {
+      action,
+      reason,
+      from,
+      to,
+      playlist: playlistName(contextUri),
+      played: contextSongs
+    })
   const safe = (p: Promise<unknown>): void => void p.catch(() => {})
   const canSteer = (): boolean =>
     !!session && privacy.get().music === 'spotify' && !leaveAlone && !pausedForBreak
@@ -194,6 +218,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     const pending = pendingPick
     const g = generation
     await controller.play(uri, contextUri)
+    decision('refocus', controller.refocusResult ?? 'not reported by controller')
     const actual = await controller.current().catch(() => null)
     if (!pending || pendingPick !== pending || g !== generation) return
     if (
@@ -454,25 +479,40 @@ export function createMusic(deps: MusicDeps): MusicService & {
    * The only `play track` during a session, so the only Spotify pop-up (the controller puts the
    * user's app back). Rate-limited except at start; own fits lead, then the target's editorial list.
    */
-  async function switchPlaylist(target: MusicTarget, start: boolean): Promise<boolean> {
+  async function switchPlaylist(
+    target: MusicTarget,
+    start: boolean,
+    reason = 'mood needs'
+  ): Promise<boolean> {
     const activeSession = session
     const g = generation
     if (!activeSession || switching === g) return false
-    if (!start && now() - lastSwitchAt < musicConfig.steering.switchGapMs) return false
+    if (!start && now() - lastSwitchAt < musicConfig.steering.switchGapMs) {
+      decision('switch blocked', 'gap')
+      return false
+    }
     switching = g
     try {
       for (;;) {
         let ctx = pickContext(target, activeSession, nowPlaying?.id)
         let best = bestPlaylist(target, ctx, start ? undefined : contextUri)
+        let switchReason = start ? 'start' : reason
         if (!start && !best?.fits) {
           // One user playlist: stay rather than flash Spotify just for variety.
-          if (library.playlists().length === 1) return false
+          if (library.playlists().length === 1) {
+            decision('switch blocked', 'single playlist')
+            return false
+          }
           await readFallback(target, true)
           if (g !== generation || session !== activeSession || !canSteer()) return false
           ctx = pickContext(target, activeSession, nowPlaying?.id)
           best = bestPlaylist(target, ctx, contextUri, editorialUris(target))
+          switchReason = 'editorial fallback'
         }
-        if (!best) return false
+        if (!best) {
+          decision('switch blocked', 'no fitting playlist')
+          return false
+        }
         const uri = best.song?.id ?? best.uri
         const context = best.song ? best.uri : undefined
         const previous = nowPlaying ?? (await controller.current().catch(() => null))
@@ -499,20 +539,24 @@ export function createMusic(deps: MusicDeps): MusicService & {
         }
         if (play) play.endedByApp = true
         lastSwitchAt = now()
+        const from = playlistName(contextUri)
         contextUri = best.uri
         contextSongs = 0
         usedContexts.add(best.uri)
+        emitStatus()
         try {
           await playVerified(uri, context)
         } catch (error) {
           if (g !== generation || session !== activeSession) return false
           cancelPendingPlay()
+          decision('switch blocked', 'play command failed')
           if (!best.song) throw error
           // Spotify can reject an exact track; try the next best one right away.
           unavailableSongs.add(best.song.id)
           continue
         }
         if (g !== generation || session !== activeSession) return false
+        decision('switch', switchReason, from, playlistName(best.uri))
         if (best.song) played.set(best.song.id, now())
         return true
       }
@@ -573,19 +617,38 @@ export function createMusic(deps: MusicDeps): MusicService & {
     t: NowPlaying,
     target: MusicTarget,
     activeSession: Session,
-    skips: number
+    skips: number,
+    reportSkip = true
   ): 'keep' | 'skip' | 'switch' {
     const ctx = pickContext(target, activeSession, t.id)
     const song = library.get(t.id)
     if (!heard.has(trackKey(t)) && fitsNow(song, target, ctx)) {
       const e = song && effective(song)
       if (e) keptEnergy = e.energy
+      decision('keep', 'fits target')
       return 'keep'
     }
-    if (skips < musicConfig.steering.maxSkips && contextHasFit(target, ctx)) return 'skip'
+    const reason = heard.has(trackKey(t))
+      ? 'already heard'
+      : `doesn't fit ${musicConfig.targetLabels[target]}`
+    if (skips < musicConfig.steering.maxSkips && contextHasFit(target, ctx)) {
+      if (reportSkip) decision('skip', reason)
+      return 'skip'
+    }
     const canSwitch =
       now() - lastSwitchAt >= musicConfig.steering.switchGapMs && canSwitchPlaylist(target, ctx)
     // Nothing better is reachable without a pop-up: the song may stay.
+    if (!canSwitch) {
+      decision(
+        'switch blocked',
+        now() - lastSwitchAt < musicConfig.steering.switchGapMs
+          ? 'gap'
+          : library.playlists().length === 1
+            ? 'single playlist'
+            : 'no fitting playlist'
+      )
+      decision('keep', 'no reachable alternative')
+    }
     return canSwitch ? 'switch' : 'keep'
   }
 
@@ -603,6 +666,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
   }
 
   function refused(): void {
+    decision('keep', 'Spotify did not skip')
     if (refusedLogged) return
     refusedLogged = true
     // Spotify Free can refuse skips; keep the current song.
@@ -656,10 +720,10 @@ export function createMusic(deps: MusicDeps): MusicService & {
         if (
           checkVariety &&
           contextSongs >= count[activeSession.config.activity] &&
-          (await switchPlaylist(target, false))
+          (await switchPlaylist(target, false, 'song count'))
         )
           continue
-        if (decide(t, target, activeSession, 0) === 'keep') continue
+        if (decide(t, target, activeSession, 0, false) === 'keep') continue
         await withVolumeDown(target === 'settle' ? QUIET : DUCK, activeSession, g, (alive) =>
           skipChain(t, target, activeSession, alive)
         )
@@ -717,8 +781,11 @@ export function createMusic(deps: MusicDeps): MusicService & {
       p.durationMs > 0 &&
       listenedMs >= Math.min(p.durationMs, musicConfig.learning.quickSkipMs) &&
       listenedMs + musicConfig.controller.pollMs >= p.durationMs
-    )
+    ) {
       contextSongs++
+      decision('playlist', 'song completed')
+      emitStatus()
+    }
     const learnedSomething =
       outcome.settle || outcome.steady || outcome.lift || outcome.good || outcome.quickSkip
     safe(
@@ -794,6 +861,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
       if (current?.shuffle) await controller.setPlayMode(mode).catch(() => {})
     }
     session = null
+    contextUri = undefined
+    contextSongs = 0
     nowPlaying = null
     available = false
     tracker.reset()

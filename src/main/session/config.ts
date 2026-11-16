@@ -1,5 +1,5 @@
 // Owner: Agent B. Session defaults and timings.
-import type { Activity, CameraMode } from '@shared/types'
+import type { Activity, CameraMode, Situation } from '@shared/types'
 
 export const sessionConfig = {
   tickMs: 1000,
@@ -50,6 +50,7 @@ export const sessionConfig = {
     musicSwitchNow: true,
     musicSwitchAfterSongs: { focus: 3, reading: 3, creative: 3, everyday: 3, unwind: 3 },
     hintTtlMs: 25_000,
+    previewMs: 3_000,
     doneDelayMs: 8_000,
     /** Sequential tour; early events are remembered, never used to jump forward. */
     steps: [
@@ -57,8 +58,8 @@ export const sessionConfig = {
         text: 'Demo: 1/9 · Work normally for a minute. Look for Steady: a calm blue-white moon.',
         goal: ['focused', 'good'],
         limitMs: 90_000,
-        fallback:
-          'Demo: 1/9 · No Steady yet. Your heart rate reads off from when you started. Moving on.',
+        fallback: "Demo: 1/9 · Steady didn't show for you. Preview: this is how Steady looks.",
+        preview: 'focused',
         already: "Demo: 1/9 · You've seen Steady already. Next step."
       },
       {
@@ -66,7 +67,8 @@ export const sessionConfig = {
         goal: ['good'],
         limitMs: 75_000,
         fallback:
-          'Demo: 2/9 · No Good mood. It needs Steady plus a smile most of the time. Moving on.',
+          "Demo: 2/9 · Good mood didn't show for you. Preview: this is how Good mood looks.",
+        preview: 'good',
         already: "Demo: 2/9 · You've seen Good mood already. Next step.",
         noFace: 'Demo: 2/9 · Good mood needs face reading, which is off. Skipping.'
       },
@@ -79,11 +81,11 @@ export const sessionConfig = {
         already: "Demo: 3/9 · You've done a stretch already. Next step."
       },
       {
-        text: 'Demo: 4/9 · Do 40 s of squats off camera, then sit still. Look for Stressed: amber.',
+        text: 'Demo: 4/9 · Jog in place or do squats for about 90 s, then sit still and look for Stressed (amber).',
         goal: ['tense', 'crashing'],
         limitMs: 180_000,
-        fallback:
-          'Demo: 4/9 · No Stressed. Your heart rate settled too fast. It would play Calm down.',
+        fallback: "Demo: 4/9 · Stressed didn't show for you. Preview: this is how Stressed looks.",
+        preview: 'tense',
         already: "Demo: 4/9 · You've seen Stressed already. Next step."
       },
       {
@@ -96,10 +98,12 @@ export const sessionConfig = {
         already: "Demo: 5/9 · You've settled already. Next step."
       },
       {
-        text: 'Demo: 6/9 · 60 s of jumping jacks, then sit and frown. Look for Very stressed: red.',
+        text: 'Demo: 6/9 · Jog in place or do squats for about 2 min, then sit still and frown. Look for Very stressed (red).',
         goal: ['crashing'],
-        limitMs: 120_000,
-        fallback: 'Demo: 6/9 · No Very stressed (the hardest one). It would fade music to Quiet.',
+        limitMs: 195_000,
+        fallback:
+          "Demo: 6/9 · Very stressed didn't show for you. Preview: this is how Very stressed looks.",
+        preview: 'crashing',
         already: "Demo: 6/9 · You've seen Very stressed already. Next step."
       },
       {
@@ -113,8 +117,8 @@ export const sessionConfig = {
         text: 'Demo: 8/9 · Lean back and breathe slowly for 2 min. Tired may not appear.',
         goal: ['low'],
         limitMs: 150_000,
-        fallback:
-          'Demo: 8/9 · No Tired. Resting barely lowers heart rate. It would play Pick me up.',
+        fallback: "Demo: 8/9 · Tired didn't show for you. Preview: this is how Tired looks.",
+        preview: 'low',
         already: "Demo: 8/9 · You've seen Tired already: dim moon, Pick me up music."
       },
       { text: "Demo: 9/9 · That's the tour. Press End to see your summary.", goal: [] }
@@ -141,4 +145,5 @@ export interface DemoStep {
   already?: string
   needs?: DemoEvent
   noFace?: string
+  preview?: Situation
 }

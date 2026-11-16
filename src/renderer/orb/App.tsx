@@ -197,7 +197,18 @@ export default function App(): React.JSX.Element {
         aria-describedby="moon-camera-tip"
         {...drag}
       >
-        <MoonOrb {...view} />
+        <MoonOrb
+          {...view}
+          {...(view.demo && view.previewMood
+            ? {
+                mood: view.previewMood,
+                away: false,
+                breath: undefined,
+                calibration: undefined,
+                label: `Ovra moon, demo preview: ${view.bubble}`
+              }
+            : {})}
+        />
         {view.demo && <span className="demo-badge">Demo</span>}
         <span className="camera-tooltip" role="tooltip" id="moon-camera-tip">
           {cameraTip}

@@ -33,9 +33,29 @@ Every five seconds a single `[monitor]` line contains the window's data:
 - `calibration=count/needed@span/neededSeconds`, `baseline`, `fail`: engine calibration progress and result. `count` is distinct seconds with a steady pulse (the bar is 30 s, same in demo); the span can't be shorter than the bar, so both show it.
 - `lastFace`, `awayIn=countdown/threshold`, `away`, `situation`, `confidence`, `seated`, `updated`: Ovra's current state and last push time. `-` means unavailable or inactive.
 - `session`, `remaining`, `change`: current status/time and the last reason/source/timestamp.
-- `music`, `track`, `artist`, `target`, `leave`: current music status.
+- `music`, `track`, `artist`, `target`, `leave`: current music status. `playlist` is the name (or URI) of the playlist Ovra last requested; `played` is the completed-song count since that request. Spotify cannot report playlist context after a manual change.
 
 Extra `[monitor]` lines announce phase changes, the app's existing debounced validation changes, baseline results, away/returned, and session status changes. Raw validation counts remain unsmoothed in the regular line and window. Quotes and newlines in hint/track text are escaped so each record stays on one terminal line. No API key or raw measurement is included.
+
+## Music steering lines (dev only)
+
+With `OVRA_MONITOR=1` (ignored in packaged builds), observer events print each steering decision:
+
+```text
+[monitor] music switch reason="start" playlist="Deep focus" played=0 from="none" → to="Deep focus"
+[monitor] music playlist reason="song completed" playlist="Deep focus" played=3
+[monitor] music switch reason="song count" playlist="Evening" played=0 from="Deep focus" → to="Evening"
+[monitor] music skip reason="doesn't fit Calm down" playlist="Evening" played=0
+[monitor] music keep reason="fits target" playlist="Evening" played=0
+[monitor] music switch blocked reason="gap" playlist="Evening" played=0
+[monitor] music refocus reason="previous app requested" playlist="Evening" played=0
+```
+
+Switch reasons are `start`, `song count`, `mood needs`, or `editorial fallback`; only an accepted play command prints a switch. Blocked reasons include `gap`, `single playlist`, `no fitting playlist`, and `play command failed`. A keep can also explain that nothing better is reachable or Spotify refused to skip. Already-heard songs are skipped with `already heard`. Ads and paused songs are left alone. The monitor never polls or controls Spotify itself.
+
+Refocus reports `previous app requested` when LaunchServices accepted returning to the previous app (it does not verify foreground focus), `already in Spotify`, `user changed app`, `timed out; Spotify did not come forward`, or an unavailable/failed result. Other controllers may say `not reported by controller`. No app path or name is printed.
+
+The song count uses the existing completion rule (within one 2-second poll of the end); user/app skips, ads and paused time do not count. A switch resets it. Demo variety uses 3 songs; the normal switch gap still applies, so `played=3` plus `switch blocked reason="gap"` explains a delayed switch. Coarse words only; no vitals or moods are sent to any external service or saved by these diagnostics.
 
 ## Padded live frame A/B (reliability §5.6)
 

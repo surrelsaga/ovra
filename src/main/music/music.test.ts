@@ -1,6 +1,7 @@
 import type {
   BusEvents,
   MusicController,
+  MusicDecision,
   NowPlaying,
   PrivacyService,
   PrivacySettings,
@@ -23,6 +24,7 @@ import { SpotifyMacController } from './controller'
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
 
 class FakeController implements MusicController {
+  refocusResult = 'previous app requested'
   running = true
   calls: string[] = []
   contexts: (string | undefined)[] = []
@@ -175,6 +177,8 @@ async function setup(
   for (const name of ['music:target-changed', 'music:track-changed', 'orb:bubble'] as const) {
     bus.on(name, (payload) => events.push({ name, payload }))
   }
+  const decisions: MusicDecision[] = []
+  bus.on('monitor:music', (d) => decisions.push(d))
   const music = createMusic({
     bus,
     storage,
@@ -202,7 +206,7 @@ async function setup(
     events
       .filter((e) => e.name === 'music:target-changed')
       .map((e) => (e.payload as { target: string }).target)
-  return { bus, storage, controller, music, events, state, targets, setSettings }
+  return { bus, storage, controller, music, events, state, targets, setSettings, decisions }
 }
 
 const MIN = 60_000
@@ -1334,6 +1338,9 @@ describe('steering inside a playlist (decision 61)', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(t.controller.calls).toEqual(['play spotify:track:p1'])
     expect(t.controller.contexts.at(-1)).toBe(PL)
+    expect(t.decisions).toContainEqual(
+      expect.objectContaining({ action: 'switch', reason: 'mood needs', from: PL2, to: PL })
+    )
 
     // Every own fit is heard now: the next switch falls back to the target's editorial playlist.
     await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
@@ -1344,6 +1351,9 @@ describe('steering inside a playlist (decision 61)', () => {
     expect(t.controller.calls.filter((c) => c.startsWith('play '))).toEqual([
       `play ${FALLBACK_PLAYLISTS.steady[0].replace('https://open.spotify.com/playlist/', 'spotify:playlist:')}`
     ])
+    expect(t.decisions).toContainEqual(
+      expect.objectContaining({ action: 'switch', reason: 'editorial fallback' })
+    )
     await t.music.stopSession()
   })
 
@@ -1423,7 +1433,26 @@ describe('playlist variety (decision 64)', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(plays(t)).toHaveLength(2)
       expect(t.controller.contexts).toEqual([PL, PL2])
+      expect(t.decisions).toContainEqual(
+        expect.objectContaining({
+          action: 'playlist',
+          reason: 'song completed',
+          played: count,
+          playlist: PL
+        })
+      )
+      expect(t.decisions).toContainEqual(
+        expect.objectContaining({
+          action: 'switch',
+          reason: 'song count',
+          from: PL,
+          to: PL2,
+          played: 0
+        })
+      )
+      expect(t.music.status().playlist).toEqual({ uri: PL2, name: undefined, played: 0 })
       await t.music.stopSession()
+      expect(t.music.status().playlist).toBeUndefined()
     }
   )
 
@@ -1563,6 +1592,9 @@ describe('playlist variety (decision 64)', () => {
     await boundary(t, a[3].id)
     expect(plays(t)).toHaveLength(1)
     expect(fetch).not.toHaveBeenCalled()
+    expect(t.decisions).toContainEqual(
+      expect.objectContaining({ action: 'switch blocked', reason: 'single playlist' })
+    )
     await t.music.stopSession()
   })
 
@@ -1581,6 +1613,9 @@ describe('playlist variety (decision 64)', () => {
     t.controller.start(a[2].id)
     await vi.advanceTimersByTimeAsync(0)
     expect(plays(t)).toHaveLength(1)
+    expect(t.decisions).toContainEqual(
+      expect.objectContaining({ action: 'switch blocked', reason: 'gap' })
+    )
     await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
     t.state('focused')
     await vi.advanceTimersByTimeAsync(0)
@@ -1616,4 +1651,50 @@ describe('playlist variety (decision 64)', () => {
       await t.music.stopSession()
     }
   )
+})
+
+it('reports coarse steering decisions and keeps the same skip/keep behaviour', async () => {
+  const t = await setup()
+  await t.music.startSession(session())
+  expect(t.decisions).toContainEqual(
+    expect.objectContaining({ action: 'switch', reason: 'start', from: 'none', to: PL, played: 0 })
+  )
+  expect(t.decisions).toContainEqual(
+    expect.objectContaining({ action: 'refocus', reason: 'previous app requested' })
+  )
+  t.controller.calls = []
+  t.controller.queue = ['spotify:track:calm']
+  t.state('crashing')
+  await vi.advanceTimersByTimeAsync(6000)
+  expect(t.decisions).toContainEqual(
+    expect.objectContaining({ action: 'skip', reason: "doesn't fit Quiet" })
+  )
+  expect(t.decisions).toContainEqual(
+    expect.objectContaining({ action: 'keep', reason: 'fits target' })
+  )
+  expect(t.controller.calls).toEqual(['next'])
+  expect(JSON.stringify(t.decisions)).not.toMatch(/pulse|breathing|hrv|baseline|landmarks/i)
+  await t.music.stopSession()
+})
+
+it('reports no fitting playlist when the current editorial playlist has no alternative', async () => {
+  const editorial = FALLBACK_PLAYLISTS.steady[0].replace(
+    'https://open.spotify.com/playlist/',
+    'spotify:playlist:'
+  )
+  const t = await setup({
+    playlists: [],
+    songs: [song('only', { energy: 2, vocals: 'instrumental' }, [editorial])]
+  })
+  await t.music.startSession(session())
+  t.controller.start('spotify:track:only')
+  await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+  t.controller.calls = []
+  t.controller.start('spotify:track:unknown')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(t.decisions).toContainEqual(
+    expect.objectContaining({ action: 'switch blocked', reason: 'no fitting playlist' })
+  )
+  expect(t.controller.calls).toEqual([])
+  await t.music.stopSession()
 })

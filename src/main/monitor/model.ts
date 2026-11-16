@@ -55,6 +55,11 @@ export function createMonitorModel(
     announce(`phase=${phase}`)
   }
   const offs = [
+    bus.on('monitor:music', (d) =>
+      announce(
+        `music ${d.action} reason=${JSON.stringify(d.reason)} playlist=${JSON.stringify(d.playlist)} played=${d.played}${d.from !== undefined ? ` from=${JSON.stringify(d.from)} → to=${JSON.stringify(d.to)}` : ''}`
+      )
+    ),
     bus.on('monitor:diag', (d) => {
       counters.add(d)
       if (d.phase !== phase) return
@@ -148,7 +153,8 @@ export function createMonitorModel(
           name: music.nowPlaying?.name ?? null,
           artist: music.nowPlaying?.artist ?? null,
           target: music.target ? TARGET_WORD[music.target] : null,
-          leaveAlone: music.leaveAlone
+          leaveAlone: music.leaveAlone,
+          playlist: music.playlist
         }
       }
     },

@@ -5,6 +5,14 @@ export const SPOTIFY_HINT = 'Open Spotify to get music.'
 export const SPOTIFY_CLOSED_HINT = 'Spotify closed. Open it again for music.'
 
 export const musicConfig = {
+  targetLabels: {
+    lift: 'Pick me up',
+    'ease-down': 'Calm down',
+    settle: 'Quiet',
+    'let-it-ride': 'Keep it going',
+    steady: 'Steady',
+    'wind-down': 'Wind down'
+  },
   controller: {
     /** How often onTrackChange polls Spotify. */
     pollMs: 2000,

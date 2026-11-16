@@ -25,6 +25,8 @@ import { createPrivacy, registerPrivacyIpc } from '../privacy'
 import { createStorage } from '../storage'
 import { createWindows, registerWindowsIpc, type ShellWindows } from '.'
 import { SPOTIFY_HINT, SPOTIFY_CLOSED_HINT } from '../music/config'
+import { sessionConfig } from '../session/config'
+import { windowsConfig } from './config'
 
 const MIN = 60_000
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -710,6 +712,46 @@ export async function runHarness(): Promise<void> {
   await shell.ready()
 
   const shots = process.env.OVRA_SHOTS
+  // A focused screenshot fixture: fake bus data only, no SDK, camera or Spotify controller.
+  if (shots && process.env.OVRA_PREVIEW_SHOT === '1') {
+    await mkdir(shots, { recursive: true })
+    const s: Session = {
+      id: 'preview-fixture',
+      startedAt: Date.now(),
+      status: 'running',
+      sensingEnabled: false,
+      config: {
+        activity: 'focus',
+        lengthMin: 20,
+        cameraMode: 'continuous',
+        checkinIntervalMin: 5,
+        music: false,
+        demo: true
+      }
+    }
+    bus.emit('session:started', s)
+    bus.emit('session:status', s)
+    bus.emit('state:updated', {
+      t: Date.now(),
+      situation: 'focused',
+      confidence: 1,
+      seatedMinutes: 0,
+      away: false,
+      trend: 'steady'
+    })
+    bus.emit('orb:bubble', {
+      text: sessionConfig.demo.steps[3].fallback!,
+      ttlMs: sessionConfig.demo.previewMs,
+      previewMood: 'uneasy'
+    })
+    await wait(windowsConfig.bubbleTtlMs)
+    const orb = shell.windows()!.orb
+    await shot(orb, shots, 'demo-stressed-preview')
+    await wait(sessionConfig.demo.previewMs)
+    await shot(orb, shots, 'demo-preview-cleared')
+    app.quit()
+    return
+  }
   if (shots)
     return void tour(shell, bus, shots, services).catch((e) => console.error('[harness:shell]', e))
 

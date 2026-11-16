@@ -209,6 +209,7 @@ export interface MonitorSnapshot {
     artist: string | null
     target: TargetWord | null
     leaveAlone: boolean
+    playlist?: MusicStatus['playlist']
   }
 }
 
@@ -342,6 +343,8 @@ export interface NowPlaying {
 export interface MusicController {
   /** True if the player app is running. Must never launch the app. */
   isAvailable(): Promise<boolean>
+  /** Coarse outcome of the last play command’s foreground-app restore, never an app path. */
+  refocusResult?: string
   play(uri: string, contextUri?: string): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
@@ -435,7 +438,19 @@ export const TARGET_WORD: Record<MusicTarget, TargetWord> = {
 /** Library tab in the Music screen. */
 export type LibraryTab = 'Calm' | 'Focus' | 'Boost' | 'Not sure yet'
 
+/** Observer-only steering words, never measurements. No renderer command or persistence. */
+export interface MusicDecision {
+  action: 'skip' | 'keep' | 'switch' | 'switch blocked' | 'refocus' | 'playlist'
+  reason: string
+  from?: string
+  to?: string
+  playlist?: string
+  played: number
+}
+
 export interface MusicStatus {
+  /** Ovra’s last requested playlist; Spotify cannot report the actual playback context. */
+  playlist?: { uri: string; name?: string; played: number }
   available: boolean
   leaveAlone: boolean
   target: MusicTarget | null
@@ -545,6 +560,8 @@ export interface OrbView {
   why?: { text: string; progress?: number; moving: boolean }
   /** Demo session: shows the Demo badge. */
   demo?: boolean
+  /** Labelled demo fallback only: moon appearance, never the actual mood or state. */
+  previewMood?: OrbMood
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +663,7 @@ export interface BusEvents {
   'music:track-changed': NowPlaying
   'music:target-changed': { target: MusicTarget; word: TargetWord; reason: string }
   'music:status': MusicStatus
+  'monitor:music': MusicDecision
 
   'move:nudge': Nudge
   'move:started': { moveId: MoveId }
@@ -667,7 +685,7 @@ export interface BusEvents {
   /** Emitted by privacy at the end of deleteEverything(). Modules drop in-memory caches (e.g. music library). */
   'data:deleted-all': Record<string, never>
 
-  'orb:bubble': { text: string; ttlMs?: number; action?: 'show-camera' }
+  'orb:bubble': { text: string; ttlMs?: number; action?: 'show-camera'; previewMood?: OrbMood }
 }
 
 export type BusEventName = keyof BusEvents

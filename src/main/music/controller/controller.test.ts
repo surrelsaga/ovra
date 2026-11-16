@@ -202,24 +202,46 @@ describe('play track pop-up refocus (decision 61)', () => {
     await vi.advanceTimersByTimeAsync(200)
     await done
     expect(cmds.filter((x) => x.startsWith('open'))).toEqual(['open -a /Applications/Ovra.app'])
+    expect(c.refocusResult).toBe('previous app requested')
   })
 
   it('never refocuses when the user was in Spotify, and gives up after the limit', async () => {
     const inSpotify = make([SPOTIFY])
     await inSpotify.c.play('spotify:track:a')
     expect(inSpotify.cmds.some((x) => x.startsWith('open'))).toBe(false)
+    expect(inSpotify.c.refocusResult).toBe('already in Spotify')
 
     const never = make([OVRA])
     const done = never.c.play('spotify:track:a')
     await vi.advanceTimersByTimeAsync(2000)
     await done
     expect(never.cmds.some((x) => x.startsWith('open'))).toBe(false)
+    expect(never.c.refocusResult).toBe('timed out; Spotify did not come forward')
   })
 
   it('leaves a different app the user switched to alone', async () => {
     const { c, cmds } = make([OVRA, 'ASN:0x0-0x99:'])
     await c.play('spotify:track:a')
     expect(cmds.some((x) => x.startsWith('open'))).toBe(false)
+    expect(c.refocusResult).toBe('user changed app')
+  })
+
+  it('reports a failed refocus without failing playback', async () => {
+    const c = new SpotifyMacController(
+      async () => '',
+      async (cmd, args) => {
+        if (cmd === 'open') throw new Error('refused')
+        if (args[0] === 'front') return c.refocusResult === 'front app unavailable' ? OVRA : SPOTIFY
+        if (args[0] === 'find') return SPOTIFY
+        if (args[0] === 'info') {
+          c.refocusResult = 'waiting'
+          return '"LSBundlePath"="/Applications/Ovra.app"'
+        }
+        return ''
+      }
+    )
+    await c.play('spotify:track:a')
+    expect(c.refocusResult).toBe('failed')
   })
 })
 

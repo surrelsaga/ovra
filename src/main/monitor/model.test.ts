@@ -61,7 +61,8 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
             target: null,
             nowPlaying: null,
             scoringQueue: 0,
-            scoredCount: 0
+            scoredCount: 0,
+            playlist: { uri: 'spotify:playlist:test', name: 'Focus\n"mix"', played: 3 }
           })
         }
       },
@@ -91,6 +92,16 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
     bus.emit('state:updated', state)
     bus.emit('state:updated', state)
     expect(log.mock.calls.filter(([line]) => line.includes('window signal=tense'))).toHaveLength(1)
+    bus.emit('monitor:music', {
+      action: 'switch',
+      reason: 'song count',
+      from: 'Focus\n"mix"',
+      to: 'Evening',
+      playlist: 'Evening',
+      played: 0
+    })
+    expect(log.mock.calls.at(-1)?.[0]).toContain('music switch reason="song count"')
+    expect(log.mock.calls.at(-1)?.[0]).not.toContain('\n')
     const snapshot = model.snapshot()
     expect(snapshot).toMatchObject({
       processing: 'kRunning',
@@ -104,6 +115,7 @@ it('observes flags, session sources and metrics, then removes its listeners', ()
     expect(text).toContain('last10{seconds=5.0 raw/s=28.0 sent/s=4.0 pulse=100/0/50')
     expect(text).toContain('face=100/0/0/0/0/0')
     expect(text).toContain('source')
+    expect(text).toContain('playlist="Focus\\n\\"mix\\"" played=3')
     expect(text).not.toContain('\n')
     bus.emit('sdk:validation', diag.validation!)
     bus.emit('sdk:validation', diag.validation!)

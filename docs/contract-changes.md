@@ -189,3 +189,11 @@ Format:
 - Change: additive optional `SessionRecord.demo?: boolean`, accepted by the strict privacy schema and inherited by `SessionSummary`.
 - Why: the approved tour must mark History and session summaries “Demo session · shorter waits”; records without the field remain readable and unmarked. Only true is written for new demo sessions; normal records keep their existing shape.
 - Status: applied in `surrelsaga/ovra-tourbuild`, expressly allowed by Job 19 section D. No other shared contracts or dependencies changed.
+
+## 2026-11-16 — music monitor and labelled demo previews (Job 22)
+
+- File: `src/shared/types.ts`; additive changes explicitly allowed by the Job 22 brief.
+- `MusicStatus.playlist?` reports Ovra's last requested playlist (`uri`, optional `name`, completed-song `played` count); `MonitorSnapshot.music.playlist?` mirrors it. Spotify cannot report the actual context after manual user changes.
+- `MusicController.refocusResult?` contains only coarse words about the last play command's refocus; no app names, paths or measurements.
+- `MusicDecision` and observer-only `monitor:music` carry action/reason, optional playlist/from/to and played count. The dev monitor logs these; there is no renderer command or persistence.
+- `OrbView.previewMood?` and `orb:bubble.previewMood?` carry only a moon appearance for a labelled demo fallback. The bubble and preview expire together after the configured 3 seconds, starting when the queued bubble actually shows. Both forwarding and rendering require demo mode. The actual mood, why line, state events, timeline/history, music and nudges are unchanged; no preview field is added to stored session types or schemas.

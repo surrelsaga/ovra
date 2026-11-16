@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_SETTINGS,
+  type Activity,
   type BusEventName,
   type BusEvents,
   type MetricsSnapshot,
@@ -22,6 +23,7 @@ const MIN = 60_000
 const T0 = new Date('2026-11-12T09:00:00Z').getTime()
 
 interface SetupOpts {
+  activity?: Activity
   face?: boolean
   camera?: boolean
   mode?: 'checkins' | 'continuous'
@@ -60,7 +62,7 @@ function setup(opts: SetupOpts = {}) {
   const session: Session = {
     id: 's1',
     config: {
-      activity: 'focus',
+      activity: opts.activity ?? 'focus',
       lengthMin: 180,
       cameraMode: opts.mode ?? 'checkins',
       checkinIntervalMin: 5,
@@ -99,17 +101,54 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('nudges', () => {
+  for (const [activity, neck, stand, walk] of [
+    ['focus', 30, 60, 90],
+    ['reading', 30, 60, 90],
+    ['creative', 25, 50, 75],
+    ['everyday', 25, 50, 75],
+    ['unwind', 25, 50, 75]
+  ] as const) {
+    for (const camera of [true, false]) {
+      it.each([
+        ['neck-stretch', neck, undefined],
+        ['stand-stretch', stand, 'neck-stretch'],
+        ['walk', walk, 'stand-stretch']
+      ] as const)(
+        `${activity}, camera=${camera}: %s at %i minutes`,
+        (moveId, threshold, earlier) => {
+          const t = setup({ activity, camera, nudgeInterval: 0 })
+          const update = (minutes: number): void => {
+            vi.setSystemTime(T0 + minutes * MIN)
+            if (camera) t.state({ seatedMinutes: minutes })
+            else
+              t.bus.emit('session:tick', {
+                sessionId: t.session.id,
+                elapsedSec: minutes * 60,
+                remainingSec: 0
+              })
+          }
+          update(threshold - 0.01)
+          expect(t.events('move:nudge').at(-1)?.moveId).toBe(earlier)
+          if (earlier) t.moves.respond(t.nudgeId(), 'skip')
+          update(threshold)
+          expect(t.events('move:nudge').at(-1)?.moveId).toBe(moveId)
+          t.moves.stopSession()
+        }
+      )
+    }
+  }
+
   for (const demo of [false, true]) {
-    for (const [moveId, trigger] of [
-      ['neck-stretch', 'neckSeatedMin'],
-      ['stand-stretch', 'standSeatedMin'],
-      ['walk', 'walkSeatedMin']
+    for (const [moveId, trigger, normalThreshold] of [
+      ['neck-stretch', 'neckSeatedMin', 30],
+      ['stand-stretch', 'standSeatedMin', 60],
+      ['walk', 'walkSeatedMin', 90]
     ] as const) {
       it.each(['go', 'skip', 'snooze'] as const)(
         `demo=${demo}: ${moveId} after %s waits another full seated threshold`,
         (response) => {
           const interval = demo ? sessionConfig.demo.nudgeMinIntervalMin : 20
-          const threshold = demo ? sessionConfig.demo.triggers[trigger] : cfg.triggers[trigger]
+          const threshold = demo ? sessionConfig.demo.triggers[trigger] : normalThreshold
           const t = setup({
             nudgeInterval: interval,
             config: {
@@ -120,7 +159,7 @@ describe('nudges', () => {
                 neckSeatedMin: Infinity,
                 standSeatedMin: Infinity,
                 walkSeatedMin: Infinity,
-                [trigger]: threshold
+                [trigger]: demo ? threshold : cfg.triggers[trigger]
               }
             }
           })
@@ -168,15 +207,25 @@ describe('nudges', () => {
     const t = setup({ camera: false })
     const tick = (): void =>
       t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 0, remainingSec: 0 })
-    vi.advanceTimersByTime(45 * MIN)
+    vi.advanceTimersByTime(30 * MIN)
     tick()
     t.moves.respond(t.nudgeId(), 'skip')
     vi.advanceTimersByTime(20 * MIN)
     tick()
+    expect(t.events('move:nudge')).toHaveLength(1)
+    vi.advanceTimersByTime(10 * MIN)
+    tick()
     t.moves.respond(t.nudgeId(), 'skip') // independent stand reminder
-    vi.advanceTimersByTime(20 * MIN)
+    vi.advanceTimersByTime(19 * MIN)
     tick()
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch', 'stand-stretch'])
+    vi.advanceTimersByTime(MIN)
+    tick()
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
+      'neck-stretch',
+      'stand-stretch',
+      'neck-stretch'
+    ])
   })
 
   it('nudges on a trigger and shows the prompt', () => {

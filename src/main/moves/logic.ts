@@ -1,5 +1,6 @@
 // Owner: Agent D. Pure rules: which move to suggest, and how to check a step. No timers, no bus.
 import type {
+  Activity,
   FaceSnapshot,
   MoveCheck,
   MoveId,
@@ -12,6 +13,7 @@ import type { MovesConfig, NudgeReason } from './config'
 const MIN = 60_000
 
 export interface NudgeInput {
+  activity: Activity
   situation: Situation | null
   seatedMinutes: number
   /** Minutes the user has been tense or crashing without a break in that run (0 if not). */
@@ -25,6 +27,8 @@ export function pickMove(
   seatedNudges: Partial<Record<MoveId, number>> = {}
 ): { moveId: MoveId; reason: NudgeReason; message: string } | null {
   const t = cfg.triggers
+  const seatedThreshold = (value: typeof t.neckSeatedMin): number =>
+    typeof value === 'number' ? value : value[input.activity]
   const { situation: s, seatedMinutes: seated, tenseMinutes } = input
   const upset = s === 'tense' || s === 'crashing'
   const pick = (moveId: MoveId, reason: NudgeReason): ReturnType<typeof pickMove> => {
@@ -34,13 +38,14 @@ export function pickMove(
 
   if (upset && tenseMinutes >= t.stepOutsideTenseMin) return pick('step-outside', s)
   if (s === 'crashing') return pick('walk', 'crashing')
-  if (seated - (seatedNudges.walk ?? 0) >= t.walkSeatedMin) return pick('walk', 'seated')
+  if (seated - (seatedNudges.walk ?? 0) >= seatedThreshold(t.walkSeatedMin))
+    return pick('walk', 'seated')
   if (s === 'tense' && tenseMinutes < t.earlyTenseMaxMin) return pick('breathe', 'tense')
   if (s === 'low') return pick('stand-stretch', 'low')
-  if (seated - (seatedNudges['stand-stretch'] ?? 0) >= t.standSeatedMin)
+  if (seated - (seatedNudges['stand-stretch'] ?? 0) >= seatedThreshold(t.standSeatedMin))
     return pick('stand-stretch', 'seated')
   if (s === 'tense') return pick('neck-stretch', 'tense')
-  if (seated - (seatedNudges['neck-stretch'] ?? 0) >= t.neckSeatedMin)
+  if (seated - (seatedNudges['neck-stretch'] ?? 0) >= seatedThreshold(t.neckSeatedMin))
     return pick('neck-stretch', 'seated')
   return null
 }

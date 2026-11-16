@@ -118,13 +118,13 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
     show({ kind: 'nudge', nudge })
   }
 
-  const maybeNudge = (input: NudgeInput): void => {
+  const maybeNudge = (input: Omit<NudgeInput, 'activity'>): void => {
     if (!session || session.status !== 'running') return
     if (input.seatedMinutes < lastSeatedMinutes) seatedNudges = {}
     lastSeatedMinutes = input.seatedMinutes
     if (!idle()) return
     if (!canNudge(Date.now(), lastNudgeAt, privacy.getSettings().nudgeMinIntervalMin)) return
-    const pick = pickMove(input, cfg, seatedNudges)
+    const pick = pickMove({ ...input, activity: session.config.activity }, cfg, seatedNudges)
     if (pick) {
       // Consume the seated trigger when shown; the explicit snooze still gets its one retry.
       if (pick.reason === 'seated') seatedNudges[pick.moveId] = input.seatedMinutes

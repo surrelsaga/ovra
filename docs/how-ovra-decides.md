@@ -83,7 +83,7 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 | Mood                                 | Music                                                                                                 | Break reminder (at most one every 20 min)                                  |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Couldn't see you                     | Steady before the first mood; after a dropout, keeps its last choice                                  | reminders after sitting only                                               |
-| Steady                               | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | after 45 min seated: neck stretch; 60 min: stand and stretch; 90 min: walk |
+| Steady                               | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | reminders after sitting, using your activity's waits below |
 | Good mood                            | Keep it going (brighter songs)                                                                        | reminders after sitting only                                               |
 | Stressed                             | Calm down (calmer songs, from the next song)                                                          | under 5 min stressed: breathe along. Later: neck and shoulders             |
 | Very stressed                        | Quiet (fade down, skip right away to a calm song, fade back up)                                       | a short walk                                                               |
@@ -91,8 +91,16 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 | Tired                                | Pick me up (brighter songs)                                                                           | stand and stretch                                                          |
 | Last 10 min of the session           | Wind down (unless very stressed)                                                                      | —                                                                          |
 
+Seated reminders use the same waits with the camera on or off:
+
+| Reminder                  | Focus / Reading | Creative / Everyday tasks / Unwind |
+| ------------------------- | --------------- | ---------------------------------- |
+| Neck and shoulder stretch | 30 min sitting  | 25 min sitting                     |
+| Stand and stretch         | 60 min          | 50 min                             |
+| Walk and get water        | 90 min          | 75 min                             |
+
 Seated reminders have separate waits. Once a neck, stand or walk reminder appears, that same
-seated reminder waits another full 45, 60 or 90 minutes of sitting before appearing again,
+seated reminder waits another full threshold from the table before appearing again,
 whether you do it or skip it. Snooze still brings it back once after 5 minutes; ignoring that
 retry doesn't restart a stream of reminders. A new seated stretch after a break starts the
 waits again. Mood reminders keep their own rules, and all reminders still share the minimum gap.

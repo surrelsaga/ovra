@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { StateUpdate } from '@shared/types'
 import { MOVES, MOVES_CONFIG as cfg } from './config'
+import { sessionConfig } from '../session/config'
+import { simulatorMovesConfig } from '../simulator/config'
 import {
   canNudge,
   isBreathingSlowing,
@@ -12,6 +14,7 @@ import {
 } from './logic'
 
 const input = (p: Partial<NudgeInput>): NudgeInput => ({
+  activity: 'focus',
   situation: 'focused',
   seatedMinutes: 0,
   tenseMinutes: 0,
@@ -37,16 +40,50 @@ describe('move library', () => {
 })
 
 describe('pickMove triggers', () => {
+  for (const activity of ['focus', 'reading', 'creative', 'everyday', 'unwind'] as const) {
+    for (const [name, config] of [
+      ['demo', { ...cfg, triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers } }],
+      ['fast simulator', simulatorMovesConfig('fast')],
+      ['instant simulator', simulatorMovesConfig('instant')]
+    ] as const) {
+      it(`${name} overrides ${activity}'s seated thresholds`, () => {
+        for (const [moveId, trigger] of [
+          ['neck-stretch', 'neckSeatedMin'],
+          ['stand-stretch', 'standSeatedMin'],
+          ['walk', 'walkSeatedMin']
+        ] as const) {
+          const threshold = config.triggers[trigger] as number
+          const isolated = {
+            ...config,
+            triggers: {
+              ...config.triggers,
+              neckSeatedMin: Infinity,
+              standSeatedMin: Infinity,
+              walkSeatedMin: Infinity,
+              [trigger]: threshold
+            }
+          }
+          expect(
+            pickMove(input({ activity, seatedMinutes: threshold - 0.01 }), isolated)
+          ).toBeNull()
+          expect(pickMove(input({ activity, seatedMinutes: threshold }), isolated)?.moveId).toBe(
+            moveId
+          )
+        }
+      })
+    }
+  }
+
   it('focused and fresh → nothing', () => {
     expect(pickMove(input({}), cfg)).toBeNull()
-    expect(pickMove(input({ situation: null, seatedMinutes: 44 }), cfg)).toBeNull()
+    expect(pickMove(input({ situation: null, seatedMinutes: 29 }), cfg)).toBeNull()
   })
   it('tense early → breathe, tense later → neck stretch', () => {
     expect(pick({ situation: 'tense', tenseMinutes: 1 })).toBe('breathe')
     expect(pick({ situation: 'tense', tenseMinutes: 6 })).toBe('neck-stretch')
   })
-  it('seated time: 45 → neck, 60 → stand, 90 → walk', () => {
-    expect(pick({ seatedMinutes: 45 })).toBe('neck-stretch')
+  it('seated time: 30 → neck, 60 → stand, 90 → walk', () => {
+    expect(pick({ seatedMinutes: 30 })).toBe('neck-stretch')
     expect(pick({ seatedMinutes: 60 })).toBe('stand-stretch')
     expect(pick({ seatedMinutes: 90 })).toBe('walk')
     expect(pick({ situation: null, seatedMinutes: 61 })).toBe('stand-stretch')

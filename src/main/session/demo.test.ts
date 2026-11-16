@@ -98,7 +98,13 @@ describe('demo pace', () => {
     // A normal session afterwards runs on normal timings.
     bus.emit('session:started', session(false))
     expect(live()).toEqual(normal)
-    expect(MOVES_CONFIG.triggers.neckSeatedMin).toBe(45)
+    expect(MOVES_CONFIG.triggers.neckSeatedMin).toEqual({
+      focus: 30,
+      reading: 30,
+      creative: 25,
+      everyday: 25,
+      unwind: 25
+    })
     expect(musicConfig.switching.minTargetChangeMs).toBe(3 * 60_000)
     expect(musicConfig.switching.windDownSec).toBe(600)
     expect(musicConfig.switching.switchNow).toBe(false)

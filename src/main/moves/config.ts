@@ -1,5 +1,5 @@
 // Owner: Agent D. Move library, nudge triggers and verification thresholds. All starting values; tune here.
-import type { Move, MoveCheck, MoveId } from '@shared/types'
+import type { Activity, Move, MoveCheck, MoveId } from '@shared/types'
 
 export const MOVES: Record<MoveId, Move> = {
   breathe: {
@@ -188,9 +188,28 @@ export const MOVES_CONFIG = {
   triggers: {
     /** Tense for less than this counts as "early" → Breathe along. */
     earlyTenseMaxMin: 5,
-    neckSeatedMin: 45,
-    standSeatedMin: 60,
-    walkSeatedMin: 90,
+    // A number overrides all activities for the demo and dev harnesses.
+    neckSeatedMin: {
+      focus: 30,
+      reading: 30,
+      creative: 25,
+      everyday: 25,
+      unwind: 25
+    } as number | Record<Activity, number>,
+    standSeatedMin: {
+      focus: 60,
+      reading: 60,
+      creative: 50,
+      everyday: 50,
+      unwind: 50
+    } as number | Record<Activity, number>,
+    walkSeatedMin: {
+      focus: 90,
+      reading: 90,
+      creative: 75,
+      everyday: 75,
+      unwind: 75
+    } as number | Record<Activity, number>,
     /** Tense or crashing for this long → Step outside. */
     stepOutsideTenseMin: 15
   },

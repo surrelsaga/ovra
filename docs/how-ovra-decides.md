@@ -86,7 +86,7 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 | Steady                               | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | after 45 min seated: neck stretch; 60 min: stand and stretch; 90 min: walk |
 | Good mood                            | Keep it going (brighter songs)                                                                        | reminders after sitting only                                               |
 | Stressed                             | Calm down (calmer songs, from the next song)                                                          | under 5 min stressed: breathe along. Later: neck and shoulders             |
-| Very stressed                        | Quiet (fade down, switch right away, fade back up)                                                    | a short walk                                                               |
+| Very stressed                        | Quiet (fade down, skip right away to a calm song, fade back up)                                       | a short walk                                                               |
 | Stressed or very stressed for 15 min | —                                                                                                     | step outside                                                               |
 | Tired                                | Pick me up (brighter songs)                                                                           | stand and stretch                                                          |
 | Last 10 min of the session           | Wind down (unless very stressed)                                                                      | —                                                                          |
@@ -96,9 +96,17 @@ Music rules:
 - **How often:** the music changes direction at most once every 3 minutes. The first real mood can switch at once.
 - **"Leave my music alone":** turns all of this off.
 - **What plays:** songs come from your playlists, never the same song twice in a session.
+- **How it plays without popping Spotify up:** asking Spotify for a specific song always brings its
+  window to the front; skipping never does. So Ovra starts one of your playlists at the start (the
+  one with the most songs that fit, shuffle on, while Ovra's own window is in front) and then steers
+  inside it: when a new song doesn't fit, it skips to the next one, with the volume turned down
+  during the skips (at most 8 in a row). Ads are left alone. Only when the playlist has nothing
+  fitting left, or 8 skips didn't find one, does Ovra change playlist; Spotify then flashes up for a
+  moment and Ovra puts your app straight back. That happens at most once every 3 minutes. Your
+  shuffle and repeat settings come back when the session ends.
 
 **Demo timings:** music winds down only in the last **2 minutes**, and every music direction change
-starts a song right away (only Quiet fades). Changes are still at least 20 seconds apart. Break
+is acted on right away (skips if the song doesn't fit; only Quiet fades). Changes are still at least 20 seconds apart. Break
 reminders are at least 1 minute apart, and **1 more min** puts one off for 1 minute. The seated neck
 stretch comes after 3 minutes; seated stand/walk waits are 60 minutes, so Tired and Very stressed
 can show their own reminders during the tour. Move lengths stay the same. The ordered tour gives

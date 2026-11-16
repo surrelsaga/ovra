@@ -42,6 +42,34 @@ describe('parseNowPlaying', () => {
     expect(t).toMatchObject({ isAd: true, artist: '', album: '' })
   })
 
+  it.each([
+    ['spotify:track:promo', 'Listen to music, ad-free.', '', '', '30000', ''],
+    ['spotify:track:promo', ' LISTEN TO MUSIC, AD-FREE. ', ' ', '', '30000', ''],
+    ['spotify:track:promo', 'Spotify Premium', '', '', '30000', ''],
+    ['spotify:track:promo', 'Advertisement', '', '', '30000', ''],
+    ['spotify:track:promo', 'A sponsor', 'Advertisement', '', '30000', ''],
+    ['spotify:track:promo', 'A sponsor', '', 'Spotify Advertisement', '30000', ''],
+    ['spotify:track:promo', 'A sponsor', '', '', '0', ''],
+    ['spotify:track:promo', 'A sponsor', 'a', 'b', '30000', 'spotify:ad:promo']
+  ])('marks ad variant %j / %j', (id, name, artist, album, duration, uri) => {
+    expect(
+      parseNowPlaying(line([id, name, artist, album, duration, '0', 'playing', uri]))?.isAd
+    ).toBe(true)
+  })
+
+  it.each([
+    ['Listen to music, ad-free.', 'A real artist', '', '30000'],
+    ['Advertisement', 'A real artist', 'Album', '200000'],
+    ['A short song', 'Artist', 'Album', '1000'],
+    ['An untitled recording', '', '', '30000'],
+    ['Missing duration', 'Artist', '', '0']
+  ])('keeps real track metadata %j / %j', (name, artist, album, duration) => {
+    expect(
+      parseNowPlaying(line(['spotify:track:a', name, artist, album, duration, '0', 'playing', '']))
+        ?.isAd
+    ).toBe(false)
+  })
+
   it('returns null for empty or short output and survives junk numbers', () => {
     expect(parseNowPlaying('')).toBeNull()
     expect(parseNowPlaying('stopped')).toBeNull()

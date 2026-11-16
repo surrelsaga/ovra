@@ -19,7 +19,7 @@ import { handle } from '../ipc'
 import { FALLBACK_PLAYLISTS, musicConfig } from './config'
 import type { TargetGap } from './selector'
 import { sessionConfig } from '../session/config'
-import { SpotifyMacController } from './controller'
+import { parseNowPlaying, SpotifyMacController } from './controller'
 
 vi.mock('../ipc', () => ({ handle: vi.fn() }))
 
@@ -727,6 +727,7 @@ describe('music service', () => {
         songs: [
           song('dark', { energy: 3, mood: 'dark', vocals: 'instrumental' }),
           song('bright', { energy: 3, mood: 'bright', vocals: 'instrumental' }),
+          song('loud', { energy: 5, mood: 'dark', vocals: 'instrumental' }),
           song('soft', { energy: 1, mood: 'bright', vocals: 'instrumental' })
         ],
         targetGap: demo
@@ -759,6 +760,10 @@ describe('music service', () => {
       t.state('crashing')
       await vi.advanceTimersByTimeAsync(3 * musicConfig.switching.settleFadeMs)
       expect(t.music.status().target).toBe('settle')
+      // A kept play is settled; the next new song is judged against Quiet.
+      expect(t.controller.calls.slice(1)).toEqual(['next'])
+      t.controller.start('spotify:track:loud')
+      await vi.advanceTimersByTimeAsync(3 * musicConfig.switching.settleFadeMs)
       expect(t.controller.calls.slice(1)).toEqual(['next', 'next'])
       expect(t.controller.volume).toBe(60)
       await t.music.stopSession()
@@ -1223,6 +1228,149 @@ describe('steering inside a playlist (decision 61)', () => {
     song('loud3', { energy: 5, mood: 'dark' }),
     song('mine', { energy: 3, vocals: 'instrumental' })
   ]
+
+  it.each([false, true])(
+    'demo=%s: stale reads after a skip cannot skip the good song',
+    async (demo) => {
+      const t = await setup({
+        songs: MANY,
+        targetGap: demo ? { switchNow: true, minTargetChangeMs: 20_000 } : undefined
+      })
+      await t.music.startSession(session({ demo }))
+      t.controller.calls = []
+      t.controller.next = async () => {
+        t.controller.calls.push('next')
+        // Spotify keeps returning the old id after accepting next track.
+        setTimeout(() => t.controller.start('spotify:track:mine'), 1500)
+      }
+      t.controller.start('spotify:track:loud1')
+      const stale = { ...t.controller.np! }
+      await vi.advanceTimersByTimeAsync(1000)
+      t.controller.cb?.(stale)
+      expect(t.controller.calls).toEqual(['next'])
+      await vi.advanceTimersByTimeAsync(1000)
+      t.controller.cb?.(stale) // a delayed poll reply after the new song arrived
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(t.controller.calls).toEqual(['next'])
+      expect(t.music.status().nowPlaying?.id).toBe('spotify:track:mine')
+      expect(t.decisions.filter((d) => d.action === 'keep')).toHaveLength(1)
+      await t.music.stopSession()
+    }
+  )
+
+  it('a kept song stays kept through duplicate polls, pause/resume and target changes', async () => {
+    const t = await setup({ songs: MANY, targetGap: { switchNow: true, minTargetChangeMs: 0 } })
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:mine')
+    await vi.advanceTimersByTimeAsync(0)
+    t.controller.calls = []
+    t.controller.cb?.(t.controller.np!)
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(0)
+    t.controller.np = { ...t.controller.np!, state: 'paused' }
+    t.controller.cb?.(t.controller.np)
+    t.controller.np = { ...t.controller.np, state: 'playing' }
+    t.controller.cb?.(t.controller.np)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(t.controller.calls).toEqual([])
+    expect(t.decisions.filter((d) => d.action === 'keep')).toHaveLength(1)
+    await t.music.stopSession()
+  })
+
+  it('judges a new play of a previously kept id after another track', async () => {
+    const t = await setup({ songs: [...MANY, song('spare', { energy: 3 })] })
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:mine')
+    await vi.advanceTimersByTimeAsync(1000)
+    t.controller.start('spotify:track:s1')
+    await vi.advanceTimersByTimeAsync(1000)
+    t.controller.calls = []
+    t.controller.queue = ['spotify:track:s2']
+    t.controller.start('spotify:track:mine')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(t.controller.calls).toEqual(['next'])
+    await t.music.stopSession()
+  })
+
+  it('judges a genuine same-id restart as a new play without counting duplicate polls', async () => {
+    const t = await setup({ songs: MANY })
+    await t.music.startSession(session())
+    t.controller.start('spotify:track:mine', 20_000)
+    await vi.advanceTimersByTimeAsync(1000)
+    t.controller.np = { ...t.controller.np!, positionMs: 1000 }
+    t.controller.cb?.(t.controller.np)
+    await vi.advanceTimersByTimeAsync(19_000)
+    t.controller.start('spotify:track:mine', 20_000)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.decisions.filter((d) => d.action === 'keep')).toHaveLength(2)
+    expect(t.music.status().playlist?.played).toBe(1)
+    await t.music.stopSession()
+  })
+
+  it('stops a skip chain when the next item is an ad', async () => {
+    const t = await setup({ songs: MANY })
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.controller.next = async () => {
+      t.controller.calls.push('next')
+      t.controller.np = parseNowPlaying(
+        [
+          'spotify:track:promo',
+          'Listen to music, ad-free.',
+          '',
+          '',
+          '30000',
+          '0',
+          'playing',
+          ''
+        ].join('\t')
+      )
+      t.controller.cb?.(t.controller.np!)
+    }
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(t.controller.calls).toEqual(['next'])
+    expect(t.music.status().playlist?.played).toBe(0)
+    expect((await t.music.library()).songs.some((s) => s.id === 'spotify:track:promo')).toBe(false)
+    await t.music.stopSession()
+  })
+
+  it('times out a refused skip without retrying the same id on later judgments', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const t = await setup({ songs: MANY, targetGap: { switchNow: true, minTargetChangeMs: 0 } })
+    await t.music.startSession(session())
+    t.controller.calls = []
+    t.controller.start('spotify:track:loud1')
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.skipWaitMs + 1000)
+    t.controller.cb?.(t.controller.np!)
+    t.state('crashing')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(t.controller.calls).toEqual(['next'])
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+    await t.music.stopSession()
+  })
+
+  it.each([
+    ['spotify:ad:promo', 'An ad', 'Artist', 'Album', '30000'],
+    ['spotify:track:promo', 'Listen to music, ad-free.', '', '', '30000'],
+    ['spotify:track:promo', 'A sponsor', '', 'Advertisement', '30000'],
+    ['spotify:track:promo', 'A sponsor', '', '', '0']
+  ])('never skips, learns or counts ad %j / %j', async (id, name, artist, album, duration) => {
+    const t = await setup({ songs: MANY })
+    await t.music.startSession(session())
+    t.controller.calls = []
+    const ad = parseNowPlaying([id, name, artist, album, duration, '0', 'playing', id].join('\t'))!
+    t.controller.np = ad
+    t.controller.cb?.(ad)
+    await vi.advanceTimersByTimeAsync(40_000)
+    t.controller.start('spotify:track:mine')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.controller.calls).toEqual([])
+    expect(t.music.status().playlist?.played).toBe(0)
+    expect((await t.music.library()).songs.some((s) => s.id === id)).toBe(false)
+    await t.music.stopSession()
+  })
 
   it('starts the playlist with the most fitting songs, shuffle on, and restores shuffle/repeat at the end', async () => {
     const t = await setup({ songs: MANY, playlists: [PL, PL2] })

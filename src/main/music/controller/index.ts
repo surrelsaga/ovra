@@ -64,16 +64,28 @@ export function parseNowPlaying(out: string): NowPlaying | null {
     return Number.isFinite(n) ? n : 0
   }
   const state = f[6].trim()
+  const label = (s: string): string =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/[.!]+$/, '')
+  const durationMs = Math.round(num(f[4]))
+  const { promoTitles, adMetadata } = musicConfig.controller
   return {
     id,
     uri: f[7].trim() || id,
     name: f[1],
     artist: f[2],
     album: f[3],
-    durationMs: Math.round(num(f[4])),
+    durationMs,
     positionMs: Math.round(num(f[5]) * 1000),
     state: state === 'playing' || state === 'paused' ? state : 'stopped',
-    isAd: id.startsWith('spotify:ad:')
+    isAd:
+      id.startsWith('spotify:ad:') ||
+      f[7].trim().startsWith('spotify:ad:') ||
+      (!f[2].trim() && promoTitles.some((title) => title === label(f[1]))) ||
+      [f[2], f[3]].some((s) => adMetadata.some((value) => value === label(s))) ||
+      (!f[2].trim() && !f[3].trim() && durationMs <= 0)
   }
 }
 

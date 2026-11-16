@@ -59,6 +59,7 @@ interface PlayRecord {
   durationMs: number
   listenedMs: number
   playingSince: number | null
+  startPositionMs: number
 }
 
 export function createMusic(deps: MusicDeps): MusicService & {
@@ -131,6 +132,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
   let steerAgain = false
   let songChanged = false
   let refusedLogged = false
+  let judgedId: string | null = null
+  let skippedId: string | null = null
 
   const status = (): MusicStatus => ({
     available,
@@ -610,16 +613,20 @@ export function createMusic(deps: MusicDeps): MusicService & {
   /** The song playing now, if Ovra may judge it (ads and pauses are left alone). */
   async function playingTrack(): Promise<NowPlaying | null> {
     const t = await controller.current().catch(() => null)
-    return t && !t.isAd && t.state === 'playing' ? library.resolve(t) : null
+    const resolved = t && library.resolve(t)
+    return resolved && resolved.id !== skippedId && !resolved.isAd && resolved.state === 'playing'
+      ? resolved
+      : null
   }
 
   function decide(
     t: NowPlaying,
     target: MusicTarget,
     activeSession: Session,
-    skips: number,
-    reportSkip = true
+    skips: number
   ): 'keep' | 'skip' | 'switch' {
+    if (judgedId === t.id) return 'keep'
+    judgedId = t.id
     const ctx = pickContext(target, activeSession, t.id)
     const song = library.get(t.id)
     if (!heard.has(trackKey(t)) && fitsNow(song, target, ctx)) {
@@ -632,7 +639,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
       ? 'already heard'
       : `doesn't fit ${musicConfig.targetLabels[target]}`
     if (skips < musicConfig.steering.maxSkips && contextHasFit(target, ctx)) {
-      if (reportSkip) decision('skip', reason)
+      decision('skip', reason)
       return 'skip'
     }
     const canSwitch =
@@ -658,6 +665,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     for (let waited = 0; waited < skipWaitMs && alive(); waited += skipPollMs) {
       await new Promise((r) => setTimeout(r, skipPollMs))
       const raw = await controller.current().catch(() => null)
+      if (!alive()) return null
       if (raw && library.resolve(raw).id !== previousId)
         return raw.isAd || raw.state !== 'playing' ? null : library.resolve(raw)
     }
@@ -675,19 +683,21 @@ export function createMusic(deps: MusicDeps): MusicService & {
 
   async function skipChain(
     first: NowPlaying,
+    firstAction: 'skip' | 'switch',
     target: MusicTarget,
     activeSession: Session,
     alive: () => boolean
   ): Promise<void> {
     let t: NowPlaying | null = first
     for (let skips = 0; t && alive(); skips++) {
-      const action = decide(t, target, activeSession, skips)
+      const action = skips === 0 ? firstAction : decide(t, target, activeSession, skips)
       if (action === 'keep') return
       if (action === 'switch') {
         await switchPlaylist(target, false)
         return
       }
       appSkipped.add(t.id)
+      skippedId = t.id
       heard.add(trackKey(t))
       try {
         await controller.next()
@@ -723,9 +733,10 @@ export function createMusic(deps: MusicDeps): MusicService & {
           (await switchPlaylist(target, false, 'song count'))
         )
           continue
-        if (decide(t, target, activeSession, 0, false) === 'keep') continue
+        const action = decide(t, target, activeSession, 0)
+        if (action === 'keep') continue
         await withVolumeDown(target === 'settle' ? QUIET : DUCK, activeSession, g, (alive) =>
-          skipChain(t, target, activeSession, alive)
+          skipChain(t, action, target, activeSession, alive)
         )
       } while (steerAgain)
     }
@@ -802,6 +813,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     if (!session) return
     const g = generation
     t = library.resolve(t)
+    if (t.id === skippedId) return
     if (
       pendingPick &&
       (t.isAd ||
@@ -810,9 +822,19 @@ export function createMusic(deps: MusicDeps): MusicService & {
     )
       cancelPendingPlay()
     const prev = nowPlaying
+    const listenedMs = play
+      ? play.listenedMs + (play.playingSince === null ? 0 : now() - play.playingSince)
+      : 0
+    const restarted =
+      prev?.id === t.id &&
+      prev.state === 'playing' &&
+      t.state === 'playing' &&
+      !!play &&
+      t.positionMs + musicConfig.controller.restartSlackMs < play.startPositionMs + listenedMs
+    if (restarted) judgedId = null
     nowPlaying = t
     observeAvailability(true)
-    if (prev?.id === t.id && (prev.state !== t.state || t.state !== 'playing')) {
+    if (prev?.id === t.id && !restarted) {
       if (play) {
         if (play.playingSince !== null) play.listenedMs += now() - play.playingSince
         play.playingSince = t.state === 'playing' ? now() : null
@@ -833,7 +855,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
         contextUri,
         durationMs: t.durationMs,
         listenedMs: 0,
-        playingSince: t.state === 'playing' ? now() : null
+        playingSince: t.state === 'playing' ? now() : null,
+        startPositionMs: t.positionMs
       }
     }
     safe(
@@ -864,6 +887,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
     contextUri = undefined
     contextSongs = 0
     nowPlaying = null
+    judgedId = skippedId = null
     available = false
     tracker.reset()
     pausedForBreak = false

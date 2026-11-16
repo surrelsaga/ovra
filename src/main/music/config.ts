@@ -22,6 +22,8 @@ export const musicConfig = {
     /** Confirm playback, not just a loaded track; stop once playing is observed. */
     playVerifyMs: 3000,
     maxPlayAttempts: 3,
+    promoTitles: ['listen to music, ad-free', 'spotify premium', 'advertisement'],
+    adMetadata: ['advertisement', 'spotify advertisement'],
     /** osascript timeout. */
     osascriptTimeoutMs: 5000,
     /** Check for Spotify opening or closing, and start music once it opens. */

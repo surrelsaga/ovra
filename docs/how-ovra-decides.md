@@ -91,6 +91,12 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 | Tired                                | Pick me up (brighter songs)                                                                           | stand and stretch                                                          |
 | Last 10 min of the session           | Wind down (unless very stressed)                                                                      | —                                                                          |
 
+Seated reminders have separate waits. Once a neck, stand or walk reminder appears, that same
+seated reminder waits another full 45, 60 or 90 minutes of sitting before appearing again,
+whether you do it or skip it. Snooze still brings it back once after 5 minutes; ignoring that
+retry doesn't restart a stream of reminders. A new seated stretch after a break starts the
+waits again. Mood reminders keep their own rules, and all reminders still share the minimum gap.
+
 Music rules:
 
 - **How often:** the music changes direction at most once every 3 minutes. The first real mood can switch at once.
@@ -108,13 +114,18 @@ Music rules:
   fits, Ovra uses Spotify's matching mood playlist; with just one of your playlists, it stays.
   Spotify flashes up briefly at a switch and Ovra puts your app straight back, at most once every
   3 minutes. Your shuffle and repeat settings come back when the session ends.
+- **One decision per play:** a kept song stays kept until it changes, including when the music
+  direction changes. After a skip, Ovra waits up to 3 seconds for a different song id and ignores
+  stale replies with the skipped id. Ads and Spotify's ad-free promos aren't judged, skipped,
+  learned or counted as songs.
 
 **Demo timings:** music winds down only in the last **2 minutes**, and every music direction change
 is acted on right away (skips if the song doesn't fit; only Quiet fades). Changes are still at least 20 seconds apart.
 Playlist variety uses **3 songs for every activity**, with the same 3-minute gap between playlist switches. Break
 reminders are at least 1 minute apart, and **1 more min** puts one off for 1 minute. The seated neck
 stretch comes after 3 minutes; seated stand/walk waits are 60 minutes, so Tired and Very stressed
-can show their own reminders during the tour. Move lengths stay the same. The ordered tour gives
+can show their own reminders during the tour. Each seated reminder waits its full threshold again
+(another 3 minutes for neck), with the same one-retry snooze rule. Move lengths stay the same. The ordered tour gives
 each attempt a time limit and an honest fallback; early moods are remembered for their own step.
 History and the summary mark these sessions **Demo session · shorter waits**.
 

@@ -157,3 +157,42 @@ The line below the moon says **"Heart rate higher than when you started"**,
 When the camera cannot get a clear reading it says **"Couldn't see you clearly · no change"**.
 After forgetting a mood it says **"Lost track of you for a bit · checking again"** until the next real reading.
 These are descriptions for everyday wellbeing, not diagnoses.
+
+## 9. Small things that might surprise you (said upfront)
+
+None of these are bugs. They're deliberate choices or limits we'd rather state than have anyone stumble on.
+
+**Sensing**
+- **Moods take minutes.** Stressed needs about 3 minutes and Tired about 2 before Ovra says so, so a
+  quick spike never changes anything. In a short try-out you may see only Steady.
+- **You can't act a mood.** A frown or a smile only supports what your heart rate shows; it never makes a
+  mood on its own.
+- **Getting to know you** takes about 1–2 minutes. It starts with "Starting the camera…" while the SDK
+  loads.
+- **When the camera can't read you clearly,** nothing changes ("Couldn't see you clearly · no change").
+  After a long gap the mood is forgotten ("Lost track of you for a bit").
+- **The camera picture is shrunk,** so you don't need your chest in view. Breathing is ignored because of
+  that.
+- **A VPN can cut the SDK's connection to Presage.** Ovra reconnects and tells you, but excluding Ovra
+  from the VPN avoids it.
+
+**Music**
+- **Spotify briefly comes forward when Ovra switches playlist** (at the start, then about every 25–40
+  minutes). Between switches, Ovra skips songs silently.
+- **Ovra plays the first fitting song from your playlist,** not the single best one.
+- **You may hear a second of a skipped song.** The volume is lowered while it skips.
+- **Ads (Spotify Free) are never skipped.**
+- **Spotify must be open.** Ovra asks you to open it but never opens it itself.
+- **Music keeps playing when the session ends.** Your shuffle and repeat settings are put back.
+
+**Break reminders**
+- **They follow how long you've sat,** not your mood: Focus/Reading at 30/60/90 min, other activities
+  at 25/50/75.
+- **Leaving your desk for a minute or more resets the sitting clock,** so the next reminder counts from
+  when you sit back down.
+- **Each reminder comes once per sitting stretch.** Mood-based suggestions (breathe along, stand when
+  tired) are separate.
+
+**Demo mode**
+- **Demo mode is a quick tour, not a test of accuracy.** If a mood doesn't appear, you see a labelled
+  preview of how it would look. Real accuracy needs a normal session of 45 minutes or more.

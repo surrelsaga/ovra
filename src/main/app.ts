@@ -99,7 +99,16 @@ export async function startApp(options: AppOptions = {}) {
     targetGap: musicGap
   })
   const moves = createMoves({ bus, privacy }, movesCfg)
-  bindDemo({ bus, privacy, overlay, moves: movesCfg, musicGap, sensing: sensingCfg })
+  bindDemo({
+    bus,
+    privacy,
+    overlay,
+    moves: movesCfg,
+    musicGap,
+    sensing: sensingCfg,
+    music,
+    cards: moves
+  })
   const session = createSessionService({ bus, privacy, sensing, state, music, moves })
   startMonitor({ bus, sensing, state, session, music })
   registerSessionIpc(session, sensing)

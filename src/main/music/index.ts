@@ -21,6 +21,7 @@ import { applyOutcome, judgePlay } from './library/learning'
 import type { PlayMode, PlayModeControl } from './controller'
 import { createScorer } from './scoring'
 import {
+  baseTarget,
   createTargetTracker,
   desiredTarget,
   effective,
@@ -60,12 +61,19 @@ interface PlayRecord {
   listenedMs: number
   playingSince: number | null
   startPositionMs: number
+  /** Started during a demo preview: never learned from. */
+  preview: boolean
 }
 
 export function createMusic(deps: MusicDeps): MusicService & {
   refreshStatus(): Promise<MusicStatus>
   /** Simulator-only IPC: a playlist switch to the current target's best song (normal guards apply). */
   switchNow(): Promise<void>
+  /**
+   * Demo fallback only (decision 28): steer silently toward `situation`'s target for `ms`, then back
+   * to the real target. Never changes the tracker, situation or learning; no playlist switches.
+   */
+  preview(situation: Situation, ms: number): void
 } {
   const { bus, privacy, controller } = deps
   const now = deps.now ?? Date.now
@@ -134,11 +142,16 @@ export function createMusic(deps: MusicDeps): MusicService & {
   let refusedLogged = false
   let judgedId: string | null = null
   let skippedId: string | null = null
+  /** Demo preview target; the real target stays in the tracker. */
+  let previewTarget: MusicTarget | null = null
+  let previewTimer: ReturnType<typeof setTimeout> | undefined
+  const steerTarget = (): MusicTarget | null => previewTarget ?? tracker.current()
 
   const status = (): MusicStatus => ({
     available,
     leaveAlone,
-    target: tracker.current(),
+    target: steerTarget(),
+    ...(previewTarget && { preview: true }),
     nowPlaying,
     scoringQueue: scorer.pending(),
     scoredCount: library.songs().filter((s) => s.scores).length,
@@ -490,6 +503,11 @@ export function createMusic(deps: MusicDeps): MusicService & {
     const activeSession = session
     const g = generation
     if (!activeSession || switching === g) return false
+    // A preview never brings Spotify forward.
+    if (!start && previewTarget) {
+      decision('switch blocked', 'preview')
+      return false
+    }
     if (!start && now() - lastSwitchAt < musicConfig.steering.switchGapMs) {
       decision('switch blocked', 'gap')
       return false
@@ -720,7 +738,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
         steerAgain = false
         const checkVariety = songChanged
         songChanged = false
-        const target = tracker.current()
+        const target = steerTarget()
         const activeSession = session
         const g = generation
         if (!activeSession || !target || !canSteer() || pendingPick || switching === g) return
@@ -797,6 +815,7 @@ export function createMusic(deps: MusicDeps): MusicService & {
       decision('playlist', 'song completed')
       emitStatus()
     }
+    if (p.preview) return
     const learnedSomething =
       outcome.settle || outcome.steady || outcome.lift || outcome.good || outcome.quickSkip
     safe(
@@ -871,7 +890,8 @@ export function createMusic(deps: MusicDeps): MusicService & {
         durationMs: t.durationMs,
         listenedMs: 0,
         playingSince: t.state === 'playing' ? now() : null,
-        startPositionMs: t.positionMs
+        startPositionMs: t.positionMs,
+        preview: !!previewTarget
       }
     }
     safe(
@@ -884,8 +904,19 @@ export function createMusic(deps: MusicDeps): MusicService & {
     safe(steer(true))
   }
 
+  function setPreview(target: MusicTarget | null): void {
+    clearTimeout(previewTimer)
+    previewTarget = target
+    // The current song is judged again against the new target.
+    judgedId = null
+    emitStatus()
+    if (canSteer()) safe(steer())
+  }
+
   async function stopInternal(): Promise<void> {
     generation++
+    clearTimeout(previewTimer)
+    previewTarget = null
     cancelPendingPlay()
     await abortDuck()
     finishPlay()
@@ -956,6 +987,11 @@ export function createMusic(deps: MusicDeps): MusicService & {
 
   return {
     switchNow: startPlaylist,
+    preview(s, ms) {
+      if (!session) return
+      setPreview(baseTarget(s, session.config.activity))
+      previewTimer = setTimeout(() => setPreview(null), ms)
+    },
     status() {
       if (!session) safe(checkAvailability())
       return status()

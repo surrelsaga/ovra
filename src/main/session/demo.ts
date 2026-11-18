@@ -4,6 +4,7 @@ import {
   ORB_MOOD,
   type AppSettings,
   type Bus,
+  type MoveId,
   type PrivacyService,
   type Situation
 } from '@shared/types'
@@ -22,6 +23,9 @@ export interface DemoDeps {
   moves: MovesConfig
   musicGap: TargetGap
   sensing: SensingConfig
+  /** Labelled reaction previews for a missed mood (music steering, exercise card). */
+  music?: { preview(situation: Situation, ms: number): void }
+  cards?: { preview(moveId: MoveId, message: string): void }
 }
 
 export function bindDemo(deps: DemoDeps): () => void {
@@ -76,11 +80,14 @@ export function bindDemo(deps: DemoDeps): () => void {
     timer = setTimeout(enterNext, demo.doneDelayMs)
   }
 
+  function offerCard(step: DemoStep): void {
+    if (step.card) deps.cards?.preview(step.card.move, step.card.text)
+  }
+
   function enterNext(): void {
     const steps: DemoStep[] = demo.steps
     const step = steps[++index]
     if (!active || !step) return
-    if (step.needs && !seen.has(step.needs)) return enterNext()
     if (step.goal.some((event) => seen.has(event))) {
       say(step.already ?? step.text)
       return done()
@@ -89,17 +96,22 @@ export function bindDemo(deps: DemoDeps): () => void {
       say(step.noFace)
       return done()
     }
-    say(step.text)
+    // Its mood never showed: the same exercise, offered as a labelled preview.
+    const unseen = !!step.needs && !seen.has(step.needs)
+    say(unseen ? step.unseen! : step.text)
+    if (unseen) offerCard(step)
     waiting = step.goal.length > 0
     if (step.limitMs)
       timer = setTimeout(() => {
-        if (step.preview)
+        if (step.preview) {
           bus.emit('orb:bubble', {
             text: step.fallback!,
             ttlMs: demo.previewMs,
             previewMood: ORB_MOOD[step.preview]
           })
-        else say(step.fallback!)
+          deps.music?.preview(step.preview, demo.previewMusicMs)
+          offerCard(step)
+        } else say(step.fallback!)
         done()
       }, step.limitMs)
   }

@@ -6,7 +6,6 @@ import {
   type BusEvents,
   type MetricsSnapshot,
   type MoveCardView,
-  type MovesService,
   type PrivacyService,
   type Session,
   type StateUpdate
@@ -42,7 +41,7 @@ function setup(opts: SetupOpts = {}) {
       nudgeMinIntervalMin: opts.nudgeInterval ?? DEFAULT_SETTINGS.nudgeMinIntervalMin
     })
   } as unknown as PrivacyService
-  const moves: MovesService = createMoves({ bus, privacy }, opts.config)
+  const moves = createMoves({ bus, privacy }, opts.config)
   const log: { event: BusEventName; payload: unknown }[] = []
   const names: BusEventName[] = [
     'move:nudge',
@@ -269,6 +268,37 @@ describe('nudges', () => {
     expect(t.events('move:nudge')).toHaveLength(1)
     vi.advanceTimersByTime(1)
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['stand-stretch', 'stand-stretch'])
+  })
+
+  it('a demo preview card is labelled, waits for a free card, and leaves no nudge trace', () => {
+    const t = setup()
+    t.moves.preview('breathe', 'Preview: try it')
+    expect(t.card()).toMatchObject({
+      kind: 'nudge',
+      nudge: { moveId: 'breathe', message: 'Preview: try it' }
+    })
+    t.moves.respond(t.nudgeId(), 'snooze')
+    vi.advanceTimersByTime(10 * MIN)
+    expect(t.card()).toEqual({ kind: 'hidden' })
+    t.moves.preview('walk', 'Preview: walk')
+    // An unanswered preview gives way to the next one.
+    t.moves.preview('stand-stretch', 'Preview: stretch')
+    expect(t.card()).toMatchObject({ nudge: { moveId: 'stand-stretch' } })
+    t.moves.respond(t.nudgeId(), 'skip')
+    expect(t.events('move:nudge')).toEqual([])
+    expect(t.events('move:snoozed')).toEqual([])
+    expect(t.events('move:skipped')).toEqual([])
+    // It doesn't use up the reminder interval: a real reminder can follow at once.
+    t.state({ situation: 'tense' })
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe'])
+    // ...and never replaces a card that is already up.
+    t.moves.preview('walk', 'Preview: walk')
+    expect(t.card()).toMatchObject({ nudge: { moveId: 'breathe' } })
+    // Trying a preview is a real, guided move.
+    t.moves.respond(t.nudgeId(), 'skip')
+    t.moves.preview('breathe', 'Preview: try it')
+    t.moves.respond(t.nudgeId(), 'go')
+    expect(t.events('move:started')).toEqual([{ moveId: 'breathe' }])
   })
 
   it('ignores a stale nudge id', () => {

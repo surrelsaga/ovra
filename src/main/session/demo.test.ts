@@ -53,7 +53,9 @@ async function setup(face = true) {
   const musicGap = { ...musicConfig.switching }
   const sensing = { ...sensingConfig }
   await privacy.set({ face: face ? 'vitals-and-face' : 'vitals-only' })
-  const dispose = bindDemo({ bus, privacy, overlay, moves, musicGap, sensing })
+  const music = { preview: vi.fn() }
+  const cards = { preview: vi.fn() }
+  const dispose = bindDemo({ bus, privacy, overlay, moves, musicGap, sensing, music, cards })
   const live = (): Record<string, unknown> => ({
     state: resolveConfig(privacy.getSettings().thresholdOverrides),
     nudge: privacy.getSettings().nudgeMinIntervalMin,
@@ -63,7 +65,7 @@ async function setup(face = true) {
     musicGap: { ...musicGap },
     sensing: { ...sensing }
   })
-  return { bus, privacy, live, dispose }
+  return { bus, privacy, live, dispose, music, cards }
 }
 
 describe('demo pace', () => {
@@ -234,7 +236,9 @@ describe('demo steps', () => {
     t.bus.emit('move:completed', { moveId: 'neck-stretch', verified: true })
     t.next()
     expect(t.hints.at(-1)).toBe(demo.steps[3].text)
-    t.timeout(3) // no tense: skip breathing only
+    t.timeout(3) // no tense: breathing is offered as a labelled preview, not skipped
+    expect(t.hints.at(-1)).toBe(demo.steps[4].unseen)
+    t.timeout(4)
     expect(t.hints.at(-1)).toBe(demo.steps[5].text)
     t.timeout(5)
     t.bus.emit('break:returned', { awayMs: 20_000 })
@@ -243,13 +247,12 @@ describe('demo steps', () => {
     t.next()
     expect(t.hints.at(-1)).toBe(demo.steps[8].text)
     expect(t.hints.every((h) => h.startsWith('Demo:'))).toBe(true)
-    expect(t.hints.some((h) => h.includes('5/9'))).toBe(false)
   })
 
   it('times out to an honest fallback, then enters only the next step after 8 s', async () => {
     const t = await tour()
     t.calibrated()
-    vi.advanceTimersByTime(90_000 - 1)
+    vi.advanceTimersByTime(demo.steps[0].limitMs! - 1)
     expect(t.hints).toEqual([demo.steps[0].text])
     vi.advanceTimersByTime(1)
     expect(t.hints.at(-1)).toBe(demo.steps[0].fallback)
@@ -339,44 +342,111 @@ describe('demo steps', () => {
   })
 })
 
-it('gives the longer exercises time to settle while keeping a no-mood tour within 18 minutes', () => {
+it('gives the exercises time to settle while keeping a no-mood tour to about 15 minutes', () => {
+  const holdSec = { tense: demo.state.tenseHoldMin * 60, low: demo.state.lowHoldMin * 60 }
   expect(demo.steps[3].text).toContain('about 90 s')
-  expect(demo.steps[3].limitMs).toBeGreaterThanOrEqual(90_000 + 75_000)
+  expect(demo.steps[3].limitMs).toBeGreaterThanOrEqual((90 + holdSec.tense) * 1000)
+  expect(demo.steps[4].limitMs).toBeGreaterThan(MOVES_CONFIG.moves.breathe.lengthSec * 1000)
   expect(demo.steps[5].text).toContain('about 2 min')
   expect(demo.steps[5].text).toContain('frown')
-  expect(demo.steps[5].limitMs).toBeGreaterThanOrEqual(120_000 + 75_000)
-  const noMoodSteps = demo.steps.filter((s) => !('needs' in s))
+  expect(demo.steps[5].limitMs).toBeGreaterThanOrEqual(120_000 + 30_000)
+  expect(demo.steps[7].limitMs).toBeGreaterThanOrEqual(
+    (demo.state.continuousWindowSec + holdSec.low) * 1000
+  )
+  expect(demo.steps[2].limitMs).toBeGreaterThan(MOVES_CONFIG.moves['neck-stretch'].lengthSec * 1000)
+  // Every step runs now (breathing too), each followed by the pause before the next one.
   const maxTour =
     demo.sensing.calibrationMaxMs +
-    noMoodSteps.reduce((ms, s) => ms + (s.limitMs ?? 0), 0) +
-    (noMoodSteps.length - 1) * demo.doneDelayMs
-  expect(maxTour).toBeGreaterThanOrEqual(16 * 60_000)
-  expect(maxTour).toBeLessThanOrEqual(18 * 60_000)
+    demo.steps.reduce((ms, s) => ms + (s.limitMs ?? 0), 0) +
+    (demo.steps.length - 1) * demo.doneDelayMs
+  expect(maxTour).toBeGreaterThanOrEqual(14 * 60_000)
+  expect(maxTour).toBeLessThanOrEqual(15.5 * 60_000)
 })
 
-it('emits only a labelled view bubble on a missed mood, never state, history, music or moves', async () => {
-  vi.useFakeTimers()
-  const t = await tour()
-  const emit = vi.spyOn(t.bus, 'emit')
-  t.calibrated()
-  emit.mockClear()
-  vi.advanceTimersByTime(demo.steps[0].limitMs!)
-  expect(emit.mock.calls).toEqual([
-    [
-      'orb:bubble',
-      {
-        text: demo.steps[0].fallback,
-        ttlMs: demo.previewMs,
-        previewMood: 'calm'
-      }
-    ]
-  ])
-  // The preview must not mark a goal as seen or enable the real Stressed breathing step.
-  t.next()
-  t.timeout(1)
-  t.timeout(2)
-  t.timeout(3)
-  expect(t.hints.at(-1)).toBe(demo.steps[5].text)
-  expect(t.hints.some((h) => h.includes('5/9'))).toBe(false)
-  t.dispose()
+describe('missed-mood reaction previews', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  it('previews orb, music and card for each missed mood, recording nothing', async () => {
+    const t = await tour()
+    const emit = vi.spyOn(t.bus, 'emit')
+    t.calibrated()
+    emit.mockClear()
+    for (let i = 0; i < demo.steps.length - 1; i++) t.timeout(i)
+    expect(t.hints.at(-1)).toBe(demo.steps[8].text)
+    // Only the bubble (with its labelled moon look) goes on the bus: no state, history or move events.
+    expect(new Set(emit.mock.calls.map(([name]) => name))).toEqual(new Set(['orb:bubble']))
+    const previews = emit.mock.calls
+      .map(([, b]) => b as { text: string; previewMood?: string })
+      .filter((b) => b.previewMood)
+    expect(previews.map((b) => b.previewMood)).toEqual([
+      'calm',
+      'bright',
+      'uneasy',
+      'stormy',
+      'dim'
+    ])
+    for (const b of previews) expect(b.text).toContain('Preview:')
+    expect(t.music.preview.mock.calls).toEqual(
+      (['focused', 'good', 'tense', 'crashing', 'low'] as const).map((s) => [
+        s,
+        demo.previewMusicMs
+      ])
+    )
+    expect(t.cards.preview.mock.calls.map(([move]) => move)).toEqual([
+      'breathe',
+      'walk',
+      'stand-stretch'
+    ])
+    for (const [, text] of t.cards.preview.mock.calls) expect(text).toMatch(/^Preview: /)
+    // The music words in the bubble match the orb pill's music labels.
+    expect(demo.steps[3].fallback).toContain('Calm down')
+    expect(demo.steps[5].fallback).toContain('Quiet')
+    expect(demo.steps[7].fallback).toContain('Pick me up')
+    // Step 5 is a labelled breathing preview, not a dead end.
+    expect(t.hints).toContain(demo.steps[4].unseen)
+    t.dispose()
+  })
+
+  it('a tried preview breathing round completes step 5 like the real one', async () => {
+    const t = await tour()
+    t.calibrated()
+    for (let i = 0; i < 4; i++) t.timeout(i)
+    expect(t.hints.at(-1)).toBe(demo.steps[4].unseen)
+    t.bus.emit('move:completed', { moveId: 'breathe', verified: false })
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[5].text)
+  })
+
+  it('uses the real reaction when the mood shows: no previews', async () => {
+    const t = await tour()
+    t.calibrated()
+    t.state('focused')
+    t.next()
+    t.state('good')
+    t.next()
+    t.bus.emit('move:completed', { moveId: 'neck-stretch', verified: true })
+    t.next()
+    t.state('tense')
+    t.next()
+    expect(t.hints.at(-1)).toBe(demo.steps[4].text)
+    t.bus.emit('move:completed', { moveId: 'breathe', verified: true })
+    t.next()
+    t.state('crashing')
+    t.next()
+    t.bus.emit('break:returned', { awayMs: 20_000 })
+    t.next()
+    t.state('low')
+    t.next()
+    expect(t.music.preview).not.toHaveBeenCalled()
+    expect(t.cards.preview).not.toHaveBeenCalled()
+  })
+
+  it('never previews in a normal session', async () => {
+    const t = await tour(true, false)
+    t.calibrated()
+    vi.advanceTimersByTime(60 * 60_000)
+    expect(t.hints).toEqual([])
+    expect(t.music.preview).not.toHaveBeenCalled()
+    expect(t.cards.preview).not.toHaveBeenCalled()
+  })
 })

@@ -1861,3 +1861,69 @@ it('reports no fitting playlist when the current editorial playlist has no alter
   expect(t.controller.calls).toEqual([])
   await t.music.stopSession()
 })
+
+describe('demo reaction preview', () => {
+  const SONGS = [...LIBRARY, song('steady2', { energy: 3 })]
+  const demoGap = { switchNow: true, minTargetChangeMs: 20_000 }
+
+  it('steers silently to the mood target, labels it, never learns, then returns with volume restored', async () => {
+    const t = await setup({ songs: SONGS, targetGap: demoGap })
+    t.controller.getVolume = async () => t.controller.volume
+    await t.music.startSession(session({ demo: true }))
+    t.state('focused')
+    t.controller.start('spotify:track:steady')
+    await vi.advanceTimersByTimeAsync(2000)
+    t.controller.calls = []
+    const targetsBefore = t.targets()
+    const statuses: { target: string | null; preview?: boolean }[] = []
+    t.bus.on('music:status', (s) => statuses.push({ target: s.target, preview: s.preview }))
+
+    t.controller.queue = ['spotify:track:calm']
+    t.music.preview('crashing', 30_000)
+    expect(t.music.status()).toMatchObject({ target: 'settle', preview: true })
+    await vi.advanceTimersByTimeAsync(5000)
+    // Quiet's fade and a silent skip; no `play track`, so no Spotify pop-up.
+    expect(t.controller.calls).toEqual(['next'])
+    expect(t.music.status().nowPlaying?.id).toBe('spotify:track:calm')
+    expect(t.controller.volume).toBe(60)
+
+    t.controller.queue = ['spotify:track:steady2']
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(t.music.status()).toMatchObject({ target: 'steady' })
+    expect(t.music.status().preview).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(t.controller.calls).toEqual(['next', 'next'])
+    expect(t.music.status().nowPlaying?.id).toBe('spotify:track:steady2')
+    expect(t.controller.volume).toBe(60)
+    expect(statuses.some((s) => s.preview && s.target === 'settle')).toBe(true)
+    // The real target never changed: no target event, bubble or tracker change.
+    expect(t.targets()).toEqual(targetsBefore)
+    expect(t.events.filter((e) => e.name === 'orb:bubble')).toEqual([])
+    const songs = new Map((await t.music.library()).songs.map((s) => [s.id, s]))
+    expect(songs.get('spotify:track:calm')?.learned).toBeUndefined()
+    expect(songs.get('spotify:track:calm')?.scores?.source).toBe('llm')
+    await t.music.stopSession()
+  })
+
+  it('never switches playlist during a preview and ends with the session', async () => {
+    const noCalm = SONGS.filter((s) => s.id !== 'spotify:track:calm')
+    const t = await setup({ songs: noCalm, targetGap: demoGap, playlists: [PL, PL2] })
+    await t.music.startSession(session({ demo: true }))
+    t.state('focused')
+    t.controller.start('spotify:track:steady')
+    await vi.advanceTimersByTimeAsync(2000)
+    t.controller.calls = []
+    // Past the switch gap, with nothing calm here: steering would normally switch (a pop-up).
+    await vi.advanceTimersByTimeAsync(musicConfig.steering.switchGapMs)
+    t.music.preview('crashing', 30_000)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(t.controller.calls.filter((c) => c.startsWith('play'))).toEqual([])
+    expect(t.decisions).toContainEqual(
+      expect.objectContaining({ action: 'switch blocked', reason: 'preview' })
+    )
+    await t.music.stopSession()
+    expect(t.music.status().preview).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(t.controller.calls.filter((c) => c.startsWith('play'))).toEqual([])
+  })
+})

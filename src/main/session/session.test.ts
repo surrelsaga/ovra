@@ -276,6 +276,12 @@ describe('session', () => {
     t.bus.emit('music:track-changed', track('spotify:ad:x', true))
     t.bus.emit('music:track-changed', track('spotify:track:b'))
     t.bus.emit('music:track-changed', track('spotify:track:a'))
+    // Songs heard during a demo music preview are not the session's.
+    const status = { available: true, leaveAlone: false, target: null, nowPlaying: null }
+    const counts = { scoringQueue: 0, scoredCount: 0 }
+    t.bus.emit('music:status', { ...status, ...counts, target: 'settle', preview: true })
+    t.bus.emit('music:track-changed', track('spotify:track:preview'))
+    t.bus.emit('music:status', { ...status, ...counts })
     vi.setSystemTime(2_000_000)
 
     const rec = (await t.svc.end())!

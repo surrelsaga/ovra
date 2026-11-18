@@ -55,7 +55,16 @@ interface Break {
 }
 
 /** `cfg` is for the dev harness (shortened durations); the app uses the defaults. */
-export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): MovesService {
+export function createMoves(
+  deps: MovesDeps,
+  cfg: MovesConfig = MOVES_CONFIG
+): MovesService & {
+  /**
+   * Demo fallback only: a labelled card for a mood that didn't show. Shown only when no other card
+   * is up; not a nudge (no `move:nudge`, no interval, no snooze/skip record). Doing it is a real move.
+   */
+  preview(moveId: MoveId, message: string): void
+} {
   const { bus, privacy } = deps
 
   let session: Session | null = null
@@ -76,6 +85,7 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
   /** Last seated face position, the reference for the stand-up check. */
   let lastFace: FacePos | null = null
   let nudgeCount = 0
+  let previewNudgeId: string | null = null
 
   let ticker: ReturnType<typeof setInterval> | null = null
   const timers = new Set<ReturnType<typeof setTimeout>>()
@@ -368,7 +378,9 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
       const { moveId, message } = nudge
       nudge = null
       if (response === 'go') return startMove(cfg.moves[moveId])
-      if (response === 'snooze') {
+      if (nudgeId === previewNudgeId) {
+        // ponytail: a preview leaves no trace; snooze just closes it.
+      } else if (response === 'snooze') {
         bus.emit('move:snoozed', { moveId })
         later(cfg.snoozeMin * MIN, () => {
           if (session && idle()) showNudge(moveId, message)
@@ -390,6 +402,14 @@ export function createMoves(deps: MovesDeps, cfg: MovesConfig = MOVES_CONFIG): M
       startBreak(true)
     },
     back: endBreak,
+    preview(moveId, message) {
+      // Replaces only an unanswered preview card, never a real card or a move.
+      const previewUp = view.kind === 'nudge' && view.nudge.id === previewNudgeId
+      if (!session || session.status !== 'running' || (!idle() && !previewUp)) return
+      nudge = { id: `nudge-${++nudgeCount}`, moveId, message, t: Date.now() }
+      previewNudgeId = nudge.id
+      show({ kind: 'nudge', nudge })
+    },
     breatheRound(): void {
       if (!session) return
       returnCheck = null

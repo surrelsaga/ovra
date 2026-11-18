@@ -458,6 +458,8 @@ export interface MusicStatus {
   /** Songs waiting to be scored (for the "getting to know your music" line). */
   scoringQueue: number
   scoredCount: number
+  /** Demo fallback only: `target` is a labelled preview of a mood's music, not the real target. */
+  preview?: boolean
 }
 
 // ---------------------------------------------------------------------------

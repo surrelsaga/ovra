@@ -388,6 +388,17 @@ it.each([
   expect(screen.getByText(label)).toHaveClass(`word--${word.toLowerCase()}`)
 })
 
+it('labels a demo music preview in the pill', () => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  bridge.push('push:orb', { ...base, nowPlaying: { name: 'Song', artist: 'Artist', word: 'Calm' } })
+  const music = { available: true, leaveAlone: false, nowPlaying: null, scoringQueue: 0 }
+  bridge.push('push:music', { ...music, scoredCount: 0, target: 'ease-down', preview: true })
+  expect(screen.getByText('Preview · Calm down')).toBeInTheDocument()
+  bridge.push('push:music', { ...music, scoredCount: 0, target: 'steady' })
+  expect(screen.getByText('Steady')).toBeInTheDocument()
+})
+
 it('previews only the labelled demo moon and keeps the actual why and music visible', () => {
   const bridge = installFakeBridge()
   render(<App />)

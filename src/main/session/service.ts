@@ -65,6 +65,8 @@ export function createSessionService(deps: SessionDeps): SessionService {
   let moveRecords: MoveRecord[] = []
   let longestSeated = 0
   let songs = new Set<string>()
+  /** Demo music preview running: its songs aren't the session's (decision 28). */
+  let musicPreview = false
   let offs: (() => void)[] = []
   let tick: ReturnType<typeof setInterval> | undefined
   let resumeAfterReturnCheck = false
@@ -166,8 +168,9 @@ export function createSessionService(deps: SessionDeps): SessionService {
       bus.on('move:skipped', ({ moveId }) =>
         moveRecords.push({ t: Date.now(), moveId, outcome: 'skipped' })
       ),
+      bus.on('music:status', (m) => (musicPreview = !!m.preview)),
       bus.on('music:track-changed', (t) => {
-        if (!t.isAd && t.id) songs.add(t.id)
+        if (!t.isAd && t.id && !musicPreview) songs.add(t.id)
       }),
       bus.on('privacy:changed', (p) => {
         if (p.camera !== 'yes') disableSensing('camera consent withdrawn', 'privacy:changed')

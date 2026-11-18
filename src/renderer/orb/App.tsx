@@ -138,7 +138,7 @@ export default function App(): React.JSX.Element {
   }, [cameraNote.on, cameraNote.text])
   const cameraTip = cameraLabel(view, now)
   const targetLabel = music.target
-    ? MUSIC_TARGET_LABEL[music.target]
+    ? `${music.preview ? 'Preview · ' : ''}${MUSIC_TARGET_LABEL[music.target]}`
     : view.nowPlaying?.word
       ? MUSIC_WORD_LABEL[view.nowPlaying.word]
       : null

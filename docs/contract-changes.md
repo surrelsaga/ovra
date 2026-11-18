@@ -197,3 +197,9 @@ Format:
 - `MusicController.refocusResult?` contains only coarse words about the last play command's refocus; no app names, paths or measurements.
 - `MusicDecision` and observer-only `monitor:music` carry action/reason, optional playlist/from/to and played count. The dev monitor logs these; there is no renderer command or persistence.
 - `OrbView.previewMood?` and `orb:bubble.previewMood?` carry only a moon appearance for a labelled demo fallback. The bubble and preview expire together after the configured 3 seconds, starting when the queued bubble actually shows. Both forwarding and rendering require demo mode. The actual mood, why line, state events, timeline/history, music and nudges are unchanged; no preview field is added to stored session types or schemas.
+
+## 2026-11-18 — demo reaction previews (Job 25)
+
+- File: `src/shared/types.ts`; one additive optional field, allowed by the Job 25 brief ("additive changes only if needed").
+- `MusicStatus.preview?: boolean`: true only while a demo fallback steers music toward a missed mood's target; `target` then holds that preview target and the orb pill reads "Preview · Calm down". Absent in normal sessions and outside the preview window. Not stored anywhere; no history, learning or tracker change.
+- Why: the orb pill is built from `MusicStatus.target`; without a flag it would show a previewed target as if it were real.

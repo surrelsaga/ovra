@@ -28,6 +28,7 @@ export async function startSimulator() {
   if (app.isPackaged) throw new Error('The simulator is dev only')
   let speed: SimSpeed = cfg.defaultSpeed
   let sim: SimulatedSensing | null = null
+  let demoSession = false
   // createMoves keeps this object; fast mode swaps its contents.
   const moves: MovesConfig = { ...simulatorMovesConfig(speed) }
   const musicGap: TargetGap = { ...cfg[speed].musicTargetGap }
@@ -54,6 +55,9 @@ export async function startSimulator() {
     Object.assign(moves, next === 'normal' ? MOVES_CONFIG : simulatorMovesConfig(next))
     const gap = next === 'normal' ? musicConfig.switching : cfg[next].musicTargetGap
     musicGap.minTargetChangeMs = gap.minTargetChangeMs
+    // Instant: a target change is heard at once (demo's switch-now), so no "Switch music now" needed.
+    if (next === 'instant') musicGap.switchNow = true
+    else if (!demoSession) delete musicGap.switchNow
     delete overlay.nudgeMinIntervalMin
     delete overlay.thresholdOverrides
     if (next === 'normal') return
@@ -147,6 +151,7 @@ export async function startSimulator() {
 
   bus.on('session:started', (s) => {
     // Simulator speed owns the waits even when the session's Demo hints are enabled.
+    demoSession = s.config.demo === true
     applySpeed(privacy, speed)
     activity = s.config.activity
     cameraMode = s.config.cameraMode

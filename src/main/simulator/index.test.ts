@@ -86,6 +86,14 @@ it('starts Instant and continuous in memory, changes all speeds, and routes the 
   expect(f.options?.musicTargetGap?.minTargetChangeMs).toBe(180_000)
   f.handlers.get('simulator:set-speed')?.({ speed: 'fast' })
   expect(f.options?.settingsOverlay?.thresholdOverrides).toMatchObject(simConfig.fast.thresholds)
+  // Fast keeps the demo session's own switch-now; only Instant adds it for normal sessions.
+  expect(f.options?.musicTargetGap?.switchNow).toBe(true)
+  services.bus.emit('session:started', {
+    config: { activity: 'focus', cameraMode: 'continuous' }
+  } as Session)
+  expect(f.options?.musicTargetGap?.switchNow).toBeUndefined()
+  f.handlers.get('simulator:set-speed')?.({ speed: 'instant' })
+  expect(f.options?.musicTargetGap?.switchNow).toBe(true)
   expect(() => f.handlers.get('simulator:set-speed')?.({ speed: 'unknown' })).toThrow(
     'Unknown simulator speed'
   )

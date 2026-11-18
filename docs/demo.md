@@ -1,11 +1,9 @@
 # Demo mode (judge reference)
 
 Turn Demo on in New session. It presets **20 minutes**, with the camera on the whole time.
-Allow about **16–18 minutes** for the tour. If no moods appear, calibration (up to 90 s),
-the step limits and the 8-second pauses take **17 minutes 56 seconds** (the breathing step is skipped).
-A run that reaches Stressed late and then uses the entire settling limit can take longer; the 20-minute
-session timer still applies. Calibration can take
-longer if you pause to fix framing or choose Try again. Press End whenever you want the summary.
+Allow about **15 minutes** for the tour. If no moods appear at all, calibration (up to 90 s), the
+step limits and the 5-second pauses take **15 minutes 20 seconds**; every step still runs. Calibration
+can take longer if you pause to fix framing or choose Try again. Press End whenever you want the summary.
 
 Ovra uses real readings and the same mood bars. Shorter waits make demo moods less certain than
 normal sessions. No mood is forced. The first 2 minutes after the starting usual exists also let
@@ -15,9 +13,9 @@ but can learn away a real early tired spell. Normal mode keeps its calm-only ref
 The orb has a Demo badge and numbered hints in its speech bubble, like **Demo: 4/9**. The `Demo:`
 prefix keeps hints queued after ordinary state messages. Steps stay in order; an early mood is
 remembered and acknowledged when its step arrives. Each attempt has a limit and an honest fallback,
-so a missing mood never blocks the tour. Hints last 25 s (labelled mood-preview fallbacks last 3 s); after a goal or fallback, the next step is
-requested 8 s later and waits for the bubble to be free. Good mood is explained and skipped when
-face reading is off. The breathing step is skipped if Stressed never appeared.
+so a missing mood never blocks the tour. Hints last 25 s (preview fallbacks 6 s); after a goal or
+fallback, the next step is requested 5 s later and waits for the bubble to be free. Good mood is
+explained and skipped when face reading is off.
 
 ## Before Start
 
@@ -31,28 +29,44 @@ with Start anyway, the tour begins when enough steady readings have formed your 
 
 ## The 9 tour steps
 
-| Step | Do this                                                                               | Look for                                                                                                                    | Limit and fallback                                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Work normally for a minute.                                                           | Steady: a calm blue-white moon, Steady music.                                                                               | 90 s: “Steady didn't show for you. Preview: this is how Steady looks.”                                                                               |
-| 2    | Smile for about 20 s, without big laughs. Face reading must be on.                    | Good mood: a brighter moon, Keep it going music.                                                                            | 75 s: “Good mood didn't show for you. Preview: this is how Good mood looks.” With face reading off, the hint explains and skips.                     |
-| 3    | A stretch card appears by itself at about 3 min seated. Press Let's go and follow it. | Neck tilts and the card's tilt feedback (face reading on).                                                                  | 120 s: “No stretch card yet. Reminders come at most once a minute. Moving on.”                                                                       |
-| 4    | Jog in place or do squats for about 90 s, then sit still.                             | “Heart rate higher than when you started” building, then Stressed: amber, Calm down music switching right away.             | 180 s: “Stressed didn't show for you. Preview: this is how Stressed looks.”                                                                          |
-| 5    | Press Let's go on the breathing card. Breathe with the moon.                          | The moon guides your breath; return to Steady as your heart rate drops.                                                     | 150 s: “Still settling. Ovra goes back to Steady once your heart rate drops.” Skipped unless Stressed was seen.                                      |
-| 6    | Jog in place or do squats for about 2 min, then sit still and frown.                  | Very stressed: red, a fade to Quiet, and a walk card. Heart rate must still clear the real bar; the frown only supports it. | 195 s: “Very stressed didn't show for you. Preview: this is how Very stressed looks.” Without face reading, the longer Stressed route still applies. |
-| 7    | Step out of view for 20 s, then come back.                                            | “Couldn't see you · away in …”, a dimmed moon, paused music, then a return check.                                           | 120 s: “Ovra didn't see you leave. Away needs 15 s out of view. Moving on.” A box-less ghost can extend detection to 35 s (reliability §5.4).        |
-| 8    | Lean back and breathe slowly for 2 min. Tired may not appear.                         | Tired: dim moon, Pick me up music, stand-and-stretch card.                                                                  | 150 s: “Tired didn't show for you. Preview: this is how Tired looks.” An earlier Tired is acknowledged here.                                         |
-| 9    | Press End.                                                                            | Summary with mood timeline, moves and songs; open History afterwards. Both say “Demo session · shorter waits”.              | Final instruction; no mood to wait for. In the last 2 min, music is Wind down unless Very stressed.                                                  |
+| Step | Do this                                                                               | Look for                                                                                      | Limit and fallback                                                                                         |
+| ---- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1    | Work normally for a minute.                                                           | Steady: a calm blue-white moon, Steady music.                                                 | 45 s: preview of Steady.                                                                                   |
+| 2    | Smile for about 20 s, without big laughs. Face reading must be on.                    | Good mood: a brighter moon, Keep it going music.                                              | 60 s: preview of Good mood. With face reading off, the hint explains and skips.                            |
+| 3    | A stretch card appears by itself at about 3 min seated. Press Let's go and follow it. | Neck tilts and the card's tilt feedback (face reading on).                                    | 120 s: "No stretch card yet. … Moving on."                                                                 |
+| 4    | Jog in place or do squats for about 90 s, then sit still.                             | Stressed: amber, Calm down music switching right away.                                        | 150 s: preview of Stressed (amber moon, Calm down music).                                                  |
+| 5    | Press Let's go on the breathing card. Breathe with the moon.                          | The moon guides your breath; back to Steady as your heart rate drops.                         | If Stressed didn't show, the step offers the Breathe along card as a labelled preview. 105 s: "Moving on." |
+| 6    | Jog in place or do squats for about 2 min, then sit still and frown.                  | Very stressed: red, a fade to Quiet, and a walk card. The frown only supports the heart rate. | 150 s: preview of Very stressed (red moon, Quiet fade, walk card).                                         |
+| 7    | Step out of view for 20 s, then come back.                                            | "Couldn't see you · away in …", a dimmed moon, paused music, then a return check.             | 60 s: "Ovra didn't see you leave. … Moving on."                                                            |
+| 8    | Lean back and breathe slowly for about 90 s. Tired may not appear.                    | Tired: dim moon, Pick me up music, stand-and-stretch card.                                    | 100 s: preview of Tired (dim moon, Pick me up music, stand-and-stretch card).                              |
+| 9    | Press End.                                                                            | Summary and History, both marked "Demo session · shorter waits".                              | Final instruction. In the last 2 min, music is Wind down unless Very stressed.                             |
 
-A missed mood shows its colour/moon for **3 seconds**, together with the explicitly labelled
-“Preview: this is how … looks” bubble. This is artwork only: the real mood keeps updating underneath,
-the why line remains real, and nothing changes in the situation, timeline/history, music or break
-reminders. It never marks that mood as seen, never enables the breathing step, and is never saved.
-Normal sessions never show previews. If another bubble is speaking, the preview waits with its label;
-its 3 seconds start only when the bubble appears. Interruption and session end clear the preview.
+## What you'll see if a mood doesn't show
 
-The longer exercise hints leave time to sit still for the SDK's rolling readings and the existing
-45-second Stressed hold. They do not lower a mood bar or guarantee Stressed/Very stressed. The red
-preview is a fallback when the real mood does not appear.
+Most people's heart rate settles fast, so Stressed, Very stressed and Tired often don't appear in a
+short demo. Then Ovra shows a **preview of its reaction**, labelled as a preview everywhere:
+
+- **Bubble:** for example "Stressed didn't show for you. Preview: when you're stressed, the moon turns
+  amber and music plays Calm down."
+- **Moon:** that mood's look for 6 seconds, while the bubble is up.
+- **Music** (if on): for 30 seconds Ovra steers toward that mood's music the usual silent way
+  (skipping inside the playlist; Quiet fades the volume down and back). The pill under the moon reads
+  "Preview · Calm down". Then it steers back to the music for your real mood. A preview never switches
+  playlist, so it never brings Spotify forward, and your volume is put back.
+- **Exercise card:** Breathe along (Stressed, offered in step 5), the walk card (Very stressed) and
+  Stand and stretch (Tired), each starting with "Preview:". You can try it; it's a normal guided
+  exercise, and a finished one counts as a move done. Skip or "1 more min" just closes a preview card.
+  A preview card never replaces a real reminder or an exercise in progress; it waits its turn by not
+  showing. Press Let's go or Skip on real reminders so preview cards can appear.
+
+A preview is never a mood: the real mood, the why line and the hold toward a mood keep running
+underneath. Nothing about it is saved: no situation, no timeline or history entry, no learned song
+votes, and songs heard during a music preview aren't added to the session's song list. It never marks
+that mood as seen. Normal sessions never show previews. If you step away while a music preview plays,
+the paused song resumes on return and the next song follows your real mood.
+
+The exercise hints leave time to sit still for the SDK's rolling readings and the 45-second
+Stressed hold. They do not lower a mood bar or guarantee Stressed/Very stressed.
 
 Press Let's go on reminders: an ignored card keeps later reminders waiting. Stand and walk still
 come from Tired and Very stressed; the tour does not force them. Neck-for-long-Stressed and Step
@@ -82,7 +96,7 @@ again”** and music keeps its last choice. Steady and Good mood survive those g
 | Break reminders at most every                                   | 20 min                                              | 1 min                                         |
 | Seated neck / stand / walk reminders                            | 45 / 60 / 90 min                                    | 3 / 60 / 60 min                               |
 | Put off a reminder                                              | 5 min                                               | 1 min                                         |
-| Hint / next-step delay                                          | No hints                                            | 25 s / 8 s                                    |
+| Hint / next-step delay                                          | No hints                                            | 25 s / 5 s                                    |
 
 All overlays last one demo session in memory. They are restored on end and never written to your
 settings. History stores only the demo flag with the usual labels and counts; no raw readings or

@@ -194,5 +194,11 @@ None of these are bugs. They're deliberate choices or limits we'd rather state t
   tired) are separate.
 
 **Demo mode**
-- **Demo mode is a quick tour, not a test of accuracy.** If a mood doesn't appear, you see a labelled
-  preview of how it would look. Real accuracy needs a normal session of 45 minutes or more.
+- **Demo mode is a quick tour, not a test of accuracy.** It takes about 15 minutes. Real accuracy
+  needs a normal session of 45 minutes or more.
+- **Stressed, Very stressed and Tired often don't show in a demo,** because most people's heart rate
+  settles fast. Ovra then shows a preview of its reaction, labelled "Preview" in the bubble, the music
+  pill and the exercise card: the moon's look, about 30 seconds of that mood's music (silent skips, a
+  fade for Quiet, no Spotify pop-up), and the exercise it would suggest, which you can try. Then music
+  goes back to your real mood. A preview is never recorded as a mood, never saved, and never shown in
+  normal sessions.

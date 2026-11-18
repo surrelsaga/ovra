@@ -25,8 +25,10 @@ For a sensing-only walkthrough, start a session with music off. Automated checks
    last about eight seconds and only register while a sensing phase is active.
 6. **Switch music now** asks the existing music service to play its pick for the current target,
    without waiting for the song to end. Spotify must already be open, session music enabled and
-   “Leave my music alone” off. Breaks and other playback guards still apply. A target change alone
-   continues to wait for the track boundary (except Quiet's existing early fade).
+   “Leave my music alone” off. Breaks and other playback guards still apply. In **Instant**, a target
+   change is heard at once (demo's switch-now: silent skips to a fitting song), so the button is rarely
+   needed after a scenario change. In Fast and Normal a target change waits for the track boundary
+   (except Quiet's early fade).
 
 Scenario identifiers remain `calm`, `good`, `tense`, `crashing`, `low`, `away`; visible names are
 **Steady, Good mood, Stressed, Very stressed, Tired, Away**. Panel labels and `[sim]` mood/music

@@ -22,6 +22,7 @@ win:
   icon: build/icon.ico
   signExecutable: false
   files:
+    - out/**
     - '!node_modules/@smartspectra/node-sdk-darwin-arm64/**'
     - '!node_modules/@smartspectra/node-sdk-linux-*/**'
 nsis:

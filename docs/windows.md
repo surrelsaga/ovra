@@ -40,7 +40,8 @@ Free accounts may not start playing automatically after a URI opens.
 ## Build
 
 `npm run build:win` compiles the app and builds only an x64 NSIS installer,
-`dist/ovra-1.0.0-setup.exe`. `win.files` excludes Darwin and Linux SmartSpectra
+`dist/ovra-1.0.0-setup.exe`. `win.files` allows only compiled `out` files (plus
+electron-builder's automatic production dependencies) and excludes Darwin and Linux SmartSpectra
 payloads from Windows packaging. The existing SDK manifest and lockfile already
 include `@smartspectra/node-sdk-win32-x64`; no dependency was added.
 
@@ -75,7 +76,34 @@ No system software was installed. This uses the existing locked build tooling.
 - Strip the other SmartSpectra platform payloads from the Windows app and unpack
   the Windows closure, so dynamic package/DLL lookup can find real files without
   carrying the Mac and Linux runtimes.
+- Platform `files` rules replace shared exclusions. Use a positive Windows `out/**`
+  allowlist, so `.env`, source files and unrelated repository files cannot enter
+  the app; archive inspection caught this before handoff.
 - Windows main-window close quits through the existing shutdown handler: there is
   no Dock or tray to recover a hidden main window. Mac close-to-hide stays intact.
 
 The coordinator records these decisions in the shared decision/reliability logs.
+
+## Verified build — 2026-11-20
+
+- Branch: `surrelsaga/ovra-winexe`, rebased on main after Job 27 merged.
+- Installer: `/Users/nguyenducanh/orca/workspaces/ovra/ovra-winexe/dist/ovra-1.0.0-setup.exe`.
+- Size: **284,520,205 bytes (271.34 MiB)**.
+- SHA-256: `761580cd8fe0a480e45ec5d3277376b1be3b266ecfb1b30efbf6e6486a1a8005`.
+- `npm run build:win` passed on macOS: typecheck, production build and unsigned
+  x64 NSIS packaging, with no Wine or system-software installation.
+- `npm run lint` passed; `npm test`: **62 files, 884 tests passed**.
+- PE inspection: the app is x64; every icon image in both the app and installer
+  matches Job 27's `build/icon.ico`.
+- ASAR inspection: bundled Presage constant found; optional service keys absent;
+  no `.env`, source or test-media files; no Darwin/Linux SDK payloads. The Windows
+  SDK manifest, DLL/runtime closure and Koffi x64 binding are present and unpacked.
+- Changed files: `package.json`, `electron-builder.yml`, `scripts/dev.mjs`,
+  `src/main/dev-launcher.test.ts`, `src/main/windows/index.ts`,
+  `src/main/windows/platform.test.ts`, `src/main/music/controller/windows.test.ts`,
+  `README.md`, `docs/windows.md`.
+
+No live camera, SDK harness or real Spotify test was run. No Windows execution
+was possible. The remaining questions are the Windows checks above, especially
+native SDK loading/camera access and PowerShell SMTC behavior. The installer
+contains the private Presage key and is for trusted friends only.

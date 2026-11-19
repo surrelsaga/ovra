@@ -27,6 +27,7 @@ export function loadEnv(): void {
 /** Returns the key or null. Never print the result. */
 export function getKey(name: EnvKey): string | null {
   loadEnv()
-  const v = process.env[name]
-  return v && v.trim() ? v.trim() : null
+  const user = process.env[name]?.trim()
+  const bundled = name === 'PRESAGE_API_KEY' ? process.env.OVRA_BUNDLED_PRESAGE_API_KEY?.trim() : ''
+  return user || bundled || null
 }

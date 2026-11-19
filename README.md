@@ -9,7 +9,16 @@ Ovra is a macOS desktop companion for timed work and downtime sessions. A small 
 - **Return check:** see how you feel after a break.
 - **Local history:** review session summaries and delete them when you choose.
 
-## Requirements
+## Install on Mac
+
+1. Download `ovra-1.0.0.dmg` (Apple Silicon), open it, and drag **Ovra** into **Applications**.
+2. On first launch, right-click Ovra in Applications → **Open**, then confirm. The app is ad-hoc signed and is not verified by Apple (not notarized).
+3. Choose your privacy settings. Allow camera permission when macOS asks if you want camera check-ins; the camera runs only in sessions you start.
+4. Install and open the **Spotify desktop app** for music (a free account works). macOS may ask to let Ovra control Spotify.
+
+The download includes a shared Presage key, so camera check-ins need no key setup. Your own `.env` key takes precedence. Last.fm and OpenRouter keys are optional and are not included.
+
+## Requirements for running from source
 
 - macOS on Apple Silicon
 - Node.js 20 or newer (Node 24 LTS recommended) and npm
@@ -36,6 +45,8 @@ npm run dev
 On first use, macOS asks you to allow camera access if you choose to use sensing. When Ovra first controls Spotify, macOS may ask for Automation permission. The app does not launch Spotify if it is not already running.
 
 ## Packaged app
+
+Run `npm run build:mac` on a Mac to create `dist/ovra-1.0.0.dmg`. The build embeds only `PRESAGE_API_KEY` from the local `.env` when present; without `.env`, it builds without a bundled key.
 
 See [packaging instructions](docs/packaging.md).
 

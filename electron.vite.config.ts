@@ -1,11 +1,16 @@
 import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { existsSync, readFileSync } from 'node:fs'
+import { parse } from 'dotenv'
 
 const shared = { '@shared': resolve('src/shared') }
+// Only Presage is shared with downloads; never inline the other .env keys.
+const bundledKey = existsSync('.env') ? parse(readFileSync('.env')).PRESAGE_API_KEY : ''
 
 export default defineConfig({
   main: {
+    define: { 'process.env.OVRA_BUNDLED_PRESAGE_API_KEY': JSON.stringify(bundledKey ?? '') },
     resolve: { alias: shared }
   },
   preload: {

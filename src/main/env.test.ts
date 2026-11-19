@@ -1,7 +1,53 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resolveEnvPath } from './env'
+import { getKey, resolveEnvPath } from './env'
+
+describe('getKey', () => {
+  beforeEach(() => {
+    vi.stubEnv('OVRA_ENV_PATH', join(tmpdir(), 'ovra-no-env-file'))
+    vi.stubEnv('PRESAGE_API_KEY', '')
+    vi.stubEnv('OPENROUTER_API_KEY', '')
+    vi.stubEnv('LASTFM_API_KEY', '')
+    vi.stubEnv('OVRA_BUNDLED_PRESAGE_API_KEY', '')
+  })
+
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('prefers a user key over the bundled key', () => {
+    vi.stubEnv('PRESAGE_API_KEY', ' user-test ')
+    vi.stubEnv('OVRA_BUNDLED_PRESAGE_API_KEY', 'bundled-test')
+    expect(getKey('PRESAGE_API_KEY')).toBe('user-test')
+  })
+
+  it('loads a user .env key ahead of the bundled key', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ovra-key-precedence-'))
+    try {
+      const path = join(root, '.env')
+      writeFileSync(path, 'PRESAGE_API_KEY=user-file-test')
+      vi.stubEnv('OVRA_ENV_PATH', path)
+      vi.stubEnv('PRESAGE_API_KEY', undefined)
+      vi.stubEnv('OVRA_BUNDLED_PRESAGE_API_KEY', 'bundled-test')
+      vi.resetModules()
+      const env = await import('./env')
+      expect(env.getKey('PRESAGE_API_KEY')).toBe('user-file-test')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the bundled Presage key, including for a blank user key', () => {
+    vi.stubEnv('PRESAGE_API_KEY', '  ')
+    vi.stubEnv('OVRA_BUNDLED_PRESAGE_API_KEY', ' bundled-test ')
+    expect(getKey('PRESAGE_API_KEY')).toBe('bundled-test')
+    expect(getKey('OPENROUTER_API_KEY')).toBeNull()
+    expect(getKey('LASTFM_API_KEY')).toBeNull()
+  })
+
+  it('returns null when neither key is set', () => {
+    expect(getKey('PRESAGE_API_KEY')).toBeNull()
+  })
+})
 
 describe('resolveEnvPath', () => {
   let root: string

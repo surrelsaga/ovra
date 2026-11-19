@@ -1,11 +1,12 @@
 // Entry point. Normal run: startApp(). Module dev harness: OVRA_HARNESS=<name> (dev only).
 import { app } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { loadEnv } from './env'
+import { getKey, loadEnv } from './env'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startApp } from './app'
+import { unpackedSdkLibrary } from './sdk-library'
 
 // Isolate Chromium files too, before Electron creates its default session.
 if (!app.isPackaged && ['e2e', 'monitor'].includes(process.env.OVRA_HARNESS ?? '')) {
@@ -26,6 +27,14 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.ovra.app')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
   loadEnv()
+  if (app.isPackaged && !process.env.SMARTSPECTRA_CAPI_PATH)
+    process.env.SMARTSPECTRA_CAPI_PATH = unpackedSdkLibrary(
+      process.resourcesPath,
+      process.platform,
+      process.arch
+    )
+  if (app.isPackaged)
+    console.info(`[ovra] Presage key: ${getKey('PRESAGE_API_KEY') ? 'found' : 'missing'}`)
   const name = process.env.OVRA_HARNESS
   try {
     if (name && !app.isPackaged) {

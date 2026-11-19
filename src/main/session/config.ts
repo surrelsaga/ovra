@@ -45,8 +45,8 @@ export const sessionConfig = {
     sensing: { calibrationMaxMs: 90_000, returnCheckMs: 20_000 },
     musicTargetGap: { minTargetChangeMs: 20_000 },
     nudgeMinIntervalMin: 1,
-    /** Seated nudges, minutes. */
-    triggers: { neckSeatedMin: 3, standSeatedMin: 60, walkSeatedMin: 60 },
+    /** Seated nudges, minutes. Off in demo: step 3 shows the stretch card, so a timed one would repeat it. */
+    triggers: { neckSeatedMin: 999, standSeatedMin: 999, walkSeatedMin: 999 },
     returnCheckSec: 20,
     snoozeMin: 1,
     musicWindDownSec: 120,

@@ -102,7 +102,7 @@ again”** and music keeps its last choice. Steady and Good mood survive those g
 | Start a song for a changed target                               | Between tracks; Quiet switches and fades right away | Right away for every target; only Quiet fades |
 | Wind down                                                       | Last 600 s (10 min)                                 | Last 120 s (2 min)                            |
 | Break reminders at most every                                   | 20 min                                              | 1 min                                         |
-| Seated neck / stand / walk reminders                            | 45 / 60 / 90 min                                    | 3 / 60 / 60 min                               |
+| Seated neck / stand / walk reminders                            | 30–25 / 60–50 / 90–75 min by activity               | Off (step 3 shows the stretch card)           |
 | Put off a reminder                                              | 5 min                                               | 1 min                                         |
 | Hint / next-step delay                                          | No hints                                            | 25 s / 5 s                                    |
 | Step limits (1–8)                                               | No steps                                            | 30 / 40 / 100 / 60 / 100 / 60 / 40 / 45 s     |

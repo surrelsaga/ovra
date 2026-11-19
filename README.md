@@ -50,6 +50,35 @@ Run `npm run build:mac` on a Mac to create `dist/ovra-1.0.0.dmg`. The build embe
 
 See [packaging instructions](docs/packaging.md).
 
+## Windows (untested)
+
+The Windows x64 installer is `dist/ovra-1.0.0-setup.exe`. Run it to install Ovra,
+then open Ovra from the Start menu or desktop shortcut. It is unsigned: if
+Microsoft Defender SmartScreen blocks it, choose **More info → Run anyway**
+only for the installer Daniel gave you. The private friends build includes the
+Presage key; keep that installer private.
+
+Expected to work: sessions without a camera, the orb, guided moves, local history
+and privacy controls. Camera sensing includes the Windows SmartSpectra runtime,
+but camera access, calibration and native DLL loading still need a Windows test.
+If sensing is blocked, check Windows **Settings → Privacy & security → Camera**,
+including camera access for desktop apps; you can start without the camera.
+
+Spotify must already be open. Windows playback uses Spotify links and Windows
+media sessions through PowerShell; track reading, pause/resume, skipping and
+playlist selection are unverified. Volume fades, shuffle/repeat control and
+restoring the previous foreground app are unavailable on Windows. Closing the
+main window quits Ovra and ends the session. Installation, uninstall, SmartScreen,
+window placement, click-through and real sessions have not been tested on Windows.
+See the [Windows audit and test checklist](docs/windows.md).
+
+To build on macOS or Windows with Node and npm installed:
+
+```sh
+npm ci
+npm run build:win
+```
+
 ## How it works
 
 Ovra uses Electron, TypeScript, and React. The main process owns session timing, state interpretation, music selection and scoring, privacy, storage, and the event bus. React renderers provide the main window, moon orb, and move card; a hidden capture renderer passes camera frames to the SmartSpectra SDK only after camera consent. Typed events connect the main process and windows. Spotify control is isolated in the macOS music controller.
@@ -89,7 +118,7 @@ Most logic is checked with Vitest and mocks. **Sensing and end-to-end harnesses 
 - Last.fm track tags were empty in testing; artist tags are used instead.
 - OpenRouter web search is not included; it is a paid add-on.
 - Calibration shows progress and SDK hints, but has no live camera preview.
-- Windows is not supported yet; this MVP targets macOS Apple Silicon.
+- Windows x64 builds are untested; the verified MVP targets macOS Apple Silicon.
 - Shipped fallback playlist links are placeholders and need real public Spotify playlists before that fallback can work.
 
 ## License

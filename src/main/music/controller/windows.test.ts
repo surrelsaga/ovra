@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseWindowsNowPlaying, SpotifyWindowsController, type PowerShellRunner } from './windows'
+import { createMusicController } from './index'
+
+it('selects the Windows controller without calling Mac commands', () => {
+  vi.stubGlobal('process', { ...process, platform: 'win32' })
+  try {
+    const controller = createMusicController()
+    expect(controller).toBeInstanceOf(SpotifyWindowsController)
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
 
 describe('Windows Spotify controller', () => {
   it('rejects invalid URIs before invoking PowerShell', async () => {

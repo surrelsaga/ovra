@@ -100,14 +100,16 @@ export function createWindows(deps: WindowsDeps): ShellWindows {
       resizable: true,
       show: false,
       title: 'Ovra',
-      titleBarStyle: 'hiddenInset',
+      titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
       backgroundColor: cfg.background,
       webPreferences: webPreferences(deps.background)
     })
-    // Keep the main window alive so pushes (like the session summary) always land.
+    // Keep the main window alive on Mac so pushes (like the session summary) always land.
     main.on('close', (e) => {
       if (quitting) return
       e.preventDefault()
+      // Windows has no Dock action to reopen a hidden main window.
+      if (process.platform === 'win32') return app.quit()
       main.hide()
     })
     const visibility = (): void =>

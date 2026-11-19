@@ -12,8 +12,18 @@ files:
 asarUnpack:
   - resources/**
   - node_modules/@smartspectra/node-sdk-darwin-arm64/**
+  - node_modules/@smartspectra/node-sdk-win32-x64/**
 win:
   executableName: ovra
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  signExecutable: false
+  files:
+    - '!node_modules/@smartspectra/node-sdk-darwin-arm64/**'
+    - '!node_modules/@smartspectra/node-sdk-linux-*/**'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

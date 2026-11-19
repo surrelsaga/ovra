@@ -66,7 +66,7 @@ Things that keep it fair:
 - **Unclear checks:** when a check is unclear, the previous mood stays.
 
 The demo holds outlast its 30 s window so a short dip cannot confirm Tired by itself. Allow about
-16 minutes for the full demo walk-through; the rest hint allows 150 s for Tired to appear.
+10 minutes for the full demo walk-through; if Tired doesn't appear within about 45 s, the demo shows its preview.
 
 ## 5. Away
 
@@ -194,11 +194,16 @@ None of these are bugs. They're deliberate choices or limits we'd rather state t
   tired) are separate.
 
 **Demo mode**
-- **Demo mode is a quick tour, not a test of accuracy.** It takes about 15 minutes. Real accuracy
-  needs a normal session of 45 minutes or more.
+- **Demo mode is a quick tour, not a test of accuracy.** It takes about 10 minutes, and every step
+  shows either the real mood or a labelled preview within 30–60 seconds, so every judge sees every
+  look, music reaction and exercise card. Real accuracy needs a normal session of 45 minutes or more.
+- **The demo stretch card comes straight away** in step 3 instead of after minutes of sitting, and a
+  demo step's card replaces any reminder card still waiting (an exercise in progress finishes first).
 - **Stressed, Very stressed and Tired often don't show in a demo,** because most people's heart rate
   settles fast. Ovra then shows a preview of its reaction, labelled "Preview" in the bubble, the music
   pill and the exercise card: the moon's look, about 30 seconds of that mood's music (silent skips, a
   fade for Quiet, no Spotify pop-up), and the exercise it would suggest, which you can try. Then music
   goes back to your real mood. A preview is never recorded as a mood, never saved, and never shown in
   normal sessions.
+- **Away has a preview too:** if Ovra didn't see you leave, the moon shows the away look for 6 s with
+  "Preview · Away · just now". Music isn't paused for it.

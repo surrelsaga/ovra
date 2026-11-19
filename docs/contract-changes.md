@@ -203,3 +203,8 @@ Format:
 - File: `src/shared/types.ts`; one additive optional field, allowed by the Job 25 brief ("additive changes only if needed").
 - `MusicStatus.preview?: boolean`: true only while a demo fallback steers music toward a missed mood's target; `target` then holds that preview target and the orb pill reads "Preview · Calm down". Absent in normal sessions and outside the preview window. Not stored anywhere; no history, learning or tracker change.
 - Why: the orb pill is built from `MusicStatus.target`; without a flag it would show a previewed target as if it were real.
+
+## 2026-11-19 — demo Away preview (Job 26)
+
+- File: `src/shared/types.ts`; additive widening allowed by the Job 26 brief ("additive changes only if needed").
+- `OrbView.previewMood?` (and `orb:bubble.previewMood?`, now typed as the same field) also accepts `'away'`: the orb shows the away moon and a "Preview · Away · just now" pill for the labelled demo fallback of step 7. View only, demo only, expires with its bubble like the other previews; no break, session status, history or music change.

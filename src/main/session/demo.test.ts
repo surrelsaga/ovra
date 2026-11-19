@@ -342,25 +342,24 @@ describe('demo steps', () => {
   })
 })
 
-it('gives the exercises time to settle while keeping a no-mood tour to about 15 minutes', () => {
-  const holdSec = { tense: demo.state.tenseHoldMin * 60, low: demo.state.lowHoldMin * 60 }
-  expect(demo.steps[3].text).toContain('about 90 s')
-  expect(demo.steps[3].limitMs).toBeGreaterThanOrEqual((90 + holdSec.tense) * 1000)
-  expect(demo.steps[4].limitMs).toBeGreaterThan(MOVES_CONFIG.moves.breathe.lengthSec * 1000)
-  expect(demo.steps[5].text).toContain('about 2 min')
-  expect(demo.steps[5].text).toContain('frown')
-  expect(demo.steps[5].limitMs).toBeGreaterThanOrEqual(120_000 + 30_000)
-  expect(demo.steps[7].limitMs).toBeGreaterThanOrEqual(
-    (demo.state.continuousWindowSec + holdSec.low) * 1000
-  )
+it('keeps an all-fallback tour within about 10–12 minutes, with readable times in every hint', () => {
+  // Step cards leave time to do the 90 s move.
   expect(demo.steps[2].limitMs).toBeGreaterThan(MOVES_CONFIG.moves['neck-stretch'].lengthSec * 1000)
-  // Every step runs now (breathing too), each followed by the pause before the next one.
+  expect(demo.steps[4].limitMs).toBeGreaterThan(MOVES_CONFIG.moves.breathe.lengthSec * 1000)
+  expect(demo.steps[3].limitMs).toBeLessThanOrEqual(60_000)
+  expect(demo.steps[5].limitMs).toBeLessThanOrEqual(60_000)
+  expect(demo.steps[6].limitMs).toBeLessThanOrEqual(40_000)
+  expect(demo.steps[7].limitMs).toBeLessThanOrEqual(45_000)
+  for (const s of demo.steps.slice(0, -1)) expect(s.text).toMatch(/about (\d+ s|a minute|1½ min)/)
+  // Readable: previews at least 6 s, music long enough to hear a switch.
+  expect(demo.previewMs).toBeGreaterThanOrEqual(6_000)
+  expect(demo.previewMusicMs).toBeGreaterThanOrEqual(20_000)
+  expect(demo.previewMusicMs).toBeLessThanOrEqual(30_000)
   const maxTour =
     demo.sensing.calibrationMaxMs +
     demo.steps.reduce((ms, s) => ms + (s.limitMs ?? 0), 0) +
     (demo.steps.length - 1) * demo.doneDelayMs
-  expect(maxTour).toBeGreaterThanOrEqual(14 * 60_000)
-  expect(maxTour).toBeLessThanOrEqual(15.5 * 60_000)
+  expect(maxTour).toBeLessThanOrEqual(11 * 60_000)
 })
 
 describe('missed-mood reaction previews', () => {
@@ -383,6 +382,7 @@ describe('missed-mood reaction previews', () => {
       'bright',
       'uneasy',
       'stormy',
+      'away',
       'dim'
     ])
     for (const b of previews) expect(b.text).toContain('Preview:')
@@ -392,12 +392,14 @@ describe('missed-mood reaction previews', () => {
         demo.previewMusicMs
       ])
     )
+    // Step 3's stretch card comes at once; the rest are labelled previews.
     expect(t.cards.preview.mock.calls.map(([move]) => move)).toEqual([
+      'neck-stretch',
       'breathe',
       'walk',
       'stand-stretch'
     ])
-    for (const [, text] of t.cards.preview.mock.calls) expect(text).toMatch(/^Preview: /)
+    for (const [, text] of t.cards.preview.mock.calls.slice(1)) expect(text).toMatch(/^Preview: /)
     // The music words in the bubble match the orb pill's music labels.
     expect(demo.steps[3].fallback).toContain('Calm down')
     expect(demo.steps[5].fallback).toContain('Quiet')
@@ -438,7 +440,24 @@ describe('missed-mood reaction previews', () => {
     t.state('low')
     t.next()
     expect(t.music.preview).not.toHaveBeenCalled()
+    // Each step's card still shows (over any waiting reminder), with the real reminder's words.
+    expect(t.cards.preview.mock.calls).toEqual([
+      ['neck-stretch', demo.steps[2].card!.text],
+      ['breathe', MOVES_CONFIG.messages.breathe.tense],
+      ['walk', MOVES_CONFIG.messages.walk.crashing],
+      ['stand-stretch', MOVES_CONFIG.messages['stand-stretch'].low]
+    ])
+    expect(t.hints.some((h) => h.includes('Preview:'))).toBe(false)
+  })
+
+  it('shows the stretch card as soon as step 3 starts', async () => {
+    const t = await tour()
+    t.calibrated()
+    t.timeout(0)
     expect(t.cards.preview).not.toHaveBeenCalled()
+    t.timeout(1)
+    expect(t.hints.at(-1)).toBe(demo.steps[2].text)
+    expect(t.cards.preview).toHaveBeenCalledWith('neck-stretch', demo.steps[2].card!.text)
   })
 
   it('never previews in a normal session', async () => {

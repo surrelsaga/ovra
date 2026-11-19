@@ -80,8 +80,8 @@ export function bindDemo(deps: DemoDeps): () => void {
     timer = setTimeout(enterNext, demo.doneDelayMs)
   }
 
-  function offerCard(step: DemoStep): void {
-    if (step.card) deps.cards?.preview(step.card.move, step.card.text)
+  function offerCard(step: DemoStep, real = false): void {
+    if (step.card) deps.cards?.preview(step.card.move, (real && step.card.seen) || step.card.text)
   }
 
   function enterNext(): void {
@@ -99,7 +99,8 @@ export function bindDemo(deps: DemoDeps): () => void {
     // Its mood never showed: the same exercise, offered as a labelled preview.
     const unseen = !!step.needs && !seen.has(step.needs)
     say(unseen ? step.unseen! : step.text)
-    if (unseen) offerCard(step)
+    // A step's own card (stretch, breathing) shows right away; labelled a preview if its mood didn't show.
+    if (!step.preview) offerCard(step, !unseen)
     waiting = step.goal.length > 0
     if (step.limitMs)
       timer = setTimeout(() => {
@@ -107,9 +108,9 @@ export function bindDemo(deps: DemoDeps): () => void {
           bus.emit('orb:bubble', {
             text: step.fallback!,
             ttlMs: demo.previewMs,
-            previewMood: ORB_MOOD[step.preview]
+            previewMood: step.preview === 'away' ? 'away' : ORB_MOOD[step.preview]
           })
-          deps.music?.preview(step.preview, demo.previewMusicMs)
+          if (step.preview !== 'away') deps.music?.preview(step.preview, demo.previewMusicMs)
           offerCard(step)
         } else say(step.fallback!)
         done()
@@ -124,7 +125,10 @@ export function bindDemo(deps: DemoDeps): () => void {
       return
     }
     const step: DemoStep | undefined = demo.steps[index]
-    if (waiting && step?.goal.includes(event)) done()
+    if (!waiting || !step?.goal.includes(event)) return
+    // The real reaction's card, shown even if another reminder is waiting.
+    if (step.preview && step.card?.seen) offerCard(step, true)
+    done()
   }
 
   function stop(): void {

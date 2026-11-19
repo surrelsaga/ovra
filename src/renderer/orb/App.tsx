@@ -143,7 +143,8 @@ export default function App(): React.JSX.Element {
       ? MUSIC_WORD_LABEL[view.nowPlaying.word]
       : null
   // Why line: only while something is moving, or on hover. Never a vitals value (decision 34).
-  const why = view.why && !view.away && (view.why.moving || hover) ? view.why : null
+  const awayPreview = view.demo && view.previewMood === 'away'
+  const why = view.why && !view.away && !awayPreview && (view.why.moving || hover) ? view.why : null
 
   useEffect(() => {
     if (!view.away && !view.nextCheckAt) return
@@ -201,8 +202,9 @@ export default function App(): React.JSX.Element {
           {...view}
           {...(view.demo && view.previewMood
             ? {
-                mood: view.previewMood,
-                away: false,
+                ...(view.previewMood === 'away'
+                  ? { away: true }
+                  : { mood: view.previewMood, away: false }),
                 breath: undefined,
                 calibration: undefined,
                 label: `Ovra moon, demo preview: ${view.bubble}`
@@ -216,7 +218,11 @@ export default function App(): React.JSX.Element {
       </div>
 
       <div className="orb-app__info">
-        {view.away ? (
+        {awayPreview ? (
+          <p className="pill" data-hit>
+            Preview · {awayText(0)}
+          </p>
+        ) : view.away ? (
           <p className="pill" data-hit>
             {awayText(now - (view.awaySince ?? now))}
           </p>

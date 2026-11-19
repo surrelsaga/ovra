@@ -270,7 +270,7 @@ describe('nudges', () => {
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['stand-stretch', 'stand-stretch'])
   })
 
-  it('a demo preview card is labelled, waits for a free card, and leaves no nudge trace', () => {
+  it('a demo preview card is labelled, always shows, and leaves no nudge trace', () => {
     const t = setup()
     t.moves.preview('breathe', 'Preview: try it')
     expect(t.card()).toMatchObject({
@@ -291,14 +291,33 @@ describe('nudges', () => {
     // It doesn't use up the reminder interval: a real reminder can follow at once.
     t.state({ situation: 'tense' })
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe'])
-    // ...and never replaces a card that is already up.
+    // In demo the step's card replaces a pending reminder.
     t.moves.preview('walk', 'Preview: walk')
-    expect(t.card()).toMatchObject({ nudge: { moveId: 'breathe' } })
+    expect(t.card()).toMatchObject({ nudge: { moveId: 'walk' } })
     // Trying a preview is a real, guided move.
-    t.moves.respond(t.nudgeId(), 'skip')
     t.moves.preview('breathe', 'Preview: try it')
     t.moves.respond(t.nudgeId(), 'go')
     expect(t.events('move:started')).toEqual([{ moveId: 'breathe' }])
+    // It never interrupts an exercise; it shows right after.
+    t.moves.preview('neck-stretch', 'Stretch?')
+    expect(t.card()).toMatchObject({ kind: 'move', move: { id: 'breathe' } })
+    t.moves.endMove()
+    expect(t.card()).toMatchObject({ kind: 'nudge', nudge: { moveId: 'neck-stretch' } })
+    t.moves.respond(t.nudgeId(), 'go')
+    expect(t.events('move:started').at(-1)).toEqual({ moveId: 'neck-stretch' })
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe'])
+  })
+
+  it("a demo stretch card uses up that seated reminder so it isn't shown twice", () => {
+    const t = setup({ nudgeInterval: 0 })
+    t.state({ seatedMinutes: 5 })
+    t.moves.preview('neck-stretch', 'Stretch?')
+    t.state({ seatedMinutes: 31 })
+    t.moves.respond(t.nudgeId(), 'skip')
+    t.state({ seatedMinutes: 32 })
+    expect(t.events('move:nudge')).toEqual([])
+    t.state({ seatedMinutes: 62 })
+    expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['stand-stretch'])
   })
 
   it('ignores a stale nudge id', () => {

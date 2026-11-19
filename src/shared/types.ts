@@ -562,8 +562,8 @@ export interface OrbView {
   why?: { text: string; progress?: number; moving: boolean }
   /** Demo session: shows the Demo badge. */
   demo?: boolean
-  /** Labelled demo fallback only: moon appearance, never the actual mood or state. */
-  previewMood?: OrbMood
+  /** Labelled demo fallback only: moon appearance (or the away look), never the actual mood or state. */
+  previewMood?: OrbMood | 'away'
 }
 
 // ---------------------------------------------------------------------------
@@ -687,7 +687,12 @@ export interface BusEvents {
   /** Emitted by privacy at the end of deleteEverything(). Modules drop in-memory caches (e.g. music library). */
   'data:deleted-all': Record<string, never>
 
-  'orb:bubble': { text: string; ttlMs?: number; action?: 'show-camera'; previewMood?: OrbMood }
+  'orb:bubble': {
+    text: string
+    ttlMs?: number
+    action?: 'show-camera'
+    previewMood?: OrbView['previewMood']
+  }
 }
 
 export type BusEventName = keyof BusEvents

@@ -422,3 +422,25 @@ it('previews only the labelled demo moon and keeps the actual why and music visi
   bridge.push('push:orb', { ...view, demo: false })
   expect(moon()).toHaveAttribute('data-mood', 'bright')
 })
+
+it('previews the away look in demo only, labelled, then restores the real moon', () => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  const view: OrbView = {
+    ...base,
+    demo: true,
+    previewMood: 'away',
+    bubble: "Demo: 7/9 · Ovra didn't see you leave. Preview: when you step away…",
+    why: { text: 'Heart rate like when you started', moving: true }
+  }
+  bridge.push('push:orb', view)
+  expect(moon()).toHaveAttribute('data-away', 'true')
+  expect(moon()).toHaveAccessibleName(/demo preview/)
+  expect(screen.getByText('Preview · Away · just now')).toBeInTheDocument()
+  expect(screen.queryByTestId('why-line')).toBeNull()
+  bridge.push('push:orb', { ...view, previewMood: undefined })
+  expect(moon()).not.toHaveAttribute('data-away')
+  expect(screen.queryByText(/Preview · Away/)).toBeNull()
+  bridge.push('push:orb', { ...view, demo: false })
+  expect(moon()).not.toHaveAttribute('data-away')
+})

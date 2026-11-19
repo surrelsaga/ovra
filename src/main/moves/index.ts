@@ -60,8 +60,9 @@ export function createMoves(
   cfg: MovesConfig = MOVES_CONFIG
 ): MovesService & {
   /**
-   * Demo fallback only: a labelled card for a mood that didn't show. Shown only when no other card
-   * is up; not a nudge (no `move:nudge`, no interval, no snooze/skip record). Doing it is a real move.
+   * Demo only: a step's card (a stretch, or a labelled card for a mood that didn't show). Replaces a
+   * pending reminder, waits for an exercise, break or return check; not a nudge (no `move:nudge`, no
+   * interval, no snooze/skip record). Doing it is a real move.
    */
   preview(moveId: MoveId, message: string): void
 } {
@@ -86,6 +87,8 @@ export function createMoves(
   let lastFace: FacePos | null = null
   let nudgeCount = 0
   let previewNudgeId: string | null = null
+  /** Demo card waiting for an exercise, break or return check to end. */
+  let queuedPreview: { moveId: MoveId; message: string } | null = null
 
   let ticker: ReturnType<typeof setInterval> | null = null
   const timers = new Set<ReturnType<typeof setTimeout>>()
@@ -109,6 +112,11 @@ export function createMoves(
   }
 
   const show = (v: MoveCardView): void => {
+    if (v.kind === 'hidden' && queuedPreview && session?.status === 'running') {
+      const { moveId, message } = queuedPreview
+      queuedPreview = null
+      return showPreview(moveId, message)
+    }
     view = v
     bus.emit('move:card', v)
   }
@@ -118,6 +126,14 @@ export function createMoves(
     show({ kind: 'move', move, stepIndex, remainingSec, feedback })
   }
   const idle = (): boolean => view.kind === 'hidden'
+
+  const showPreview = (moveId: MoveId, message: string): void => {
+    nudge = { id: `nudge-${++nudgeCount}`, moveId, message, t: Date.now() }
+    previewNudgeId = nudge.id
+    // Counts as that seated reminder shown, so the demo doesn't show the same card twice.
+    seatedNudges[moveId] = lastSeatedMinutes
+    show({ kind: 'nudge', nudge })
+  }
 
   // --- Nudges ----------------------------------------------------------------
 
@@ -360,6 +376,7 @@ export function createMoves(
 
   const reset = (): void => {
     clearAll()
+    queuedPreview = null
     nudge = null
     active = null
     brk = null
@@ -403,12 +420,11 @@ export function createMoves(
     },
     back: endBreak,
     preview(moveId, message) {
-      // Replaces only an unanswered preview card, never a real card or a move.
-      const previewUp = view.kind === 'nudge' && view.nudge.id === previewNudgeId
-      if (!session || session.status !== 'running' || (!idle() && !previewUp)) return
-      nudge = { id: `nudge-${++nudgeCount}`, moveId, message, t: Date.now() }
-      previewNudgeId = nudge.id
-      show({ kind: 'nudge', nudge })
+      if (!session || session.status !== 'running') return
+      // An unanswered reminder (real or preview) is replaced; an exercise, break or return check
+      // finishes first and the card shows right after.
+      if (idle() || view.kind === 'nudge') showPreview(moveId, message)
+      else queuedPreview = { moveId, message }
     },
     breatheRound(): void {
       if (!session) return

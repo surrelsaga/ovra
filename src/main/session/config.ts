@@ -1,5 +1,8 @@
 // Owner: Agent B. Session defaults and timings.
 import type { Activity, CameraMode, MoveId, Situation } from '@shared/types'
+import { MOVES_CONFIG } from '../moves/config'
+
+const say = MOVES_CONFIG.messages
 
 export const sessionConfig = {
   tickMs: 1000,
@@ -58,18 +61,18 @@ export const sessionConfig = {
     /** Sequential tour; early events are remembered, never used to jump forward. */
     steps: [
       {
-        text: 'Demo: 1/9 · Work normally for a minute. Look for Steady: a calm blue-white moon.',
+        text: 'Demo: 1/9 · Work normally. Steady or its preview shows within about 30 s: a calm blue-white moon.',
         goal: ['focused', 'good'],
-        limitMs: 45_000,
+        limitMs: 30_000,
         fallback:
           "Demo: 1/9 · Steady didn't show for you. Preview: when you're steady, the moon is calm blue-white and music suits your activity.",
         preview: 'focused',
         already: "Demo: 1/9 · You've seen Steady already. Next step."
       },
       {
-        text: 'Demo: 2/9 · Smile for about 20 s (no big laughs). Look for Good mood: a brighter moon.',
+        text: 'Demo: 2/9 · Smile for about 20 s (no big laughs). Good mood or its preview shows within about 40 s: a brighter moon.',
         goal: ['good'],
-        limitMs: 60_000,
+        limitMs: 40_000,
         fallback:
           "Demo: 2/9 · Good mood didn't show for you. Preview: in a good mood, the moon brightens and music plays Keep it going.",
         preview: 'good',
@@ -77,67 +80,75 @@ export const sessionConfig = {
         noFace: 'Demo: 2/9 · Good mood needs face reading, which is off. Skipping.'
       },
       {
-        text: "Demo: 3/9 · A stretch card will pop up. Press Let's go and follow it.",
+        text: "Demo: 3/9 · After a while sitting, Ovra suggests a stretch. Press Let's go on the card and tilt your head with it (about 1½ min).",
         goal: ['moved'],
-        limitMs: 120_000,
-        fallback:
-          'Demo: 3/9 · No stretch card yet. Reminders come at most once a minute. Moving on.',
+        limitMs: 100_000,
+        card: {
+          move: 'neck-stretch',
+          text: 'After a while sitting, Ovra suggests this. Want a quick neck stretch?'
+        },
+        fallback: 'Demo: 3/9 · Moving on. Ovra suggests stretches after a while sitting.',
         already: "Demo: 3/9 · You've done a stretch already. Next step."
       },
       {
-        text: 'Demo: 4/9 · Jog in place or do squats for about 90 s, then sit still and look for Stressed (amber).',
+        text: 'Demo: 4/9 · Jog in place or do squats for about 40 s, then sit still. Stressed (amber) or its preview shows within about a minute.',
         goal: ['tense', 'crashing'],
-        limitMs: 150_000,
+        limitMs: 60_000,
         fallback:
           "Demo: 4/9 · Stressed didn't show for you. Preview: when you're stressed, the moon turns amber and music plays Calm down.",
         preview: 'tense',
         already: "Demo: 4/9 · You've seen Stressed already. Next step."
       },
       {
-        text: "Demo: 5/9 · Press Let's go on the breathing card. Breathe with the moon.",
+        text: "Demo: 5/9 · Press Let's go on the breathing card. Breathe with the moon (about 1½ min).",
         goal: ['settled'],
-        limitMs: 105_000,
+        limitMs: 100_000,
         needs: 'tense',
         unseen:
-          "Demo: 5/9 · Preview: when you're stressed, Ovra suggests Breathe along. Press Let's go on the card to try it.",
+          "Demo: 5/9 · Preview: when you're stressed, Ovra suggests Breathe along. Press Let's go on the card to try it (about 1½ min).",
         card: {
           move: 'breathe',
-          text: "Preview: when you're stressed, Ovra suggests this. Want to breathe along for a minute?"
+          text: "Preview: when you're stressed, Ovra suggests this. Want to breathe along for a minute?",
+          seen: say.breathe.tense
         },
         fallback:
           'Demo: 5/9 · Moving on. After stress, Ovra goes back to Steady once your heart rate drops.',
         already: "Demo: 5/9 · You've settled already. Next step."
       },
       {
-        text: 'Demo: 6/9 · Jog in place or do squats for about 2 min, then sit still and frown. Look for Very stressed (red).',
+        text: 'Demo: 6/9 · Jog or do squats again for about 40 s, then sit still and frown. Very stressed (red) or its preview shows within about a minute.',
         goal: ['crashing'],
-        limitMs: 150_000,
+        limitMs: 60_000,
         fallback:
           "Demo: 6/9 · Very stressed didn't show for you. Preview: when you're very stressed, the moon turns red, music fades to Quiet and Ovra suggests a walk.",
         preview: 'crashing',
         card: {
           move: 'walk',
-          text: "Preview: when you're very stressed, Ovra suggests this. A short walk might help."
+          text: "Preview: when you're very stressed, Ovra suggests this. A short walk might help.",
+          seen: say.walk.crashing
         },
         already: "Demo: 6/9 · You've seen Very stressed already. Next step."
       },
       {
-        text: 'Demo: 7/9 · Step out of view for 20 s, then come back. Look for the dimmed moon.',
+        text: 'Demo: 7/9 · Step out of view for 20 s, then come back. Away or its preview shows within about 40 s.',
         goal: ['returned'],
-        limitMs: 60_000,
-        fallback: "Demo: 7/9 · Ovra didn't see you leave. Away needs 15 s out of view. Moving on.",
+        limitMs: 40_000,
+        fallback:
+          "Demo: 7/9 · Ovra didn't see you leave. Preview: when you step away, Ovra says it couldn't see you, the moon goes dark and music pauses until you're back.",
+        preview: 'away',
         already: "Demo: 7/9 · You've been away and back already. Next step."
       },
       {
-        text: 'Demo: 8/9 · Lean back and breathe slowly for about 90 s. Tired may not appear.',
+        text: 'Demo: 8/9 · Lean back and breathe slowly. Tired (dim moon) or its preview shows within about 45 s.',
         goal: ['low'],
-        limitMs: 100_000,
+        limitMs: 45_000,
         fallback:
           "Demo: 8/9 · Tired didn't show for you. Preview: when you're tired, the moon dims, music plays Pick me up and Ovra suggests a stretch.",
         preview: 'low',
         card: {
           move: 'stand-stretch',
-          text: "Preview: when you're tired, Ovra suggests this. Want to stand and stretch?"
+          text: "Preview: when you're tired, Ovra suggests this. Want to stand and stretch?",
+          seen: say['stand-stretch'].low
         },
         already: "Demo: 8/9 · You've seen Tired already: dim moon, Pick me up music."
       },
@@ -167,7 +178,11 @@ export interface DemoStep {
   needs?: DemoEvent
   unseen?: string
   noFace?: string
-  /** Fallback previews this mood: orb look, music, and `card` if set. */
-  preview?: Situation
-  card?: { move: MoveId; text: string }
+  /** Fallback previews this mood (orb look, music) or the away look, and `card` if set. */
+  preview?: Situation | 'away'
+  /**
+   * Offered at the step start (no `preview`), else with the preview. `seen` is the real reminder's
+   * words, used when the mood did show, so the card still appears over a waiting reminder.
+   */
+  card?: { move: MoveId; text: string; seen?: string }
 }

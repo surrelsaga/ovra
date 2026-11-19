@@ -150,7 +150,7 @@ export function NewSession(props: {
         />
         <Toggle
           label="Demo mode"
-          hint="A quick tour of what Ovra can do (about 16 minutes). It uses your real heart rate with the same rules, but reacts much faster, so moods are less certain than in a normal session. For the real experience, run a normal session while you work."
+          hint="A quick tour of what Ovra can do (about 10 minutes). It uses your real heart rate with the same rules, but reacts much faster, so moods are less certain than in a normal session. For the real experience, run a normal session while you work."
           checked={demo}
           onChange={(enabled) => {
             setDemo(enabled)

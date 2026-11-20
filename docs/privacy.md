@@ -53,7 +53,7 @@ opens it in Finder or Explorer.
 | File | What's in it | Kept until |
 | --- | --- | --- |
 | `privacy.json` | Your consent answers: `camera` (yes / not now), `cameraMode` (check-ins / whole session), `face` (vitals and face / vitals only), `music` (Spotify / none), `aiScoring` (yes/no), `telemetry` (share/don't), `autoDelete` (30 / 90 / never), `answeredAt` (when you answered). | You change it or delete everything |
-| `settings.json` | `checkinIntervalMin`, `nudgeMinIntervalMin`, `leaveMusicAlone`, `orbPosition` (x, y on screen), `thresholdOverrides` (advanced tuning numbers), `cameraTeachCount` (how many camera tips you've seen), `musicHelpShown` and `musicStartHelpShown` (playlist help dismissed after onboarding / offered before the first session). Dev builds only: `devVideoSource` (a test video file path) and `devFramingPad`. | You change it or delete everything |
+| `settings.json` | Which camera you picked (`cameraId` and its display label, `cameraLabel`), `checkinIntervalMin`, `nudgeMinIntervalMin`, `leaveMusicAlone`, `orbPosition` (x, y on screen), `thresholdOverrides` (advanced tuning numbers), `cameraTeachCount` (how many camera tips you've seen), `musicHelpShown` and `musicStartHelpShown` (playlist help dismissed after onboarding / offered before the first session). Dev builds only: `devVideoSource` (a test video file path) and `devFramingPad`. | You change it or delete everything |
 | `sessions.json` | One record per finished session: `id`, `activity` (focus, reading, creative, everyday, unwind; old activity values migrate on read), `startedAt`, `endedAt`, `lengthMin`, `cameraMode`, `moodTimeline` (time + label such as "focused", "tense", "away"), `moves` (time + move + done/snoozed/skipped), `snoozes`, `longestSeatedMin`, `learnedSongIds`. | Auto-delete (30 days by default), deleting the session, or delete everything |
 | `songs.json` | Every song Ovra has heard play during a session: Spotify id, `title`, `artist`, `album`, `durationMs`, `firstSeenAt`, `lastPlayedAt`, `playCount`; its scores (`energy`, `mood`, `vocals`, `confidence`, `source`, `scoredAt`, public Last.fm `tags`); and small learned adjustments (`energyDelta`, `confidenceDelta`, `settleVotes`, `steadyVotes`, `quickSkips`, `plays`, `updatedAt`). | "Clear music library" or delete everything |
 | `playlists.json` | Playlist links you pasted: `uri`, `url`, `name`, `addedAt`. | Removing the playlist or delete everything (clearing the library keeps playlists) |
@@ -211,7 +211,7 @@ accounts, no cloud.
 | Mood labels with timestamps (e.g. "focused at 10:05") | Pulse, breathing or HRV values |
 | Moves done or snoozed, session length, longest seated stretch | Expression scores |
 | Songs that played, their scores and small learned adjustments ("this song tends to calm you") | Face landmarks |
-| Playlist links you pasted, your privacy answers and settings | Your personal baseline (built at calibration, dropped when the session ends) |
+| Playlist links you pasted, your privacy answers, settings and which camera you picked | Your personal baseline (built at calibration, dropped when the session ends) |
 
 The storage code refuses to write any file that contains a raw vital field, and session history is checked
 against a strict schema that only allows labels and counts. Electron, which Ovra is built on, also keeps its usual

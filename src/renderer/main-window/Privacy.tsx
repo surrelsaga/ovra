@@ -94,7 +94,7 @@ export function Privacy(props: {
           </div>
           <div>
             <dt>Settings and answers</dt>
-            <dd>Your privacy choices and app settings</dd>
+            <dd>Your privacy choices, app settings and which camera you picked</dd>
           </div>
           <div>
             <dt>Temporary app files</dt>

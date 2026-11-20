@@ -14,6 +14,7 @@ import { captureConfig as cfg } from './config'
 import { mergeSnapshots, reduceMetrics, type FrameSize } from './reduce'
 import { addPayload, emptyDiagnostics } from './diagnostics'
 import { monitorConfig } from '@shared/monitor-config'
+import { CAMERA_FALLBACK, openCamera } from '../shared/camera'
 
 interface Active {
   sdk: SmartSpectraSDK
@@ -96,16 +97,10 @@ async function fileStream(
  * returned too so stop() ends its tracks.
  */
 async function paddedCamera(
-  scale: number
+  scale: number,
+  cameraId: string
 ): Promise<{ streams: MediaStream[]; stream: MediaStream; cleanup: () => void }> {
-  const cam = await navigator.mediaDevices.getUserMedia({
-    video: {
-      width: { ideal: cfg.width },
-      height: { ideal: cfg.height },
-      frameRate: { ideal: cfg.fps },
-      facingMode: 'user'
-    }
-  })
+  const cam = await captureCamera(cameraId)
   try {
     const p = paddedStream(await playingVideo((v) => (v.srcObject = cam)), 1 - scale)
     return { ...p, streams: [cam, p.stream] }
@@ -114,6 +109,23 @@ async function paddedCamera(
     throw err
   }
 }
+
+const captureCamera = (cameraId: string): Promise<MediaStream> =>
+  openCamera(
+    cameraId,
+    () =>
+      ovra.send('capture:error', {
+        code: 'camera-fallback',
+        message: CAMERA_FALLBACK,
+        retryable: true
+      }),
+    {
+      width: { ideal: cfg.width },
+      height: { ideal: cfg.height },
+      frameRate: { ideal: cfg.fps },
+      facingMode: 'user'
+    }
+  )
 
 const busy = (sdk: SmartSpectraSDK): boolean =>
   [ProcessingStatus.kStarting, ProcessingStatus.kRunning, ProcessingStatus.kStopping].some(
@@ -215,12 +227,15 @@ async function start(req: CaptureStartRequest): Promise<void> {
       a.cleanup = f.cleanup
       sdk.useMediaStream(f.stream)
     } else if (padded) {
-      const c = await paddedCamera(cfg.liveScale)
+      const c = await paddedCamera(cfg.liveScale, req.source.cameraId ?? '')
       a.streams.push(...c.streams)
       a.cleanup = c.cleanup
       sdk.useMediaStream(c.stream)
+    } else {
+      const stream = await captureCamera(req.source.cameraId ?? '')
+      a.streams.push(stream)
+      sdk.useMediaStream(stream)
     }
-    // Unpadded camera: the SDK acquires the camera itself and reports it via 'streamAvailable'.
     await sdk.start()
     if (active === a) ovra.send('capture:status', 'running')
   } catch (err) {

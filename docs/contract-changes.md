@@ -208,3 +208,7 @@ Format:
 
 - File: `src/shared/types.ts`; additive widening allowed by the Job 26 brief ("additive changes only if needed").
 - `OrbView.previewMood?` (and `orb:bubble.previewMood?`, now typed as the same field) also accepts `'away'`: the orb shows the away moon and a "Preview · Away · just now" pill for the labelled demo fallback of step 7. View only, demo only, expires with its bubble like the other previews; no break, session status, history or music change.
+
+## Job 34: saved camera choice
+
+Additive contracts: `AppSettings.cameraId` and `cameraLabel` are local strings (empty means system default), with empty defaults; `CaptureSource` camera variants accept optional `cameraId` for older callers. `settings:changed` carries the validated settings on the main-process bus so sensing can switch the physical stream without ending its logical phase. The capture error channel uses `camera-fallback` as a notice handled before SDK recovery; it never marks sensing as failed.

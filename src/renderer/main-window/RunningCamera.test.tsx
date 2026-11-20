@@ -138,3 +138,11 @@ it('explains preview failures and releases an acquired stream if video playback 
   expect(stop).toHaveBeenCalledOnce()
   expect(screen.getByRole('status')).toHaveTextContent('Camera preview isn’t available.')
 })
+
+it('uses the saved camera for the in-session preview', async () => {
+  const bridge = installFakeBridge()
+  render(<Running session={session} cameraConsent cameraId="usb" showCameraInitially />)
+  bridge.push('push:orb', orb)
+  await act(async () => {})
+  expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: { deviceId: { exact: 'usb' } } })
+})

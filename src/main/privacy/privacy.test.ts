@@ -123,6 +123,30 @@ describe('privacy settings', () => {
     expect(JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8'))).toEqual(expected)
   })
 
+  it('persists the chosen camera locally and adds camera defaults to older settings', async () => {
+    const old = { ...DEFAULT_SETTINGS, leaveMusicAlone: true }
+    Reflect.deleteProperty(old, 'cameraId')
+    Reflect.deleteProperty(old, 'cameraLabel')
+    await writeFile(join(dir, 'settings.json'), JSON.stringify(old))
+    const { privacy, bus } = await setup()
+    expect(privacy.getSettings()).toMatchObject({
+      cameraId: '',
+      cameraLabel: '',
+      leaveMusicAlone: true
+    })
+    const changed = vi.fn()
+    bus.on('settings:changed', changed)
+    await privacy.setSettings({ cameraId: 'usb', cameraLabel: 'USB webcam' })
+    expect((await setup()).privacy.getSettings()).toMatchObject({
+      cameraId: 'usb',
+      cameraLabel: 'USB webcam'
+    })
+    expect(changed).toHaveBeenCalledWith(privacy.getSettings())
+    await expect(privacy.setSettings({ cameraId: 7 } as never)).rejects.toThrow()
+    await expect(privacy.setSettings({ cameraLabel: null } as never)).rejects.toThrow()
+    expect(privacy.getSettings().cameraId).toBe('usb')
+  })
+
   it('rejects invalid or unknown fields', async () => {
     const { privacy } = await setup()
     await expect(privacy.set({ camera: 'maybe' } as never)).rejects.toThrow()

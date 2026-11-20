@@ -16,6 +16,8 @@ export const privacySchema = z.strictObject({
 }) satisfies z.ZodType<PrivacySettings>
 
 export const settingsSchema = z.strictObject({
+  cameraId: z.string(),
+  cameraLabel: z.string(),
   checkinIntervalMin: z.union([z.literal(3), z.literal(5), z.literal(10)]),
   nudgeMinIntervalMin: z.number().positive(),
   leaveMusicAlone: z.boolean(),

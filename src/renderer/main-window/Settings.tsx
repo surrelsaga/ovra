@@ -5,6 +5,7 @@ import type { AppSettings, CheckinIntervalMin } from '@shared/types'
 import { ovra } from '../shared/bridge'
 import { Button, ChoiceGroup } from '../ui'
 import { mainConfig } from './config'
+import { CameraChoice } from './CameraChoice'
 
 const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p
 
@@ -22,6 +23,7 @@ export function Settings(props: {
         <h1 id="settings-title">Settings</h1>
       </header>
       <div className="panel stack stack--loose">
+        <CameraChoice settings={settings} onChange={props.onChange} />
         <ChoiceGroup<CheckinIntervalMin>
           legend="How often to use the camera"
           description="When you choose every few minutes, the camera runs for about 90 seconds, then turns off until the next time."

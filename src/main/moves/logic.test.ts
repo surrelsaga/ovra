@@ -10,6 +10,8 @@ import {
   isTilt,
   pickMove,
   returnResult,
+  timedReminderFor,
+  type MoodEpisode,
   type NudgeInput
 } from './logic'
 
@@ -95,6 +97,30 @@ describe('pickMove triggers', () => {
   it('tense or crashing for 15+ min → step outside', () => {
     expect(pick({ situation: 'tense', tenseMinutes: 15 })).toBe('step-outside')
     expect(pick({ situation: 'crashing', tenseMinutes: 20 })).toBe('step-outside')
+  })
+  it('a mood that had its suggestion this episode falls through to seated reminders', () => {
+    const done = (...m: MoodEpisode[]): Set<MoodEpisode> => new Set(m)
+    const pickDone = (p: Partial<NudgeInput>, ...m: MoodEpisode[]): string | undefined =>
+      pickMove(input(p), cfg, {}, done(...m))?.moveId
+    expect(pickDone({ situation: 'tense', tenseMinutes: 1 }, 'tense')).toBeUndefined()
+    expect(pickDone({ situation: 'tense', tenseMinutes: 6 }, 'tense')).toBeUndefined()
+    expect(pickDone({ situation: 'low', seatedMinutes: 30 }, 'low')).toBe('neck-stretch')
+    expect(pickDone({ situation: 'crashing', tenseMinutes: 2 }, 'crashing')).toBeUndefined()
+    // Long stress is its own one-off escalation; after it, nothing more for that stress.
+    expect(pickDone({ situation: 'tense', tenseMinutes: 16 }, 'tense')).toBe('step-outside')
+    expect(pickDone({ situation: 'crashing', tenseMinutes: 20 }, 'long')).toBe('walk')
+    expect(
+      pickDone({ situation: 'crashing', tenseMinutes: 20 }, 'long', 'crashing')
+    ).toBeUndefined()
+    // Other moods are unaffected.
+    expect(pickDone({ situation: 'low' }, 'tense', 'crashing', 'long')).toBe('stand-stretch')
+  })
+  it('each mood exercise stands in for its seated reminder (breathe has none)', () => {
+    expect(timedReminderFor('breathe')).toBeNull()
+    expect(timedReminderFor('neck-stretch')).toBe('neck-stretch')
+    expect(timedReminderFor('stand-stretch')).toBe('stand-stretch')
+    expect(timedReminderFor('walk')).toBe('walk')
+    expect(timedReminderFor('step-outside')).toBe('walk')
   })
   it('uses wellness wording', () => {
     expect(pickMove(input({ situation: 'tense', tenseMinutes: 1 }), cfg)?.message).toMatch(

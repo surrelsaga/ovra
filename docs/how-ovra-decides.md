@@ -103,7 +103,10 @@ Seated reminders have separate waits. Once a neck, stand or walk reminder appear
 seated reminder waits another full threshold from the table before appearing again,
 whether you do it or skip it. Snooze still brings it back once after 5 minutes; ignoring that
 retry doesn't restart a stream of reminders. A new seated stretch after a break starts the
-waits again. Mood reminders keep their own rules, and all reminders still share the minimum gap.
+waits again. All reminders, seated and mood, share the 20-minute gap. A mood exercise counts as its
+seated twin (stand for Tired, walk or step outside for Very stressed, neck for Stressed), and each mood
+gets one suggestion until it has been gone for 10 minutes, so a flickering mood can't repeat it (demo
+keeps its old behaviour). Full rules: `docs/rules.md` → "Exercises and timing".
 
 Music rules:
 
@@ -190,8 +193,9 @@ None of these are bugs. They're deliberate choices or limits we'd rather state t
   at 25/50/75.
 - **Leaving your desk for a minute or more resets the sitting clock,** so the next reminder counts from
   when you sit back down.
-- **Each reminder comes once per sitting stretch.** Mood-based suggestions (breathe along, stand when
-  tired) are separate.
+- **Each reminder comes once per sitting stretch.** A mood-based exercise (stand when tired, walk when
+  very stressed, neck stretch when stressed) counts as that reminder, and each mood gets one suggestion
+  per spell, so a wrong mood reading can't cause a stream of cards.
 
 **Demo mode**
 - **Demo mode is a quick tour, not a test of accuracy.** It takes about 10 minutes, and every step

@@ -103,3 +103,60 @@ normal session of 45 minutes or more (decisions 57, 66).
 - **Why the change:** with the old timings, a default 45-minute session never reached the first
   reminder. Daniel's longest sitting stretch was 44 minutes.
 - **Wording stays wellness-only:** suggestions, never medical advice.
+
+## 4. The exercises themselves: length, steps and how often
+
+**What we found**
+- **Slow breathing:** most studies pace breathing at about **6 breaths a minute** (a 10-second breath).
+  At that pace heart-rate variability rises more than with box or 4-7-8 breathing
+  ([84-person comparison](https://pubmed.ncbi.nlm.nih.gov/39864026/)). Single sessions of **1–5 minutes**
+  have lowered stress and anxiety: [one 5-minute session](https://pubmed.ncbi.nlm.nih.gov/34588511/)
+  helped young and older adults, and [about 60 seconds](https://discoverpsych.utm.utoronto.ca/ebosetale-article/)
+  improved mood in a small student study. Longer sessions slow breathing further
+  ([Laborde et al. 2021, 5–20 min](https://eprints.bournemouth.ac.uk/38163/7/Psychophysiology%20-%202021%20-%20Laborde%20-%20Psychophysiological%20effects%20of%20slow%E2%80%90paced%20breathing%20at%20six%20cycles%20per%20minute%20with%20or.pdf)),
+  and people often can't hold an exact pace, so a visual guide matters
+  ([pacing trial](https://pmc.ncbi.nlm.nih.gov/articles/PMC8656666)). No study we found sets a hard minimum.
+- **Stretch holds:** the American College of Sports Medicine suggests holding a stretch **10–30 seconds**
+  for most adults ([ACSM 2021](https://www.acsm.org/blog-detail/acsm-certified-blog/2021/03/18/stretching-and-flexibility-guidelines-update)).
+  Office stretch guides use **10–15 s per side** for neck tilts and slow shoulder rolls
+  ([NJIT poster](https://www.njit.edu/environmentalsafety/sites/njit.edu.environmentalsafety/files/Office%20Ergo%20Stretches%20Poster1.pdf),
+  [Pennsylvania telework guide](https://www.oa.pa.gov:443/telework/Documents/Stretches-at-Work-Every-Day.pdf)).
+  Office workers with neck and shoulder pain who stretched twice a day for 4 weeks had less pain
+  ([randomized trial](https://pubmed.ncbi.nlm.nih.gov/25780258/)). Guides all say: move slowly, no bouncing,
+  stay in a comfortable range, and check with a doctor if you have an injury
+  ([SAIF office stretches](https://www.saif.com/Documents/SafetyandHealth/Ergonomics/S1075_Office_stretches.pdf)).
+- **Micro-breaks (10 min or less):** a meta-analysis of 22 samples (2,335 people) found small but real
+  gains in energy and less fatigue; longer breaks helped performance more
+  ([Albulescu et al. 2022](https://pmc.ncbi.nlm.nih.gov/articles/PMC9432722/)). Walking breaks of 2–5 minutes
+  every 20–30 minutes are covered in §3.
+- **Time outside:** as little as **10 minutes** sitting or walking in nature improved mood and stress
+  measures in young adults ([Cornell review](https://news.cornell.edu/node/318401)); 20–30 minutes gave the
+  biggest cortisol drop ([Harvard Health summary](https://health.harvard.edu/mind-and-mood/a-20-minute-nature-break-relieves-stress)).
+- **Too many reminders backfire:** break-reminder software is often ignored or switched off because of the
+  interruptions ([SuperBreak, Microsoft Research](https://www.microsoft.com/en-us/research/publication/superbreak-using-interactivity-to-enhance-ergonomic-typing-breaks/)),
+  and a prompt during flow brings frustration and lower productivity
+  ([opportune moments for breaks](https://microsoft.com/en-us/research/uploads/prod/2020/02/Modeling-Opportune-Moments-for-Transitions-and-Breaks-at-Work.pdf)).
+  Even so, regular prompted breaks helped neck and arm complaints in office workers
+  ([van den Heuvel 2003](https://publications.tno.nl/publication/34626157/WaDCrM/heuvel-2003-effects.pdf)).
+
+**How we adapted it** (Job 30)
+- **The exercise lengths already fit the research, so they stay:**
+
+  | Exercise | Length | Steps | Research |
+  |---|---|---|---|
+  | Breathe along | 90 s | 10 s settle, 80 s at 6 breaths/min (8 breaths) | 1–5 min sessions help; 6/min pace |
+  | Neck and shoulder stretch | 90 s | 4 tilts of 12 s, shoulder rolls 27 s, look up 15 s | 10–30 s holds; 10–15 s neck tilts |
+  | Stand and stretch | 2 min | stand 15 s, reach 35 s, side bend 40 s (about 20 s a side), bend forward 30 s | 10–30 s holds |
+  | Walk and get water | 5 min | | 2–5 min walks; micro-breaks ≤10 min |
+  | Step outside | 10 min | | 10 min outside already helps |
+  | Breathing round after a break | 60 s | | about a minute helped mood |
+
+  We kept them on the short side of each range so they feel easy to say yes to. Longer breathing
+  (5+ min) would do more, but a 90-second ask during work gets done; the timed seated ladder (§3) is
+  unchanged.
+- **Safety wording on the card:** tilts say "Gently, no pulling", shoulder rolls say "Stop if anything
+  hurts", the side bend is "gentle" and bending forward goes "only as far as feels easy". Wellness only,
+  no medical claims.
+- **No pile-ups:** because ignored reminders get switched off, all suggestions (timed and mood) share one
+  20-minute gap, a mood exercise also counts as the matching seated reminder, and each mood gets one
+  suggestion per episode. See `docs/rules.md` → "Exercises and timing".

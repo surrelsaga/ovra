@@ -320,6 +320,141 @@ describe('nudges', () => {
     expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['stand-stretch'])
   })
 
+  describe('no pile-ups (normal mode)', () => {
+    const at = (min: number): void => {
+      vi.setSystemTime(T0 + min * MIN)
+    }
+
+    it('uses a 20 min default gap for both timed and mood suggestions', () => {
+      expect(DEFAULT_SETTINGS.nudgeMinIntervalMin).toBe(20)
+      const t = setup()
+      t.state({ seatedMinutes: 30 }) // timed neck
+      t.moves.respond(t.nudgeId(), 'skip')
+      at(19)
+      t.state({ situation: 'low', seatedMinutes: 49 })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch'])
+      at(20)
+      t.state({ situation: 'low', seatedMinutes: 50 }) // mood, once the gap has passed
+      t.moves.respond(t.nudgeId(), 'skip')
+      at(39)
+      t.state({ seatedMinutes: 90 }) // timed walk waits for the gap after a mood suggestion
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch', 'stand-stretch'])
+      at(40)
+      t.state({ seatedMinutes: 91 })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
+        'neck-stretch',
+        'stand-stretch',
+        'walk'
+      ])
+    })
+
+    it.each([
+      ['low', 'stand-stretch', 'standSeatedMin', 60],
+      ['crashing', 'walk', 'walkSeatedMin', 90]
+    ] as const)('%s → %s counts as the timed reminder', (situation, moveId, trigger, threshold) => {
+      const t = setup({
+        config: {
+          ...cfg,
+          triggers: {
+            ...cfg.triggers,
+            neckSeatedMin: Infinity,
+            standSeatedMin: Infinity,
+            walkSeatedMin: Infinity,
+            [trigger]: threshold
+          }
+        }
+      })
+      t.state({ situation, seatedMinutes: 5 })
+      expect(t.events('move:nudge').at(-1)?.moveId).toBe(moveId)
+      t.moves.respond(t.nudgeId(), 'skip')
+      at(threshold)
+      t.state({ situation: 'focused', seatedMinutes: threshold }) // would fire without the rule
+      expect(t.events('move:nudge')).toHaveLength(1)
+      at(threshold + 5)
+      t.state({ situation: 'focused', seatedMinutes: threshold + 5 })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([moveId, moveId])
+    })
+
+    it('a finished neck stretch for stress counts as the timed neck reminder', () => {
+      const t = setup({
+        config: { ...cfg, triggers: { ...cfg.triggers, earlyTenseMaxMin: 0 } }
+      })
+      t.state({ situation: 'tense', seatedMinutes: 25 })
+      expect(t.events('move:nudge').at(-1)?.moveId).toBe('neck-stretch')
+      t.moves.respond(t.nudgeId(), 'go')
+      t.moves.endMove()
+      at(20)
+      t.state({ situation: 'focused', seatedMinutes: 45 }) // 45 ≥ 30, but the stress stretch counts
+      expect(t.events('move:nudge')).toHaveLength(1)
+      at(30)
+      t.state({ situation: 'focused', seatedMinutes: 55 })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['neck-stretch', 'neck-stretch'])
+    })
+
+    it('a flickering mood gets one suggestion per episode', () => {
+      const t = setup({ nudgeInterval: 0 })
+      t.state({ situation: 'low' })
+      t.moves.respond(t.nudgeId(), 'skip')
+      for (const [min, situation] of [
+        [3, 'focused'],
+        [6, 'low'],
+        [9, 'focused'],
+        [12, 'low'],
+        [21, 'low']
+      ] as const) {
+        at(min)
+        t.state({ situation })
+      }
+      expect(t.events('move:nudge')).toHaveLength(1)
+      at(31) // 10 min without Tired ends the episode
+      t.state({ situation: 'focused' })
+      at(32)
+      t.state({ situation: 'low' })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
+        'stand-stretch',
+        'stand-stretch'
+      ])
+    })
+
+    it('long stress gets one step-outside, then nothing more until it ends', () => {
+      const t = setup()
+      t.state({ situation: 'tense' })
+      t.moves.respond(t.nudgeId(), 'skip')
+      for (const min of [5, 10, 16, 20, 40, 60]) {
+        at(min)
+        t.state({ situation: 'tense' })
+        if (t.card().kind === 'nudge') t.moves.respond(t.nudgeId(), 'skip')
+      }
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe', 'step-outside'])
+    })
+
+    it('a mood suggestion waits for the mood the state engine has held (no early guess)', () => {
+      // The hold itself lives in the state engine (src/main/state/state.test.ts); moves only acts on
+      // the held situation it reports, never on raw readings.
+      const t = setup()
+      t.state({ situation: 'focused', trend: 'rising' })
+      t.metrics({ cardio: { pulseRate: { value: 110, confidence: 90, stable: true } } } as never)
+      expect(t.events('move:nudge')).toHaveLength(0)
+      t.state({ situation: 'tense' })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe'])
+    })
+
+    it('demo keeps its old behaviour: no episode limit and no timed reminders', () => {
+      const t = setup({
+        nudgeInterval: sessionConfig.demo.nudgeMinIntervalMin,
+        config: { ...cfg, triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers } }
+      })
+      t.state({ situation: 'low', seatedMinutes: 200 })
+      t.moves.respond(t.nudgeId(), 'skip')
+      at(1)
+      t.state({ situation: 'low', seatedMinutes: 201 })
+      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
+        'stand-stretch',
+        'stand-stretch'
+      ])
+    })
+  })
+
   it('ignores a stale nudge id', () => {
     const t = setup()
     t.state({ situation: 'tense' })

@@ -59,6 +59,9 @@ usual from the first 30 s of steady heart rate during the session.
 | **Couldn't see you** | no reading | not enough steady signal yet                                                                                                                    | —                              |
 | **Away**             | away       | see §5                                                                                                                                          | 20 s (demo 15 s)               |
 
+With the default check-in camera, Stressed needs **2 check-ins in a row** and Tired **1 check-in**
+(a 90 s look). Full per-state detail: `docs/rules.md`.
+
 Things that keep it fair:
 
 - **Almost counts:** a check that _almost_ meets the bar (within 3%) pauses the countdown instead of resetting it.
@@ -75,8 +78,7 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 - **Away:** after 20 s of no face, or if the camera picture freezes.
 - **Back:** a face for 3 of 4 seconds, or a heart reading.
 - **The SDK keeps running** while you're away, so it doesn't need to warm up again.
-- **Fixed, to confirm in a real room (decision 50):** a face box off your seat no longer counts, and without any face shape (except chest-out-of-view) presence lasts at most 20 s. Away never firing over 20+ min in Daniel's earlier test should be gone.
-  camera kept reporting something as a face. To be checked with the empty-chair test, then fixed.
+- **Empty chair (decisions 50, 51):** a face box off your seat no longer counts, and without any face shape (except chest-out-of-view) presence lasts at most 20 s. Confirmed live: away fired 20 s after Daniel left.
 
 ## 6. What happens for each mood
 
@@ -157,7 +159,8 @@ Music choices say **Pick me up**, **Calm down**, **Quiet**, **Keep it going**, *
 
 The line below the moon says **"Heart rate higher than when you started"**,
 **"Heart rate lower than when you started"** or **"Heart rate like when you started"**.
-When the camera cannot get a clear reading it says **"Couldn't see you clearly · no change"**.
+When the camera cannot get a clear reading it says **"Couldn't see you clearly · no change"**, or
+**"Another face in view · no change"** when a second face kept it from reading you.
 After forgetting a mood it says **"Lost track of you for a bit · checking again"** until the next real reading.
 These are descriptions for everyday wellbeing, not diagnoses.
 

@@ -153,7 +153,8 @@ never saved or sent, and are dropped when the session ends.
 - **Old:** at least 3 steady pulse readings (under 1 s of data at 4 readings per second).
 - **New:** at least **10 s of steady pulse** in the window.
   - A window below that is **no read**. It pauses every hold (adds no time, resets nothing), keeps
-    music unchanged, and the why line says "Couldn't see you clearly · no change".
+    music unchanged, and the why line says "Couldn't see you clearly · no change" ("Another face in
+    view · no change" when SDK code 2 showed up in at least 3 s of the window).
   - Short gaps keep the current situation. If trailing no-read windows span **3 min** (demo **1 min**),
     **tense, crashing or low becomes unknown**; focused/good stay. The span is the last no-read `t`
     minus the first trailing no-read `start`, not time since the last read. A long camera-off gap
@@ -313,3 +314,4 @@ these happens (see the Job 10 report).
 - **The SDK can die silently (Job 9, decision 49).**
   - **What happens:** twice in live runs the SDK went into a dead state and refused every frame. Once was after its usage check failed behind a VPN.
   - **How Ovra copes:** it watches for this, restarts the SDK up to 3 times, and says "Camera reconnecting" instead of marking the user away. If it still can't connect, it says plainly "Couldn't reach Presage. Check your internet or VPN".
+- **A second face silences the pulse (Job 29).** Replaying Daniel's logs, a few frames of SDK code 2 ("Only one face is allowed") in a 10 s stretch cut steady heart-rate readings from almost every stretch to about a quarter or less, for 10–60 s each time, while the OK code still showed most of the time. Nothing wrong was read (the pulse goes quiet rather than reading the other face), so Ovra keeps pausing, but the why line now names the cause: "Another face in view · no change". The framing hint can't help here: code 2 flickers, so it never holds for 2 min.

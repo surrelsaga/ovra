@@ -16,6 +16,12 @@ export const stateConfig = {
   windowMinPulseSec: 10,
   /** Forget tense/crashing/low after this span of trailing no-read windows, not time since the last read. */
   noReadForgetMin: 3,
+  /**
+   * A no-read window with "only one face is allowed" (code 2) in at least this many seconds says
+   * "Another face in view" instead of "Couldn't see you clearly". Code 2 silences pulse for
+   * 10–60 s at a time in real logs. Why line only: no mood or hold changes.
+   */
+  noReadFacesSec: 3,
   /** Good needs at least this many seconds of face frames with expressions; otherwise it's Focused. */
   goodMinFaceSec: 10,
   /** Ignore breathing for a window when talking shows in more than this fraction of face frames. */

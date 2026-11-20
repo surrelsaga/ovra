@@ -98,7 +98,7 @@ function NudgeCard({ nudge, demo }: { nudge: Nudge; demo: boolean }): React.JSX.
           Let&apos;s go
         </Button>
         <div className="actions-row">
-          <Button onClick={respond('snooze')}>{demo ? '1 more min' : '5 more min'}</Button>
+          <Button onClick={respond('snooze')}>{demo ? 'Not now' : '5 more min'}</Button>
           <Button onClick={respond('skip')}>Skip</Button>
         </div>
       </div>

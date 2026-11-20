@@ -67,7 +67,7 @@ short demo. Then Ovra shows a **preview of its reaction**, labelled as a preview
   playlist, so it never brings Spotify forward, and your volume is put back.
 - **Exercise card:** Breathe along (Stressed, offered in step 5), the walk card (Very stressed) and
   Stand and stretch (Tired), each starting with "Preview:". You can try it; it's a normal guided
-  exercise, and a finished one counts as a move done. Skip or "1 more min" just closes a card.
+  exercise, and a finished one counts as a move done. Skip or "Not now" just closes a card.
   A step's card replaces the previous step's card if that one is still unanswered. It never
   interrupts an exercise, break or return check in progress; it shows right after.
 

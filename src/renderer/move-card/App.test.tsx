@@ -26,7 +26,7 @@ it('labels the shorter demo snooze and restores the normal label next session', 
     }
   } as const
   bridge.push('push:session', session)
-  expect(screen.getByRole('button', { name: '1 more min' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument()
   bridge.push('push:session', { ...session, config: { ...session.config, demo: false } })
   expect(screen.getByRole('button', { name: '5 more min' })).toBeInTheDocument()
 })

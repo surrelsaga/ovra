@@ -2,13 +2,11 @@ appId: com.ovra.app
 productName: Ovra
 directories:
   buildResources: build
+# ponytail: allowlist; production node_modules are added by electron-builder itself
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - out/**
+  - resources/**
+  - package.json
 asarUnpack:
   - resources/**
   - node_modules/@smartspectra/node-sdk-darwin-arm64/**
@@ -23,6 +21,8 @@ win:
   signExecutable: false
   files:
     - out/**
+    - resources/**
+    - package.json
     - '!node_modules/@smartspectra/node-sdk-darwin-arm64/**'
     - '!node_modules/@smartspectra/node-sdk-linux-*/**'
 nsis:

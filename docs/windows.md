@@ -40,7 +40,7 @@ Free accounts may not start playing automatically after a URI opens.
 ## Build
 
 `npm run build:win` compiles the app and builds only an x64 NSIS installer,
-`dist/ovra-1.0.0-setup.exe`. `win.files` allows only compiled `out` files (plus
+`dist/Ovra-Setup-1.0.0.exe`. `win.files` allows only compiled `out` files (plus
 electron-builder's automatic production dependencies) and excludes Darwin and Linux SmartSpectra
 payloads from Windows packaging. The existing SDK manifest and lockfile already
 include `@smartspectra/node-sdk-win32-x64`; no dependency was added.

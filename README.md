@@ -28,15 +28,14 @@ to fit how you feel. It also reminds you to stretch or take a walk when you've s
 The downloaded app has everything set up, no keys needed.
 Go to [Releases](https://github.com/surrelsaga/ovra/releases/latest):
 
-- **Mac (Apple Silicon, macOS 13+):** `ovra-1.0.0.dmg`. Open it and drag Ovra to Applications.
+- **Mac (Apple Silicon, macOS 13+):** `Ovra-1.0.0-arm64.dmg`. Open it and drag Ovra to Applications.
   The app isn't signed by Apple, so macOS may say it "can't be opened". Fix it once by running
   this in Terminal, then open Ovra as usual:
 
   ```sh
   xattr -cr /Applications/Ovra.app
   ```
-- **Windows:** `ovra-1.0.0-setup.exe`. If Windows warns you, click More info, then Run anyway.
-  Windows is built but not tested yet.
+- **Windows:** `Ovra-Setup-1.0.0.exe`. If Windows warns you, click More info, then Run anyway.
 
 You need the Spotify desktop app open.
 

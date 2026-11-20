@@ -162,12 +162,13 @@ function topExpression(scores: Partial<Record<Expression, number>>): Expression 
 const rel = (v: number | undefined, base: number | undefined): number | undefined =>
   v === undefined || !base ? undefined : (v - base) / base
 
-/** Summarise one window of snapshots against the baseline. No read without enough steady pulse. */
+/** Summarise a window; Tired alone uses the lower of calibration and refined pulse. */
 export function evaluateWindow(
   snaps: MetricsSnapshot[],
   baseline: Baseline,
   cfg: StateConfig,
-  now = Date.now()
+  now = Date.now(),
+  calibrationPulse = baseline.pulse
 ): WindowEval {
   const start = snaps[0]?.t ?? now
   const t = snaps[snaps.length - 1]?.t ?? now
@@ -182,7 +183,9 @@ export function evaluateWindow(
       happyMajority: false,
       negativeMajority: false
     }
-  const pd = rel(median(pulse.map((s) => s.pulse!.value)), baseline.pulse)!
+  const pulseMedian = median(pulse.map((s) => s.pulse!.value))!
+  const pd = rel(pulseMedian, baseline.pulse)!
+  const lowDelta = rel(pulseMedian, Math.min(calibrationPulse, baseline.pulse))!
 
   const faces = snaps.filter((s) => s.face?.present)
   const talking = faces.filter((s) => s.face!.talking).length
@@ -203,7 +206,7 @@ export function evaluateWindow(
   const tense = pd >= tenseBar && !vetoed
   // Face only supports: a high blink rate lowers the pulse bar, it never replaces it.
   const blinky = blinkD !== undefined && blinkD >= cfg.lowBlinkPct
-  const low = pd <= cfg.lowPulsePct || (blinky && pd <= cfg.lowBlinkPulsePct)
+  const low = lowDelta <= cfg.lowPulsePct || (blinky && lowDelta <= cfg.lowBlinkPulsePct)
   const steady = Math.abs(pd) <= cfg.focusedPulsePct
   const signal: WindowSignal = tense ? 'tense' : low ? 'low' : steady ? 'steady' : 'unclear'
 
@@ -214,8 +217,8 @@ export function evaluateWindow(
     pulseDelta: pd,
     nearTense: pd >= tenseBar - cfg.streakBandPct && !vetoed,
     nearLow:
-      pd <= cfg.lowPulsePct + cfg.streakBandPct ||
-      (blinky && pd <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
+      lowDelta <= cfg.lowPulsePct + cfg.streakBandPct ||
+      (blinky && lowDelta <= cfg.lowBlinkPulsePct + cfg.streakBandPct),
     // ponytail: outside tense, HRV being there at all counts as backing; refine if it misleads.
     backed:
       signal === 'tense'
@@ -223,7 +226,9 @@ export function evaluateWindow(
         : rd !== undefined,
     happyMajority:
       seconds(withExpr) >= cfg.goodMinFaceSec && frac((e) => e === 'happy') > cfg.faceMajorityFrac,
-    negativeMajority: frac((e) => NEGATIVE.includes(e)) > cfg.faceMajorityFrac
+    negativeMajority:
+      seconds(withExpr) >= cfg.goodMinFaceSec &&
+      frac((e) => NEGATIVE.includes(e)) > cfg.faceMajorityFrac
   }
 }
 
@@ -233,25 +238,37 @@ export interface Classification {
   trend: Trend
 }
 
+/** Span of trailing no-read windows; camera-off time before the first one never counts. */
+export function noReadSpan(history: WindowEval[]): number {
+  let start = history.length
+  while (start > 0 && history[start - 1].signal === 'noread') start--
+  return start < history.length ? history[history.length - 1].t - history[start].start : 0
+}
+
 /** Trailing qualifying windows; borderline and no-read windows preserve but do not advance the hold. */
 export function streak(
   history: WindowEval[],
-  signal: 'tense' | 'low'
+  signal: 'tense' | 'low',
+  cfg: StateConfig
 ): { count: number; duration: number } {
   let count = 0
   let duration = 0
+  let noReadStart: number | null = null
   for (let i = 0; i < history.length; i++) {
     const w = history[i]
+    if (w.signal === 'noread') {
+      noReadStart ??= w.start
+      if (w.t - noReadStart >= cfg.noReadForgetMin * 60_000) count = duration = 0
+      continue
+    }
+    noReadStart = null
     if (w.signal === signal) {
       duration += count ? w.t - history[i - 1].t : w.t - w.start
       count++
-    } else if (
-      w.signal !== 'noread' &&
-      !(
-        (w.signal === 'unclear' || w.signal === 'steady') &&
-        (signal === 'tense' ? w.nearTense : w.nearLow)
-      )
-    ) {
+    } else if (!(
+      (w.signal === 'unclear' || w.signal === 'steady') &&
+      (signal === 'tense' ? w.nearTense : w.nearLow)
+    )) {
       count = duration = 0
     }
   }
@@ -263,9 +280,10 @@ function held(
   signal: 'tense' | 'low',
   mode: CameraMode,
   checkins: number,
-  minutes: number
+  minutes: number,
+  cfg: StateConfig
 ): boolean {
-  const s = streak(history, signal)
+  const s = streak(history, signal, cfg)
   if (s.count === 0) return false
   return mode === 'checkins' ? s.count >= checkins : s.duration >= minutes * 60_000
 }
@@ -281,14 +299,11 @@ export function classify(
   previous: Situation | null,
   cfg: StateConfig
 ): Classification {
-  let noReadStart = history.length
-  while (noReadStart > 0 && history[noReadStart - 1].signal === 'noread') noReadStart--
-  const firstNoRead = history[noReadStart]
   if (
     previous !== 'focused' &&
     previous !== 'good' &&
-    firstNoRead &&
-    history[history.length - 1].t - firstNoRead.start >= cfg.noReadForgetMin * 60_000
+    history[history.length - 1]?.signal === 'noread' &&
+    noReadSpan(history) >= cfg.noReadForgetMin * 60_000
   )
     // Null stays unknown until a real reading, rather than reviving the old mood from history.
     return { situation: null, confidence: 0, trend: 'steady' }
@@ -305,13 +320,13 @@ export function classify(
   const confidence = last.backed ? cfg.confidenceFull : cfg.confidencePulseOnly
 
   let situation: Situation | null = null
-  if (held(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)) {
-    const tenseMin = streak(history, 'tense').duration / 60_000
+  if (held(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin, cfg)) {
+    const tenseMin = streak(history, 'tense', cfg).duration / 60_000
     const crashing =
       tenseMin >= cfg.crashingTenseMin ||
       (last.pulseDelta >= cfg.crashingPulsePct && last.negativeMajority)
     situation = crashing ? 'crashing' : 'tense'
-  } else if (held(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin)) {
+  } else if (held(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin, cfg)) {
     situation = 'low'
   } else if (last.signal === 'steady') {
     situation = last.happyMajority ? 'good' : 'focused'
@@ -319,7 +334,7 @@ export function classify(
 
   if (situation) return { situation, confidence, trend }
   return {
-    situation: previous ?? 'focused',
+    situation: previous,
     confidence: confidence * cfg.confidenceUnclearFactor,
     trend
   }

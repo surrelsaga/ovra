@@ -1,7 +1,7 @@
 // Why line (decision 34) and the monitor's per-window line. Coarse words and time steps only:
 // never a vitals value, never stored or sent.
 import type { CameraMode, OrbView, Situation } from '@shared/types'
-import { streak, type WindowEval } from './classifier'
+import { noReadSpan, streak, type WindowEval } from './classifier'
 import type { StateConfig } from './config'
 
 export type Why = NonNullable<OrbView['why']>
@@ -18,9 +18,10 @@ function hold(
   signal: 'tense' | 'low',
   mode: CameraMode,
   checkins: number,
-  minutes: number
+  minutes: number,
+  cfg: StateConfig
 ): { label: string; progress: number } {
-  const s = streak(history, signal)
+  const s = streak(history, signal, cfg)
   if (mode === 'checkins')
     return {
       label: `${Math.min(s.count, checkins)} of ${checkins} checks`,
@@ -45,7 +46,9 @@ export function whyLine(
     return {
       text:
         // "Lost track" only after a mood was forgotten, not before the first reading (Start anyway).
-        situation === null && history.some((w) => w.signal !== 'noread')
+        situation === null &&
+        history.some((w) => w.signal !== 'noread') &&
+        noReadSpan(history) >= cfg.noReadForgetMin * 60_000
           ? 'Lost track of you for a bit · checking again'
           : last.crowded
             ? 'Another face in view · no change'
@@ -56,7 +59,7 @@ export function whyLine(
   const down = last.signal === 'low' || !!last.nearLow
 
   if (situation === 'tense' && last.signal === 'tense') {
-    const s = streak(history, 'tense')
+    const s = streak(history, 'tense', cfg)
     return {
       text: `Heart rate higher than when you started · ${steps(s.duration, cfg.crashingTenseMin)}`,
       progress: Math.min(1, s.duration / (cfg.crashingTenseMin * 60_000)),
@@ -78,16 +81,16 @@ export function whyLine(
       moving: true
     }
 
-  if (up && streak(history, 'tense').count > 0) {
-    const h = hold(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin)
+  if (up && streak(history, 'tense', cfg).count > 0) {
+    const h = hold(history, 'tense', mode, cfg.tenseHoldCheckins, cfg.tenseHoldMin, cfg)
     return {
       text: `Heart rate higher than when you started · ${h.label}`,
       progress: h.progress,
       moving: true
     }
   }
-  if (down && streak(history, 'low').count > 0) {
-    const h = hold(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin)
+  if (down && streak(history, 'low', cfg).count > 0) {
+    const h = hold(history, 'low', mode, cfg.lowHoldCheckins, cfg.lowHoldMin, cfg)
     return {
       text: `Heart rate lower than when you started · ${h.label}`,
       progress: h.progress,

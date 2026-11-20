@@ -2,7 +2,8 @@
 
 A plain review of every rule and trigger, written 2026-11-15 for Daniel and the DEV post.
 The app uses the plain words below. Code words and saved values stay unchanged.
-Numbers include Job 7: the stricter Stressed rule and the starting readings that keep adjusting.
+Numbers include Job 33: fresh holds after forgetting, two Tired check-ins, no guessed Steady,
+a lower usual for Tired, and enough expression time for Very stressed.
 
 ## 1. What Ovra reads
 
@@ -23,6 +24,11 @@ is kept in your history.
    reads low because you're sitting extra still, so a few normal minutes correct it. Stressed or tired
    minutes are never learned, so stress can't become "normal".
 3. **After that it's fixed** for the rest of the session. Every session starts fresh, and nothing carries over.
+
+**Tired uses the lower of your starting usual and your adjusted usual.** An upward adjustment during
+normal desk activity cannot make a later normal, settled heart rate look Tired. This applies to both
+the 8% bar and the softer 4% bar with blinking, including their near misses. Stressed and Steady still
+use the adjusted usual. Both usuals stay in memory only and are dropped at the end of the session.
 
 **Demo only:** the first **2 minutes after your usual exists** also learn from readable checks that
 look low, near-low or unclear. Checks that look Stressed or almost Stressed never teach it, and
@@ -45,7 +51,8 @@ usual from the first 30 s of steady heart rate during the session.
   Very stressed or Tired becomes unknown. Steady and Good mood stay. This measures the last no-read
   window's end minus the first trailing no-read window's start, not time since the last good reading:
   waiting between check-ins doesn't trigger it by itself. One failed normal check-in keeps the mood;
-  two in a row can forget it. No new mood is guessed from missing readings.
+  two in a row can forget it. The same span also clears the Stressed and Tired build-up, so fresh
+  readings must complete their holds again. No new mood is guessed from missing readings.
 
 ## 4. The moods
 
@@ -54,19 +61,20 @@ usual from the first 30 s of steady heart rate during the session.
 | **Steady**           | focused    | heart rate within 8% of your usual                                                                                                              | at once                        |
 | **Good mood**        | good       | Steady, plus smiling most of the time (needs 10 s of face)                                                                                      | at once                        |
 | **Stressed**         | tense      | heart rate **15% above** usual, or **10% above** if your time between heartbeats also changes. A clear change in the other direction cancels it | **3 min** in a row (demo 45 s) |
-| **Very stressed**    | crashing   | Stressed for **10 min**, or heart rate **20% above** usual with a frowning/upset face                                                           | 10 min (demo 2 min)            |
-| **Tired**            | low        | heart rate **8% below** usual, or blinking a lot more with heart rate a little below (4%)                                                       | **2 min** in a row (demo 60 s) |
+| **Very stressed**    | crashing   | Stressed for **10 min**, or a held Stressed with heart rate **20% above** usual and an upset face in most expression frames (at least **10 s** of expression frames) | 10 min (demo 2 min), or the Stressed hold with enough upset-face evidence |
+| **Tired**            | low        | heart rate **8% below** the lower of the starting and adjusted usual, or blinking a lot more with heart rate **4% below** that same lower usual | **2 min** in a row (demo 60 s) |
 | **Couldn't see you** | no reading | not enough steady signal yet                                                                                                                    | —                              |
 | **Away**             | away       | see §5                                                                                                                                          | 20 s (demo 15 s)               |
 
-With the default check-in camera, Stressed needs **2 check-ins in a row** and Tired **1 check-in**
-(a 90 s look). Full per-state detail: `docs/rules.md`.
+With the default check-in camera, Stressed and Tired each need **2 agreeing check-ins**
+(each a 90 s look). Full per-state detail: `docs/rules.md`.
 
 Things that keep it fair:
 
 - **Almost counts:** a check that _almost_ meets the bar (within 3%) pauses the countdown instead of resetting it.
-- **One odd check isn't enough:** a single check never changes the mood on its own. It must hold.
-- **Unclear checks:** when a check is unclear, the previous mood stays.
+- **One odd check isn't enough for Stressed or Tired:** it must hold. A clear Steady check can end either.
+- **Unclear checks:** the previous mood stays. If no mood is known, an unclear check or an unfinished
+  hold stays unknown until a real mood qualifies. Steady needs an actual near-usual check.
 
 The demo holds outlast its 30 s window so a short dip cannot confirm Tired by itself. Allow about
 10 minutes for the full demo walk-through; if Tired doesn't appear within about 45 s, the demo shows its preview.
@@ -84,7 +92,7 @@ The demo holds outlast its 30 s window so a short dip cannot confirm Tired by it
 
 | Mood                                 | Music                                                                                                 | Break reminder (at most one every 20 min)                                  |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Couldn't see you                     | Steady before the first mood; after a dropout, keeps its last choice                                  | reminders after sitting only                                               |
+| Unknown / Couldn't see you           | Steady before the first mood; after a dropout or forget, keeps its last choice                         | reminders after sitting only                                               |
 | Steady                               | your activity's default (Focus/Reading/Creative: steady; Everyday: pick me up; Unwind: keep it going) | reminders after sitting, using your activity's waits below |
 | Good mood                            | Keep it going (brighter songs)                                                                        | reminders after sitting only                                               |
 | Stressed                             | Calm down (calmer songs, from the next song)                                                          | under 5 min stressed: breathe along. Later: neck and shoulders             |
@@ -150,6 +158,9 @@ History and the summary mark these sessions **Demo session · shorter waits**.
 | Stressed needs 15% (10% with changes between heartbeats as backup) | 10% from heart rate alone fired too often in Daniel's 42-min Unwind session |
 | Your usual keeps adjusting for 10 minutes                          | a 30-second start reads low                                                 |
 | "Couldn't see you" pauses instead of resetting                     | moving or laughing shouldn't erase or invent a mood                         |
+| A long unreadable span also clears the build-up                    | one fresh check cannot revive a forgotten Stressed or Tired                 |
+| Tired uses the lower usual and needs two check-ins                 | upward refinement and one low check should not create Tired                 |
+| No default Steady; upset-face Very stressed needs 10 s of expressions | unclear or brief evidence should not name a new mood                      |
 | Seen-but-not-measurable counts as present                          | slouching (chest out of view) used to look like leaving                     |
 
 ## 8. Words on screen

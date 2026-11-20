@@ -21,7 +21,8 @@ Demo mode uses the same signals and bars and only shortens waits.
 
 - **Your usual** is the median of your steady heart rate while getting to know you, then the median
   of that and each calm check (Steady, not close to Tired or Stressed) for the refine period. After
-  that it's fixed for the session. It is never saved.
+  that it's fixed for the session. Tired uses the lower of the starting usual and this adjusted usual,
+  so adjusting upward cannot turn a normal settled heart rate into Tired. Both stay in memory only.
 - **Heart rate decides.** Each check uses the median of its steady heart-rate readings, compared
   with your usual as a percentage.
 - **HRV** (time between beats) can lower the Stressed bar or cancel Stressed. It needs a still
@@ -33,7 +34,9 @@ Demo mode uses the same signals and bars and only shortens waits.
   the Tired bar with lots of blinking. It never makes a mood alone.
 - **Almost counts:** a check within 3 points of the Stressed or Tired bar (`streakBandPct`) pauses
   the build-up instead of resetting it. A check between the bars ("a little higher/lower") keeps
-  the current mood.
+  the current mood. With no mood yet, unclear checks and unfinished holds stay unknown; only a
+  real near-usual check can name Steady. Music stays neutral before the first mood and keeps its
+  last choice after a mood is forgotten.
 - **Confidence** (60% heart rate only, 90% with HRV, 70% of that on an unclear check) is shown in the
   dev monitor only. Nothing in music or reminders depends on it.
 
@@ -48,7 +51,7 @@ Demo mode uses the same signals and bars and only shortens waits.
 | You see | Calm orb (cool white-blue, slow pulse); line: "Heart rate like when you started"; bubble "Nice and steady." |
 | You hear | The activity's default: Steady for Focus, Reading and Creative; Pick me up for Everyday; Keep it going for Unwind |
 | Reminders | Seated reminders only (neck, stand, walk), by activity |
-| Known limits | Steady is also the fallback when a check is unclear and there's no mood yet, so after Ovra forgets a mood, an "a little higher" check shows Steady (a change is proposed, waiting for Daniel). A single Steady check that isn't close to their bars ends Stressed or Tired at once. |
+| Known limits | A single Steady check that isn't close to their bars ends Stressed or Tired at once. Unclear checks never supply Steady as a fallback. |
 
 ### Good mood (`good`)
 
@@ -70,7 +73,7 @@ Demo mode uses the same signals and bars and only shortens waits.
 | Rule | Heart rate +15% or more above your usual (`tensePulsePct`), or +10% (`tenseBackedPulsePct`) when HRV is 15% below its usual (`tenseRmssdDropPct`) |
 | Hold, continuous | 3 min of agreeing checks (`tenseHoldMin`); demo 45 s |
 | Hold, check-ins | 2 check-ins in a row (`tenseHoldCheckins`) |
-| What blocks it | HRV 15% above its usual (`tenseRmssdVetoPct`, "body says relaxed"); any readable check more than 3 points under the bar resets the build-up; unreadable checks pause it |
+| What blocks it | HRV 15% above its usual (`tenseRmssdVetoPct`, "body says relaxed"); any readable check more than 3 points under the bar resets the build-up; unreadable checks pause it, then clear it at the forget span |
 | You see | Uneasy orb (amber, faster pulse); line "Heart rate higher than when you started · 1 of 3 min" while building, then the minutes toward Very stressed; bubble "You seem stressed." |
 | You hear | Calm down (calmer songs, from the next song; demo at once) |
 | Reminders | First 5 min: breathe along. Later: neck and shoulders. 15 min Stressed or Very stressed: step outside |
@@ -81,37 +84,37 @@ Demo mode uses the same signals and bars and only shortens waits.
 | | |
 | --- | --- |
 | Signals | A held Stressed, plus time or an upset face |
-| Rule | Stressed held for 10 min (`crashingTenseMin`; demo 2 min), or Stressed held and the latest check is +20% (`crashingPulsePct`) with angry, sad or disgust as the top expression in most face frames |
+| Rule | Stressed held for 10 min (`crashingTenseMin`; demo 2 min), or Stressed held and the latest check is +20% (`crashingPulsePct`) with angry, sad or disgust as the top expression in most face frames, with at least 10 s of expression frames (`goodMinFaceSec`) |
 | What blocks it | Everything that blocks Stressed; it can never come straight from Steady |
 | You see | Stormy orb (orange-red edge, flickery pulse); bubble "You seem very stressed. Let's slow down." |
 | You hear | Quiet: fades down, skips to a calm song right away, fades back up |
 | Reminders | A short walk; step outside after 15 min |
-| Known limits | The upset-face path has no minimum amount of face time (Good mood needs 10 s). It still needs a held Stressed first. |
+| Known limits | Presage publishes no accuracy data for expressions. The upset-face path needs a held Stressed and at least 10 s of expression frames, just like Good mood. |
 
 ### Tired (`low`)
 
 | | |
 | --- | --- |
 | Signals | Heart rate; blinking can soften the bar |
-| Rule | Heart rate 8% or more below your usual (`lowPulsePct`), or 4% below (`lowBlinkPulsePct`) with blinking 50% above its usual (`lowBlinkPct`, face consent only) |
+| Rule | Heart rate 8% or more below the lower of your starting and adjusted usual (`lowPulsePct`), or 4% below that same usual (`lowBlinkPulsePct`) with blinking 50% above its usual (`lowBlinkPct`, face consent only). The near-miss band uses that same lower usual |
 | Hold, continuous | 2 min of agreeing checks (`lowHoldMin`); demo 60 s |
-| Hold, check-ins | 1 check-in (`lowHoldCheckins`): a single 90 s check-in is enough |
-| What blocks it | Any readable check more than 3 points above the bar (or a Stressed check) resets the build-up; unreadable checks pause it. Breathing is ignored |
+| Hold, check-ins | 2 agreeing check-ins (`lowHoldCheckins`), like Stressed |
+| What blocks it | Any readable check more than 3 points above the bar (or a Stressed check) resets the build-up; unreadable checks pause it, then clear it at the forget span. Breathing is ignored |
 | You see | Dim orb (grey-blue, low, slow); line "Heart rate lower than when you started"; bubble "You seem tired." |
 | You hear | Pick me up (brighter songs) |
 | Reminders | Stand and stretch |
-| Known limits | Heart rate drifts down over a long still session (sitting, evening). Your usual is learned in the first 10 minutes, which in Daniel's long session read a little higher, so late in a long session a normal settled heart rate can sit right at the Tired bar and flip between Tired and Steady every few minutes (Job 29 replay). In check-in mode one check-in decides (a change is proposed, waiting for Daniel). |
+| Known limits | Heart rate can drift down during a long still session (sitting, evening); a low heart rate alone cannot prove tiredness. The lower usual keeps upward refinement from making Tired easier to reach; Daniel still needs to check it in a long session. |
 
 ### Couldn't see you (no read)
 
 | | |
 | --- | --- |
 | Signals | Fewer than 10 s of steady heart rate in the check (`windowMinPulseSec`) |
-| What it does | Nothing changes: the mood stays, any build-up pauses (no time added, nothing reset), music keeps its choice |
+| What it does | Short gaps keep the mood and pause any build-up (no time added), music keeps its choice |
 | You see | The orb keeps its look; line "Couldn't see you clearly · no change". If a second face was in view for at least 3 s of the check (SDK code 2, `noReadFacesSec`): "Another face in view · no change" |
-| After a while | When unreadable checks span 3 min (demo 1 min), Stressed, Very stressed and Tired are forgotten (Steady and Good mood stay). Line: "Lost track of you for a bit · checking again" until a readable check. Music keeps its last choice |
+| After a while | When unreadable checks span 3 min (demo 1 min), Stressed, Very stressed and Tired are forgotten and their build-up clears (Steady and Good mood stay). Fresh checks must complete the hold again. Line: "Lost track of you for a bit · checking again" until a readable check. Music keeps its last choice |
 | Common causes | Moving, laughing or typing hard (code 12), turning away (code 17), standing up (code 15), a second face (code 2), low frame rate (code 11) |
-| Known limits | The heart-rate reading needs ~12 s to come back after it drops, so a few seconds of disturbance can cost a whole check. A forgotten build-up isn't cleared: one fresh Stressed check right after can bring Stressed back (a change is proposed, waiting for Daniel) |
+| Known limits | The heart-rate reading needs ~12 s to come back after it drops, so a few seconds of disturbance can cost a whole check. Camera-off time before the first unreadable check does not count toward forgetting |
 
 ### Away (`away`)
 
@@ -198,7 +201,8 @@ normal session and two demo runs) and the test videos. In plain words:
   the last 13 minutes, in three spells with Steady in between. Heart rate was right at the Tired
   bar against a usual that had been learned in the slightly higher first 10 minutes; against the
   very first reading it was only a little lower. It was close to midnight, so Daniel may really have
-  been tired, but the evidence is thin. A fix is proposed and waits for Daniel's call.
+  been tired, but the evidence is thin. Job 33 now judges Tired against the lower of the starting
+  and adjusted usual, and requires two check-ins in check-in mode; Daniel still needs to test a long session.
 - **The test videos** are short (1.5–3 min), so under normal holds they can only show Steady or
   "couldn't see you"; they're useful for checking the pipeline, not mood accuracy.
 

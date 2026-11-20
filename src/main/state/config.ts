@@ -22,7 +22,7 @@ export const stateConfig = {
    * 10–60 s at a time in real logs. Why line only: no mood or hold changes.
    */
   noReadFacesSec: 3,
-  /** Good needs at least this many seconds of face frames with expressions; otherwise it's Focused. */
+  /** Good and the upset-face path to crashing need this many seconds of expression frames. */
   goodMinFaceSec: 10,
   /** Ignore breathing for a window when talking shows in more than this fraction of face frames. */
   talkingIgnoreBreathingFrac: 0.1,
@@ -54,7 +54,7 @@ export const stateConfig = {
   lowBlinkPct: 0.5,
   /** With high blink rate, pulse must still be at least this far below baseline. Face never triggers alone. */
   lowBlinkPulsePct: -0.04,
-  lowHoldCheckins: 1,
+  lowHoldCheckins: 2,
   lowHoldMin: 2,
 
   // Confidence (0–1).

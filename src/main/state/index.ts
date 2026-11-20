@@ -50,6 +50,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
 
   let mode: CameraMode = 'checkins'
   let baseline: Baseline | null = null
+  let calibrationPulse: number | undefined
   let refinementPulses: number[] = []
   let baselineFailure: string | null = null
   let calibrationPulseCount = 0
@@ -108,6 +109,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   const reset = (): void => {
     stopTimer()
     baseline = null
+    calibrationPulse = undefined
     refinementPulses = []
     calibratedFace = undefined
     baselineFailure = null
@@ -134,6 +136,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     const r = buildBaseline(pending, c, Date.now())
     if (!('baseline' in r)) return
     baseline = r.baseline
+    calibrationPulse = baseline.pulse
     baselineFailure = null
     pending = []
     bus.emit('state:baseline-ready', { ok: true })
@@ -172,7 +175,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     buildPending(c)
     crowdedSecs = new Set([...crowdedSecs].filter((sec) => sec * 1000 >= since))
     if (!baseline) return
-    const ev = evaluateWindow(snaps, baseline, c)
+    const ev = evaluateWindow(snaps, baseline, c, Date.now(), calibrationPulse)
     if (ev.signal === 'noread' && crowdedSecs.size >= c.noReadFacesSec) ev.crowded = true
     history = [...history, ev].slice(-MAX_HISTORY)
     ;({ situation, confidence, trend } = classify(history, mode, situation, c))
@@ -321,6 +324,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
         ? (pulses[pulses.length - 1].t - pulses[0].t) / 1000
         : 0
       baseline = 'baseline' in r ? r.baseline : null
+      calibrationPulse = baseline?.pulse
       const faces = snaps.filter((s) => hasFace({ t: s.t, face: s.face }, privacy.canUseFace(), c))
       calibratedFace =
         baseline && faces.length

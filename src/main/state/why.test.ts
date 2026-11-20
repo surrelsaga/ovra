@@ -42,6 +42,25 @@ const normal = resolveConfig()
 const demo = resolveConfig({ ...sessionConfig.demo.state })
 
 describe('why line', () => {
+  it('describes unknown checks without calling a short dropout a forgotten mood', () => {
+    const read = evaluateWindow(
+      Array.from({ length: 30 }, (_, i) => ({
+        t: i * 1000,
+        pulse: { value: 70, confidence: 90, stable: true }
+      })),
+      baseline,
+      normal
+    )
+    expect(classify([read], 'continuous', null, normal).situation).toBeNull()
+    expect(whyLine([read], null, 'continuous', normal)?.text).toBe(
+      'Heart rate higher than when you started · 0 of 3 min'
+    )
+    const noRead = { ...read, signal: 'noread' as const, start: 30_000, t: 60_000 }
+    expect(whyLine([read, noRead], null, 'continuous', normal)?.text).toBe(
+      "Couldn't see you clearly · no change"
+    )
+  })
+
   it('counts a tense hold in minutes (real) and seconds (demo), with progress', () => {
     const tense = [...seconds(60, [60, 14]), ...seconds(600, [70, 18])]
     const real = run(normal, tense).map((w) => w.text)
@@ -140,6 +159,32 @@ describe('why line', () => {
     expect(whyLine(history, situation, 'continuous', cfg)?.text).toBe(
       'Heart rate like when you started'
     )
+  })
+
+  it.each([normal, demo])('starts the why-line count again after forgetting', (cfg) => {
+    const read: WindowEval = {
+      start: 0,
+      t: cfg.tenseHoldMin * 60_000,
+      signal: 'tense',
+      pulseDelta: 0.16,
+      backed: false,
+      happyMajority: false,
+      negativeMajority: false
+    }
+    const gap = {
+      ...read,
+      signal: 'noread' as const,
+      start: read.t,
+      t: read.t + cfg.noReadForgetMin * 60_000
+    }
+    const history = [read, gap, { ...read, start: gap.t, t: gap.t + 10_000 }]
+    const situation = classify(history, 'checkins', null, cfg).situation
+    expect(situation).toBeNull()
+    expect(whyLine(history, situation, 'checkins', cfg)).toEqual({
+      text: 'Heart rate higher than when you started · 1 of 2 checks',
+      progress: 0.5,
+      moving: true
+    })
   })
 
   it('never shows a number that could be a vital: only seconds, minutes and step counts', () => {

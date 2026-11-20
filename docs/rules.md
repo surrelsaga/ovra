@@ -176,8 +176,10 @@ forward "only as far as feels easy". Suggestions, never medical advice.
 So a misread mood costs at most one card per episode, and a long stress at most two (breathe, then step
 outside 20+ minutes later).
 
-**Demo mode** keeps its own behaviour (decision 70): timed reminders are off, the gap is 1 minute, the
-one-per-episode rule is off, and the tour shows its step cards.
+**Demo mode** (Job 31): only the tour shows exercise cards, each exactly once at a fixed step (neck
+3, breathe 5, walk 6, step outside 7, stand 8). Timed reminders, mood suggestions and the return-check
+breathing round are off; the rules above don't run. The walk is a 15 s at-the-desk demo version and
+step outside a ~20 s away and back. See `docs/demo.md`.
 
 ## How careful is the reading?
 

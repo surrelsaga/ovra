@@ -215,8 +215,10 @@ None of these are bugs. They're deliberate choices or limits we'd rather state t
 - **Demo mode is a quick tour, not a test of accuracy.** It takes about 10 minutes, and every step
   shows either the real mood or a labelled preview within 30–60 seconds, so every judge sees every
   look, music reaction and exercise card. Real accuracy needs a normal session of 45 minutes or more.
-- **The demo stretch card comes straight away** in step 3 instead of after minutes of sitting, and a
-  demo step's card replaces any reminder card still waiting (an exercise in progress finishes first).
+- **Each exercise card shows exactly once in a demo,** at a fixed step (stretch, breathe, walk, step
+  outside, stand), and nothing else pops up: no mood suggestions, sitting reminders or breathing
+  round after a break. The walk and step outside are short demo versions (15 s at the desk, about
+  20 s out of view).
 - **Stressed, Very stressed and Tired often don't show in a demo,** because most people's heart rate
   settles fast. Ovra then shows a preview of its reaction, labelled "Preview" in the bubble, the music
   pill and the exercise card: the moon's look, about 30 seconds of that mood's music (silent skips, a

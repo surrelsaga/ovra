@@ -148,9 +148,11 @@ function MoveCard({ view }: { view: MoveView }): React.JSX.Element {
           className="step-time"
           aria-label={awayStep ? undefined : `${remainingSec} seconds left`}
         >
-          {awayStep
-            ? `~${Math.max(1, Math.round(step.durationSec / 60))} min`
-            : clock(remainingSec)}
+          {!awayStep
+            ? clock(remainingSec)
+            : step.durationSec < 60
+              ? `~${step.durationSec} s`
+              : `~${Math.round(step.durationSec / 60)} min`}
         </span>
       </div>
       <p className="step-howto">{step.howTo}</p>
@@ -255,8 +257,10 @@ function ReturnCheckCard({ progress }: { progress: number }): React.JSX.Element 
   )
 }
 
-function ResultCard({ view }: { view: ResultView }): React.JSX.Element {
+function ResultCard({ view, demo }: { view: ResultView; demo: boolean }): React.JSX.Element {
   const tense = view.result === 'still-tense'
+  // Demo: the tour's step 5 is the only breathing card, so no breathing round here.
+  const offerRound = tense && !demo
   return (
     <section className="card card-return" aria-labelledby="result-msg">
       <Header title="Welcome back" />
@@ -265,7 +269,7 @@ function ResultCard({ view }: { view: ResultView }): React.JSX.Element {
         {view.message}
       </p>
       <div className="actions">
-        {tense ? (
+        {offerRound ? (
           <>
             <Button primary onClick={() => void ovra().invoke('break:breathe-round')}>
               Breathe for 1 min
@@ -297,7 +301,7 @@ export default function App(): React.JSX.Element {
     case 'return-check':
       return <ReturnCheckCard progress={view.progress} />
     case 'return-result':
-      return <ResultCard view={view} />
+      return <ResultCard view={view} demo={session?.config.demo === true} />
     default:
       return <main className="card card-hidden" aria-hidden="true" />
   }

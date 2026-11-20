@@ -21,7 +21,8 @@ body {
   flex: none;
   display: flex;
   align-items: flex-end;
-  height: 116px;
+  /* 7 lines (~180 chars): fits the longest bubble with room; demo hints stay ≤ 120 chars. */
+  height: 156px;
   padding: 0 var(--space-2);
   max-width: 100%;
 }

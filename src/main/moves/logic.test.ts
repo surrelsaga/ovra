@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { StateUpdate } from '@shared/types'
 import { MOVES, MOVES_CONFIG as cfg } from './config'
-import { sessionConfig } from '../session/config'
 import { simulatorMovesConfig } from '../simulator/config'
 import {
   canNudge,
@@ -44,7 +43,6 @@ describe('move library', () => {
 describe('pickMove triggers', () => {
   for (const activity of ['focus', 'reading', 'creative', 'everyday', 'unwind'] as const) {
     for (const [name, config] of [
-      ['demo', { ...cfg, triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers } }],
       ['fast simulator', simulatorMovesConfig('fast')],
       ['instant simulator', simulatorMovesConfig('instant')]
     ] as const) {

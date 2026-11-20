@@ -184,6 +184,8 @@ export type NudgeReason = 'tense' | 'crashing' | 'low' | 'seated'
 export const MOVES_CONFIG = {
   moves: MOVES,
   breatheRound: BREATHE_ROUND,
+  /** Timed and mood suggestions. Off in demo: only the tour's own cards show (decision 70, Job 31). */
+  nudges: true,
   /** Nudge triggers (PLAN.md §7). Minutes. */
   triggers: {
     /** Tense for less than this counts as "early" → Breathe along. */

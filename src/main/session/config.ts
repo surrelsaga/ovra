@@ -1,6 +1,6 @@
 // Owner: Agent B. Session defaults and timings.
-import type { Activity, CameraMode, MoveId, Situation } from '@shared/types'
-import { MOVES_CONFIG } from '../moves/config'
+import type { Activity, CameraMode, Move, MoveId, Situation } from '@shared/types'
+import { MOVES, MOVES_CONFIG } from '../moves/config'
 
 const say = MOVES_CONFIG.messages
 
@@ -44,14 +44,46 @@ export const sessionConfig = {
     /** Same calibration bar as real mode; only the max wait is shorter. */
     sensing: { calibrationMaxMs: 90_000, returnCheckMs: 20_000 },
     musicTargetGap: { minTargetChangeMs: 20_000 },
-    nudgeMinIntervalMin: 1,
-    /**
-     * Seated nudges, minutes. Off in demo: step 3 shows the stretch card, so a timed one would repeat it.
-     * One-suggestion-per-mood-episode is off too, so demo behaves as before (decision 70).
-     */
-    triggers: { neckSeatedMin: 999, standSeatedMin: 999, walkSeatedMin: 999, moodEpisodeEndMin: 0 },
     returnCheckSec: 20,
-    snoozeMin: 1,
+    /** No breathing round after the return check in demo (step 5 is the only breathing card). */
+    stillTense: 'Welcome back. You still seem a bit stressed.',
+    /**
+     * Short demo versions of the leave-the-desk exercises. The walk stays at the desk (step 6 must not
+     * become a break); step outside is a real ~20 s away and back (step 7).
+     */
+    moves: {
+      walk: {
+        ...MOVES.walk,
+        name: 'Walk (demo version)',
+        lengthSec: 15,
+        leavesDesk: false,
+        steps: [
+          { ...MOVES.walk.steps[0], durationSec: 5 },
+          {
+            ...MOVES.walk.steps[1],
+            howTo:
+              'Demo version: walk on the spot for a moment. For real, walk a slow lap and refill your water (about 5 min).',
+            durationSec: 10,
+            check: 'none'
+          }
+        ]
+      },
+      'step-outside': {
+        ...MOVES['step-outside'],
+        name: 'Step outside (demo version)',
+        lengthSec: 25,
+        steps: [
+          { ...MOVES['step-outside'].steps[0], durationSec: 5 },
+          {
+            ...MOVES['step-outside'].steps[1],
+            title: 'Step out of view',
+            howTo:
+              'Step out of view for about 20 s, then come back. For real, step outside for about 10 min.',
+            durationSec: 20
+          }
+        ]
+      }
+    } satisfies Partial<Record<MoveId, Move>>,
     musicWindDownSec: 120,
     musicSwitchNow: true,
     musicSwitchAfterSongs: { focus: 3, reading: 3, creative: 3, everyday: 3, unwind: 3 },
@@ -61,44 +93,45 @@ export const sessionConfig = {
     /** Missed-mood preview: music steers to that mood's target this long, then back. */
     previewMusicMs: 30_000,
     doneDelayMs: 5_000,
+    /** After a step ends by showing its card, the next step waits this long so the card can be read. */
+    cardReadMs: 15_000,
     /** Sequential tour; early events are remembered, never used to jump forward. */
     steps: [
       {
-        text: 'Demo: 1/9 · Work normally. Steady or its preview shows within about 30 s: a calm blue-white moon.',
+        text: 'Demo: 1/9 · Work normally. Steady (a calm blue-white moon) shows in about 30 s.',
         goal: ['focused', 'good'],
         limitMs: 30_000,
         fallback:
-          "Demo: 1/9 · Steady didn't show for you. Preview: when you're steady, the moon is calm blue-white and music suits your activity.",
+          "Demo: 1/9 · Steady didn't show. Preview: when you're steady, the moon is calm blue-white.",
         preview: 'focused',
         already: "Demo: 1/9 · You've seen Steady already. Next step."
       },
       {
-        text: 'Demo: 2/9 · Smile for about 20 s (no big laughs). Good mood or its preview shows within about 40 s: a brighter moon.',
+        text: 'Demo: 2/9 · Smile for about 20 s (no big laughs). Good mood brightens the moon.',
         goal: ['good'],
         limitMs: 40_000,
         fallback:
-          "Demo: 2/9 · Good mood didn't show for you. Preview: in a good mood, the moon brightens and music plays Keep it going.",
+          "Demo: 2/9 · Good mood didn't show. Preview: in a good mood the moon brightens and music plays Keep it going.",
         preview: 'good',
         already: "Demo: 2/9 · You've seen Good mood already. Next step.",
         noFace: 'Demo: 2/9 · Good mood needs face reading, which is off. Skipping.'
       },
       {
-        text: "Demo: 3/9 · After a while sitting, Ovra suggests a stretch. Press Let's go on the card and tilt your head with it (about 1½ min).",
+        text: "Demo: 3/9 · After long sitting, Ovra suggests a stretch. Press Let's go and follow the card (about 1½ min).",
         goal: ['moved'],
         limitMs: 100_000,
         card: {
           move: 'neck-stretch',
           text: 'After a while sitting, Ovra suggests this. Want a quick neck stretch?'
         },
-        fallback: 'Demo: 3/9 · Moving on. Ovra suggests stretches after a while sitting.',
-        already: "Demo: 3/9 · You've done a stretch already. Next step."
+        fallback: 'Demo: 3/9 · Moving on. Ovra suggests stretches after a while sitting.'
       },
       {
-        text: 'Demo: 4/9 · Jog in place or do squats for about 40 s, then sit still. Stressed (amber) or its preview shows within about a minute.',
+        text: 'Demo: 4/9 · Jog in place or do squats for about 40 s, then sit still. Stressed turns the moon amber.',
         goal: ['tense', 'crashing'],
         limitMs: 60_000,
         fallback:
-          "Demo: 4/9 · Stressed didn't show for you. Preview: when you're stressed, the moon turns amber and music plays Calm down.",
+          "Demo: 4/9 · Stressed didn't show. Preview: when you're stressed, the moon turns amber and music plays Calm down.",
         preview: 'tense',
         already: "Demo: 4/9 · You've seen Stressed already. Next step."
       },
@@ -108,52 +141,55 @@ export const sessionConfig = {
         limitMs: 100_000,
         needs: 'tense',
         unseen:
-          "Demo: 5/9 · Preview: when you're stressed, Ovra suggests Breathe along. Press Let's go on the card to try it (about 1½ min).",
+          "Demo: 5/9 · Preview: when you're stressed, Ovra suggests Breathe along. Try it on the card (about 1½ min).",
         card: {
           move: 'breathe',
           text: "Preview: when you're stressed, Ovra suggests this. Want to breathe along for a minute?",
           seen: say.breathe.tense
         },
         fallback:
-          'Demo: 5/9 · Moving on. After stress, Ovra goes back to Steady once your heart rate drops.',
-        already: "Demo: 5/9 · You've settled already. Next step."
+          'Demo: 5/9 · Moving on. After stress, Ovra goes back to Steady once your heart rate drops.'
       },
       {
-        text: 'Demo: 6/9 · Jog or do squats again for about 40 s, then sit still and frown. Very stressed (red) or its preview shows within about a minute.',
+        text: 'Demo: 6/9 · Squats again for about 40 s, then sit still and frown. Very stressed turns the moon red.',
         goal: ['crashing'],
         limitMs: 60_000,
         fallback:
-          "Demo: 6/9 · Very stressed didn't show for you. Preview: when you're very stressed, the moon turns red, music fades to Quiet and Ovra suggests a walk.",
+          "Demo: 6/9 · Very stressed didn't show. Preview: the moon turns red, music fades to Quiet, Ovra suggests a walk.",
         preview: 'crashing',
         card: {
           move: 'walk',
-          text: "Preview: when you're very stressed, Ovra suggests this. A short walk might help.",
+          text: "Preview: when you're very stressed, Ovra suggests this. A short walk might help (here, a 15 s demo version).",
           seen: say.walk.crashing
         },
-        already: "Demo: 6/9 · You've seen Very stressed already. Next step."
+        already:
+          "Demo: 6/9 · You've seen Very stressed already. Here's the walk Ovra suggests for it."
       },
       {
-        text: 'Demo: 7/9 · Step out of view for 20 s, then come back. Away or its preview shows within about 40 s.',
+        text: "Demo: 7/9 · Press Let's go on the card, step out of view for about 20 s, then come back.",
         goal: ['returned'],
-        limitMs: 40_000,
+        limitMs: 60_000,
+        card: {
+          move: 'step-outside',
+          text: "Preview: when you've been stressed for a long time, Ovra suggests stepping outside. Try a 20 s version?"
+        },
         fallback:
-          "Demo: 7/9 · Ovra didn't see you leave. Preview: when you step away, Ovra says it couldn't see you, the moon goes dark and music pauses until you're back.",
-        preview: 'away',
-        already: "Demo: 7/9 · You've been away and back already. Next step."
+          "Demo: 7/9 · Ovra didn't see you leave. Preview: when you're away, the moon goes dark and music pauses.",
+        preview: 'away'
       },
       {
-        text: 'Demo: 8/9 · Lean back and breathe slowly. Tired (dim moon) or its preview shows within about 45 s.',
+        text: 'Demo: 8/9 · Lean back and breathe slowly. Tired dims the moon; it shows in about 45 s.',
         goal: ['low'],
         limitMs: 45_000,
         fallback:
-          "Demo: 8/9 · Tired didn't show for you. Preview: when you're tired, the moon dims, music plays Pick me up and Ovra suggests a stretch.",
+          "Demo: 8/9 · Tired didn't show. Preview: the moon dims, music plays Pick me up and Ovra suggests a stretch.",
         preview: 'low',
         card: {
           move: 'stand-stretch',
           text: "Preview: when you're tired, Ovra suggests this. Want to stand and stretch?",
           seen: say['stand-stretch'].low
         },
-        already: "Demo: 8/9 · You've seen Tired already: dim moon, Pick me up music."
+        already: "Demo: 8/9 · You've seen Tired already. Here's the stretch Ovra suggests for it."
       },
       { text: "Demo: 9/9 · That's the tour. Press End to see your summary.", goal: [] }
     ] satisfies DemoStep[]
@@ -176,16 +212,17 @@ export interface DemoStep {
   goal: DemoEvent[]
   limitMs?: number
   fallback?: string
+  /** A mood step whose mood showed early says this (and still offers its card). */
   already?: string
   /** Without this mood seen, the step shows `unseen` and offers `card` as a preview. */
   needs?: DemoEvent
   unseen?: string
   noFace?: string
-  /** Fallback previews this mood (orb look, music) or the away look, and `card` if set. */
+  /** Fallback previews this mood (orb look, music, `card`) or the away look. */
   preview?: Situation | 'away'
   /**
-   * Offered at the step start (no `preview`), else with the preview. `seen` is the real reminder's
-   * words, used when the mood did show, so the card still appears over a waiting reminder.
+   * Shown once per tour: at the step start unless the step previews a mood, else with the live mood,
+   * its early `already`, or its preview. `seen` is the real reminder's words for a live mood.
    */
   card?: { move: MoveId; text: string; seen?: string }
 }

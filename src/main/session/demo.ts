@@ -46,9 +46,10 @@ export function bindDemo(deps: DemoDeps): () => void {
       sensing: { ...sensing }
     }
     overlay.thresholdOverrides = { ...deps.privacy.getSettings().thresholdOverrides, ...demo.state }
-    overlay.nudgeMinIntervalMin = demo.nudgeMinIntervalMin
-    moves.snoozeMin = demo.snoozeMin
-    moves.triggers = { ...moves.triggers, ...demo.triggers }
+    // Only the tour shows exercise cards: no timed or mood suggestions, no return-check breathing round.
+    moves.nudges = false
+    moves.moves = { ...moves.moves, ...demo.moves }
+    moves.returnMessages = { ...moves.returnMessages, stillTense: demo.stillTense }
     moves.returnCheck = { ...moves.returnCheck, durationSec: demo.returnCheckSec }
     Object.assign(musicGap, demo.musicTargetGap, {
       windDownSec: demo.musicWindDownSec,
@@ -59,7 +60,6 @@ export function bindDemo(deps: DemoDeps): () => void {
     return () => {
       // Keys the overlay didn't have must go, not become undefined (that would hide the stored value).
       delete overlay.thresholdOverrides
-      delete overlay.nudgeMinIntervalMin
       Object.assign(overlay, saved.overlay)
       Object.assign(moves, saved.moves)
       delete musicGap.windDownSec
@@ -74,23 +74,30 @@ export function bindDemo(deps: DemoDeps): () => void {
     bus.emit('orb:bubble', { text, ttlMs: demo.hintTtlMs })
   }
 
-  function done(): void {
+  function done(ms: number = demo.doneDelayMs): void {
     waiting = false
     clearTimeout(timer)
-    timer = setTimeout(enterNext, demo.doneDelayMs)
+    timer = setTimeout(enterNext, ms)
   }
 
-  function offerCard(step: DemoStep, real = false): void {
-    if (step.card) deps.cards?.preview(step.card.move, (real && step.card.seen) || step.card.text)
+  /** Shows the step's card; the next step then waits long enough to read it. */
+  function doneWithCard(step: DemoStep, real = false): void {
+    if (!step.card) return done()
+    deps.cards?.preview(step.card.move, (real && step.card.seen) || step.card.text)
+    done(demo.cardReadMs)
   }
+
+  const moodStep = (step: DemoStep): boolean => !!step.preview && step.preview !== 'away'
 
   function enterNext(): void {
     const steps: DemoStep[] = demo.steps
     const step = steps[++index]
     if (!active || !step) return
-    if (step.goal.some((event) => seen.has(event))) {
+    // An early mood is acknowledged; its card still shows. Card steps (stretch, breathe, step outside)
+    // always run, so each card shows exactly once.
+    if (moodStep(step) && step.goal.some((event) => seen.has(event))) {
       say(step.already ?? step.text)
-      return done()
+      return doneWithCard(step)
     }
     if (step.noFace && deps.privacy.get().face !== 'vitals-and-face') {
       say(step.noFace)
@@ -99,21 +106,24 @@ export function bindDemo(deps: DemoDeps): () => void {
     // Its mood never showed: the same exercise, offered as a labelled preview.
     const unseen = !!step.needs && !seen.has(step.needs)
     say(unseen ? step.unseen! : step.text)
-    // A step's own card (stretch, breathing) shows right away; labelled a preview if its mood didn't show.
-    if (!step.preview) offerCard(step, !unseen)
+    // A card step's card shows right away; labelled a preview if its mood didn't show.
+    if (step.card && !moodStep(step))
+      deps.cards?.preview(step.card.move, (!unseen && step.card.seen) || step.card.text)
     waiting = step.goal.length > 0
     if (step.limitMs)
       timer = setTimeout(() => {
-        if (step.preview) {
-          bus.emit('orb:bubble', {
-            text: step.fallback!,
-            ttlMs: demo.previewMs,
-            previewMood: step.preview === 'away' ? 'away' : ORB_MOOD[step.preview]
-          })
-          if (step.preview !== 'away') deps.music?.preview(step.preview, demo.previewMusicMs)
-          offerCard(step)
-        } else say(step.fallback!)
-        done()
+        if (!step.preview) {
+          say(step.fallback!)
+          return done()
+        }
+        bus.emit('orb:bubble', {
+          text: step.fallback!,
+          ttlMs: demo.previewMs,
+          previewMood: step.preview === 'away' ? 'away' : ORB_MOOD[step.preview]
+        })
+        if (step.preview === 'away') return done()
+        deps.music?.preview(step.preview, demo.previewMusicMs)
+        doneWithCard(step)
       }, step.limitMs)
   }
 
@@ -126,9 +136,9 @@ export function bindDemo(deps: DemoDeps): () => void {
     }
     const step: DemoStep | undefined = demo.steps[index]
     if (!waiting || !step?.goal.includes(event)) return
-    // The real reaction's card, shown even if another reminder is waiting.
-    if (step.preview && step.card?.seen) offerCard(step, true)
-    done()
+    // The real reaction's card, with the real reminder's words.
+    if (moodStep(step)) doneWithCard(step, true)
+    else done()
   }
 
   function stop(): void {
@@ -167,7 +177,12 @@ export function bindDemo(deps: DemoDeps): () => void {
       happened('moved')
       if (moveId === 'breathe') happened('settled')
     }),
-    bus.on('break:returned', () => happened('returned'))
+    // Away and back: the step waits for the return check instead of falling back while you're out.
+    bus.on('break:away', () => {
+      const step: DemoStep | undefined = demo.steps[index]
+      if (waiting && step?.goal.includes('returned')) clearTimeout(timer)
+    }),
+    bus.on('break:return-check', () => happened('returned'))
   ]
   return () => {
     stop()

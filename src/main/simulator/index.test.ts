@@ -108,3 +108,22 @@ it('rejects packaged builds before registering simulator actions', async () => {
   await expect(startSimulator()).rejects.toThrow('dev only')
   expect(f.handlers.size).toBe(0)
 })
+
+it("keeps a demo session's exercise rules when it applies its speed", async () => {
+  const services = await startSimulator()
+  const moves = f.options!.movesConfig!
+  const demoWalk = { ...moves.moves.walk, name: 'Walk (demo version)' }
+  // What the demo overlay sets before the simulator's own session:started handler runs.
+  Object.assign(moves, { nudges: false, moves: { ...moves.moves, walk: demoWalk } })
+  services.bus.emit('session:started', {
+    config: { activity: 'focus', cameraMode: 'continuous', demo: true }
+  } as Session)
+  f.handlers.get('simulator:set-speed')?.({ speed: 'fast' })
+  expect(moves.nudges).toBe(false)
+  expect(moves.moves.walk).toBe(demoWalk)
+  services.bus.emit('session:started', {
+    config: { activity: 'focus', cameraMode: 'continuous' }
+  } as Session)
+  expect(moves.nudges).toBe(true)
+  expect(moves.moves.walk.name).toBe('Walk and get water')
+})

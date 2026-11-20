@@ -52,7 +52,11 @@ export async function startSimulator() {
 
   function applySpeed(p: typeof privacy, next: SimSpeed): void {
     speed = next
-    Object.assign(moves, next === 'normal' ? MOVES_CONFIG : simulatorMovesConfig(next))
+    // A demo session keeps its exercise rules (only the tour's cards, demo walk / step outside).
+    const demo = demoSession
+      ? { nudges: moves.nudges, moves: moves.moves, returnMessages: moves.returnMessages }
+      : {}
+    Object.assign(moves, next === 'normal' ? MOVES_CONFIG : simulatorMovesConfig(next), demo)
     const gap = next === 'normal' ? musicConfig.switching : cfg[next].musicTargetGap
     musicGap.minTargetChangeMs = gap.minTargetChangeMs
     // Instant: a target change is heard at once (demo's switch-now), so no "Switch music now" needed.

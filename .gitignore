@@ -7,7 +7,4 @@ test-media/
 *.log
 .eslintcache
 .vite/
-spike/*.json
-spike/*.log
-spike/electron/renderer.bundle.js
 *.tsbuildinfo

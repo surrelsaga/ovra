@@ -20,11 +20,24 @@ export interface NudgeInput {
   tenseMinutes: number
 }
 
-/** PLAN.md §7 triggers, first match wins. Null = nothing to suggest. */
+/** A mood that already got its suggestion this episode; 'long' = the step-outside escalation. */
+export type MoodEpisode = 'tense' | 'crashing' | 'low' | 'long'
+
+/** The timed seated reminder a mood suggestion stands in for (breathe has none). */
+export function timedReminderFor(moveId: MoveId): MoveId | null {
+  if (moveId === 'breathe') return null
+  return moveId === 'step-outside' ? 'walk' : moveId
+}
+
+/**
+ * PLAN.md §7 triggers, first match wins. Null = nothing to suggest. A mood in `moodsDone` already had
+ * its one suggestion this episode, so it falls through to the seated reminders.
+ */
 export function pickMove(
   input: NudgeInput,
   cfg: MovesConfig,
-  seatedNudges: Partial<Record<MoveId, number>> = {}
+  seatedNudges: Partial<Record<MoveId, number>> = {},
+  moodsDone: ReadonlySet<MoodEpisode> = new Set()
 ): { moveId: MoveId; reason: NudgeReason; message: string } | null {
   const t = cfg.triggers
   const seatedThreshold = (value: typeof t.neckSeatedMin): number =>
@@ -36,15 +49,19 @@ export function pickMove(
     return { moveId, reason, message: messages[reason] ?? '' }
   }
 
-  if (upset && tenseMinutes >= t.stepOutsideTenseMin) return pick('step-outside', s)
-  if (s === 'crashing') return pick('walk', 'crashing')
+  const fresh = (m: MoodEpisode): boolean => !moodsDone.has(m)
+
+  if (upset && tenseMinutes >= t.stepOutsideTenseMin && fresh('long'))
+    return pick('step-outside', s)
+  if (s === 'crashing' && fresh('crashing')) return pick('walk', 'crashing')
   if (seated - (seatedNudges.walk ?? 0) >= seatedThreshold(t.walkSeatedMin))
     return pick('walk', 'seated')
-  if (s === 'tense' && tenseMinutes < t.earlyTenseMaxMin) return pick('breathe', 'tense')
-  if (s === 'low') return pick('stand-stretch', 'low')
+  if (s === 'tense' && tenseMinutes < t.earlyTenseMaxMin && fresh('tense'))
+    return pick('breathe', 'tense')
+  if (s === 'low' && fresh('low')) return pick('stand-stretch', 'low')
   if (seated - (seatedNudges['stand-stretch'] ?? 0) >= seatedThreshold(t.standSeatedMin))
     return pick('stand-stretch', 'seated')
-  if (s === 'tense') return pick('neck-stretch', 'tense')
+  if (s === 'tense' && fresh('tense')) return pick('neck-stretch', 'tense')
   if (seated - (seatedNudges['neck-stretch'] ?? 0) >= seatedThreshold(t.neckSeatedMin))
     return pick('neck-stretch', 'seated')
   return null

@@ -23,7 +23,9 @@ import {
   isTilt,
   pickMove,
   returnResult,
+  timedReminderFor,
   type FacePos,
+  type MoodEpisode,
   type NudgeInput
 } from './logic'
 
@@ -83,6 +85,9 @@ export function createMoves(
   let seatedSince = 0
   let seatedNudges: Partial<Record<MoveId, number>> = {}
   let lastSeatedMinutes = 0
+  /** Moods that had their one suggestion this episode, and when each mood was last seen. */
+  const moodsDone = new Set<MoodEpisode>()
+  let moodSeenAt: Partial<Record<MoodEpisode, number>> = {}
   /** Last seated face position, the reference for the stand-up check. */
   let lastFace: FacePos | null = null
   let nudgeCount = 0
@@ -150,12 +155,22 @@ export function createMoves(
     lastSeatedMinutes = input.seatedMinutes
     if (!idle()) return
     if (!canNudge(Date.now(), lastNudgeAt, privacy.getSettings().nudgeMinIntervalMin)) return
-    const pick = pickMove({ ...input, activity: session.config.activity }, cfg, seatedNudges)
-    if (pick) {
-      // Consume the seated trigger when shown; the explicit snooze still gets its one retry.
-      if (pick.reason === 'seated') seatedNudges[pick.moveId] = input.seatedMinutes
-      showNudge(pick.moveId, pick.message)
+    const pick = pickMove(
+      { ...input, activity: session.config.activity },
+      cfg,
+      seatedNudges,
+      moodsDone
+    )
+    if (!pick) return
+    // Consume the trigger when shown (done, skipped or ignored); the explicit snooze still gets its
+    // one retry. A mood suggestion also counts as the matching seated reminder.
+    const timed = pick.reason === 'seated' ? pick.moveId : timedReminderFor(pick.moveId)
+    if (timed) seatedNudges[timed] = input.seatedMinutes
+    if (pick.reason !== 'seated' && input.situation) {
+      moodsDone.add(input.situation as MoodEpisode)
+      if (pick.moveId === 'step-outside') moodsDone.add('long')
     }
+    showNudge(pick.moveId, pick.message)
   }
 
   // --- Guided move -----------------------------------------------------------
@@ -311,6 +326,15 @@ export function createMoves(
     })
   }
 
+  /** Ends a mood's episode once it hasn't been seen for `moodEpisodeEndMin` (away counts as unseen). */
+  const trackEpisodes = (s: StateUpdate): void => {
+    if (!s.away && s.situation && s.situation !== 'focused' && s.situation !== 'good')
+      moodSeenAt[s.situation] = s.t
+    if (!s.away && (s.situation === 'tense' || s.situation === 'crashing')) moodSeenAt.long = s.t
+    for (const m of moodsDone)
+      if (s.t - (moodSeenAt[m] ?? 0) >= cfg.triggers.moodEpisodeEndMin * MIN) moodsDone.delete(m)
+  }
+
   // --- Bus -------------------------------------------------------------------
 
   bus.on('state:updated', (s) => {
@@ -319,6 +343,7 @@ export function createMoves(
     latestState = s
     const upset = s.situation === 'tense' || s.situation === 'crashing'
     tenseSince = upset ? (tenseSince ?? s.t) : null
+    trackEpisodes(s)
 
     if (session.config.cameraMode === 'continuous' && s.away !== (prev?.away ?? false)) {
       if (s.away) {
@@ -387,6 +412,8 @@ export function createMoves(
     lastFace = null
     seatedNudges = {}
     lastSeatedMinutes = 0
+    moodsDone.clear()
+    moodSeenAt = {}
   }
 
   return {

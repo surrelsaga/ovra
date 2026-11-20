@@ -35,7 +35,7 @@ export const MOVES: Record<MoveId, Move> = {
       {
         id: 'tilt-left',
         title: 'Tilt left',
-        howTo: 'Ease your left ear toward your left shoulder.',
+        howTo: 'Ease your left ear toward your left shoulder. Gently, no pulling.',
         durationSec: 12,
         animation: 'neck-left',
         check: 'head-tilt-left'
@@ -67,7 +67,7 @@ export const MOVES: Record<MoveId, Move> = {
       {
         id: 'shoulder-rolls',
         title: 'Shoulder rolls',
-        howTo: 'Roll both shoulders slowly back, five times.',
+        howTo: 'Roll both shoulders slowly back, five times. Stop if anything hurts.',
         durationSec: 27,
         animation: 'shoulder-roll',
         check: 'none'
@@ -107,7 +107,7 @@ export const MOVES: Record<MoveId, Move> = {
       {
         id: 'side-bend',
         title: 'Side bend',
-        howTo: 'Lean over to one side, then the other.',
+        howTo: 'Lean gently to one side, then the other.',
         durationSec: 40,
         animation: 'side-bend',
         check: 'none'
@@ -115,7 +115,7 @@ export const MOVES: Record<MoveId, Move> = {
       {
         id: 'fold',
         title: 'Bend forward',
-        howTo: 'Bend your knees and let your arms hang loose.',
+        howTo: 'Bend your knees and let your arms hang, only as far as feels easy.',
         durationSec: 30,
         animation: 'fold',
         check: 'none'
@@ -211,7 +211,12 @@ export const MOVES_CONFIG = {
       unwind: 75
     } as number | Record<Activity, number>,
     /** Tense or crashing for this long → Step outside. */
-    stepOutsideTenseMin: 15
+    stepOutsideTenseMin: 15,
+    /**
+     * A mood gets one suggestion per episode. The episode ends once that mood hasn't been seen for this
+     * long, so a mood that flickers off and back can't repeat its suggestion. 0 = off (demo).
+     */
+    moodEpisodeEndMin: 10
   },
   /** "5 more min". */
   snoozeMin: 5,

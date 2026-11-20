@@ -1,126 +1,69 @@
-# Ovra
+<p align="center">
+  <img src="build/icon.png" width="128" alt="Ovra icon">
+</p>
 
-Ovra is a macOS desktop companion for timed work and downtime sessions. A small moon orb reflects how your session is going, optional camera check-ins or continuous sensing inform gentle music and break suggestions, and a separate move card guides short movements and a return check. Session history stays in the app’s local data folder. **Ovra is a wellness app, not a medical device; it does not diagnose or treat health conditions.**
+<h1 align="center">Ovra</h1>
 
-- **Moon orb:** shows session state and camera activity.
-- **Check-ins or continuous sensing:** check-ins are the default; continuous camera use is opt-in.
-- **Spotify that fits your session:** tunes are selected from your library based on how you’re doing.
-- **Guided moves:** the move card shows one step at a time.
-- **Return check:** see how you feel after a break.
-- **Local history:** review session summaries and delete them when you choose.
+<p align="center">
+Ovra reads your heart rate and breathing through your camera, then changes your Spotify music
+to fit how you feel. It also reminds you to stretch or take a walk when you've sat too long.
+</p>
 
-## Install on Mac
+## Tech stack
 
-1. Download `ovra-1.0.0.dmg` (Apple Silicon), open it, and drag **Ovra** into **Applications**.
-2. On first launch, right-click Ovra in Applications → **Open**, then confirm. The app is ad-hoc signed and is not verified by Apple (not notarized).
-3. Choose your privacy settings. Allow camera permission when macOS asks if you want camera check-ins; the camera runs only in sessions you start.
-4. Install and open the **Spotify desktop app** for music (a free account works). macOS may ask to let Ovra control Spotify.
+- **Electron**: runs Ovra as a desktop app on Mac and Windows
+- **TypeScript + React**: the app's code and screens
+- **Vite (electron-vite)**: builds and runs the app while developing
+- **Presage SmartSpectra SDK**: reads heart rate, breathing and face from the camera
+- **Spotify desktop app**: plays your music; Ovra controls it (AppleScript on Mac, PowerShell on Windows)
+- **Last.fm**: song tags, to know if a song is calm or upbeat
+- **OpenRouter**: AI guess of a song's mood when Last.fm isn't enough
+- **Vitest**: tests
+- **electron-builder**: makes the .dmg and .exe files
 
-The download includes a shared Presage key, so camera check-ins need no key setup. Your own `.env` key takes precedence. Last.fm and OpenRouter keys are optional and are not included.
+## Get Ovra
 
-## Requirements for running from source
+### Recommended: download the app
 
-- macOS on Apple Silicon
-- Node.js 20 or newer (Node 24 LTS recommended) and npm
-- Spotify desktop app (a free account works)
-- Presage SmartSpectra API key
-- Optional Last.fm API key for public artist tags
-- Optional OpenRouter API key for AI-assisted song scoring; only song titles, artists, and public tags are sent. Vitals and moods are never sent. AI scoring is off unless you opt in.
+The downloaded app has everything set up, no keys needed.
+Go to [Releases](https://github.com/surrelsaga/ovra/releases/latest):
 
-## Run from source
+- **Mac (Apple Silicon):** `ovra-1.0.0.dmg`. Open it and drag Ovra to Applications.
+  The first time, right-click Ovra and choose Open (the app isn't signed by Apple).
+- **Windows:** `ovra-1.0.0-setup.exe`. If Windows warns you, click More info, then Run anyway.
+  Windows is built but not tested yet.
 
-```sh
-git clone https://github.com/surrelsaga/ovra.git
-cd ovra
-npm ci
-cp .env.example .env
-```
+You need the Spotify desktop app open.
 
-Add your `PRESAGE_API_KEY` to `.env`. Add `LASTFM_API_KEY` and/or `OPENROUTER_API_KEY` if you want those optional scoring sources. Keep `.env` private; it is ignored by git. Then start the app:
+### Or run it yourself
 
-```sh
-npm run dev
-```
+You need Node.js 22+ and your own API keys (all have free options):
 
-On first use, macOS asks you to allow camera access if you choose to use sensing. When Ovra first controls Spotify, macOS may ask for Automation permission. The app does not launch Spotify if it is not already running.
+| Key | What it does | Get it |
+|---|---|---|
+| `PRESAGE_API_KEY` | **Required.** Reads your heart rate and breathing | [physiology.presagetech.com](https://physiology.presagetech.com) |
+| `LASTFM_API_KEY` | Knows if a song is calm or upbeat | [last.fm/api](https://www.last.fm/api/account/create) |
+| `OPENROUTER_API_KEY` | AI guess of a song's mood when Last.fm isn't enough | [openrouter.ai/keys](https://openrouter.ai/keys) |
 
-## Packaged app
+Ovra works with only the Presage key, but the music fits your mood much better with all three.
 
-Run `npm run build:mac` on a Mac to create `dist/ovra-1.0.0.dmg`. The build embeds only `PRESAGE_API_KEY` from the local `.env` when present; without `.env`, it builds without a bundled key.
+1. Get the code:
 
-See [packaging instructions](docs/packaging.md).
+   ```sh
+   git clone https://github.com/surrelsaga/ovra.git
+   cd ovra
+   npm install
+   ```
 
-## Windows (untested)
+2. Copy `.env.example` to `.env` and paste your keys.
+3. Run it:
 
-The Windows x64 installer is `dist/ovra-1.0.0-setup.exe`. Run it to install Ovra,
-then open Ovra from the Start menu or desktop shortcut. It is unsigned: if
-Microsoft Defender SmartScreen blocks it, choose **More info → Run anyway**
-only for the installer Daniel gave you. The private friends build includes the
-Presage key; keep that installer private.
+   ```sh
+   npm run dev
+   ```
 
-Expected to work: sessions without a camera, the orb, guided moves, local history
-and privacy controls. Camera sensing includes the Windows SmartSpectra runtime,
-but camera access, calibration and native DLL loading still need a Windows test.
-If sensing is blocked, check Windows **Settings → Privacy & security → Camera**,
-including camera access for desktop apps; you can start without the camera.
-
-Spotify must already be open. Windows playback uses Spotify links and Windows
-media sessions through PowerShell; track reading, pause/resume, skipping and
-playlist selection are unverified. Volume fades, shuffle/repeat control and
-restoring the previous foreground app are unavailable on Windows. Closing the
-main window quits Ovra and ends the session. Installation, uninstall, SmartScreen,
-window placement, click-through and real sessions have not been tested on Windows.
-See the [Windows audit and test checklist](docs/windows.md).
-
-To build on macOS or Windows with Node and npm installed:
-
-```sh
-npm ci
-npm run build:win
-```
-
-## How it works
-
-Ovra uses Electron, TypeScript, and React. The main process owns session timing, state interpretation, music selection and scoring, privacy, storage, and the event bus. React renderers provide the main window, moon orb, and move card; a hidden capture renderer passes camera frames to the SmartSpectra SDK only after camera consent. Typed events connect the main process and windows. Spotify control is isolated in the macOS music controller.
-
-## Privacy and data handling
-
-Consent is asked one question at a time before camera code can run, and can be changed later in Privacy settings. You choose whether to allow camera use, check-ins or continuous mode, face metrics or vitals only, Spotify or no music, optional AI song scoring, anonymous Presage diagnostics, and session-history retention. Camera use is limited to sessions you start. In check-in mode, it runs for about 90 seconds every few minutes and stops between check-ins. The orb indicates when sensing is active, and you can pause it.
-
-**The app never saves or uploads video.** Camera frames are processed in memory. With “Vitals only,” face metrics are not requested; with face analysis enabled, derived face signals are used in memory during the session. Ovra does not store raw pulse, breathing, or HRV values, expression scores, face landmarks, or the session baseline. Local history contains mood labels and timestamps, moves, and session summaries; song scores and settings are also stored locally.
-
-**Ovra is not a medical device.** It provides wellness suggestions only, not diagnoses or treatment advice.
-
-- SmartSpectra telemetry is off by default in Ovra (the SDK default is on); you may opt in to anonymous diagnostics.
-- If you opt into AI scoring, OpenRouter receives song titles, artists, and public tags only. Presage LLM Insights is not used.
-- Session history is auto-deleted after 30 days by default; you can choose 90 days or never. Delete individual sessions, clear the music library, or delete all app data in Privacy settings.
-- Spotify receives playback commands on your Mac. Song scores and learned adjustments stay local.
-
-For details, see [privacy notes](docs/privacy.md).
-
-## Development
-
-```sh
-npm run ci                 # typecheck, lint, and unit tests
-npm test                   # Vitest unit tests
-npm run harness:shell      # shell harness
-npm run harness:moves      # move-card harness
-npm run harness:sensing    # sensing harness — uses Presage credits
-npm run harness:e2e        # end-to-end harness — uses Presage credits
-```
-
-Most logic is checked with Vitest and mocks. **Sensing and end-to-end harnesses start the SmartSpectra SDK and consume Presage credits.** Do not run them casually. The harnesses use dev video files where configured; the standard app requires camera permission only after consent.
-
-## Known limitations
-
-- Breathing measurements need shoulders and chest in view and may be unavailable at normal laptop framing.
-- State and movement thresholds need personal tuning.
-- Last.fm track tags were empty in testing; artist tags are used instead.
-- OpenRouter web search is not included; it is a paid add-on.
-- Calibration shows progress and SDK hints, but has no live camera preview.
-- Windows x64 builds are untested; the verified MVP targets macOS Apple Silicon.
-- Shipped fallback playlist links are placeholders and need real public Spotify playlists before that fallback can work.
+   Or make your own app file: `npm run build:mac` (Mac) or `npm run build:win` (Windows).
 
 ## License
 
-TBD
+MIT

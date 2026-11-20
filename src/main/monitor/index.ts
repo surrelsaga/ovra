@@ -4,10 +4,12 @@ import { push } from '../ipc'
 import { loadPage, preloadPath } from '../paths'
 import { createMonitorModel, type MonitorDeps } from './model'
 import { formatMonitor } from './format'
+import { watchMainThread } from './stall'
 
 export function startMonitor(deps: MonitorDeps): BrowserWindow | null {
   if (app.isPackaged || process.env.OVRA_MONITOR !== '1') return null
   const model = createMonitorModel(deps)
+  const stopWatch = watchMainThread(cfg.heartbeatMs, cfg.stallMs)
   const win = new BrowserWindow({
     width: cfg.width,
     height: cfg.height,
@@ -38,6 +40,7 @@ export function startMonitor(deps: MonitorDeps): BrowserWindow | null {
   const timer = setInterval(refresh, cfg.updateMs)
   win.on('closed', () => {
     clearInterval(timer)
+    stopWatch()
     model.dispose()
   })
   void loadPage(win, 'monitor').catch(() => {

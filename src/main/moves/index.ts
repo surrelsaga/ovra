@@ -150,7 +150,7 @@ export function createMoves(
   }
 
   const maybeNudge = (input: Omit<NudgeInput, 'activity'>): void => {
-    if (!session || session.status !== 'running') return
+    if (!session || session.status !== 'running' || !cfg.nudges) return
     if (input.seatedMinutes < lastSeatedMinutes) seatedNudges = {}
     lastSeatedMinutes = input.seatedMinutes
     if (!idle()) return

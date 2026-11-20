@@ -12,7 +12,6 @@ import {
 } from '@shared/types'
 import { createBus } from '../bus'
 import { MOVES_CONFIG as cfg } from './config'
-import { sessionConfig } from '../session/config'
 import type { MovesConfig } from './config'
 import { createMoves } from '.'
 
@@ -137,28 +136,26 @@ describe('nudges', () => {
     }
   }
 
-  for (const demo of [false, true]) {
-    for (const [moveId, trigger, normalThreshold] of [
+  {
+    for (const [moveId, trigger, threshold] of [
       ['neck-stretch', 'neckSeatedMin', 30],
       ['stand-stretch', 'standSeatedMin', 60],
       ['walk', 'walkSeatedMin', 90]
     ] as const) {
       it.each(['go', 'skip', 'snooze'] as const)(
-        `demo=${demo}: ${moveId} after %s waits another full seated threshold`,
+        `${moveId} after %s waits another full seated threshold`,
         (response) => {
-          const interval = demo ? sessionConfig.demo.nudgeMinIntervalMin : 20
-          const threshold = demo ? sessionConfig.demo.triggers[trigger] : normalThreshold
+          const interval = 20
           const t = setup({
             nudgeInterval: interval,
             config: {
               ...cfg,
-              snoozeMin: demo ? sessionConfig.demo.snoozeMin : cfg.snoozeMin,
               triggers: {
                 ...cfg.triggers,
                 neckSeatedMin: Infinity,
                 standSeatedMin: Infinity,
                 walkSeatedMin: Infinity,
-                [trigger]: demo ? threshold : cfg.triggers[trigger]
+                [trigger]: cfg.triggers[trigger]
               }
             }
           })
@@ -167,7 +164,7 @@ describe('nudges', () => {
           t.moves.respond(t.nudgeId(), response)
           if (response === 'go') t.moves.endMove()
           if (response === 'snooze') {
-            vi.advanceTimersByTime((demo ? sessionConfig.demo.snoozeMin : cfg.snoozeMin) * MIN)
+            vi.advanceTimersByTime(cfg.snoozeMin * MIN)
             expect(t.events('move:nudge')).toHaveLength(2)
             t.moves.endMove() // dismiss the ignored snooze retry
           }
@@ -439,19 +436,18 @@ describe('nudges', () => {
       expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe'])
     })
 
-    it('demo keeps its old behaviour: no episode limit and no timed reminders', () => {
-      const t = setup({
-        nudgeInterval: sessionConfig.demo.nudgeMinIntervalMin,
-        config: { ...cfg, triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers } }
-      })
-      t.state({ situation: 'low', seatedMinutes: 200 })
-      t.moves.respond(t.nudgeId(), 'skip')
-      at(1)
-      t.state({ situation: 'low', seatedMinutes: 201 })
-      expect(t.events('move:nudge').map((n) => n.moveId)).toEqual([
-        'stand-stretch',
-        'stand-stretch'
-      ])
+    it('demo (nudges off) shows no mood or timed suggestion, with or without the camera', () => {
+      for (const camera of [true, false]) {
+        const t = setup({ camera, nudgeInterval: 0, config: { ...cfg, nudges: false } })
+        for (const situation of ['tense', 'crashing', 'low'] as const) {
+          t.state({ situation, seatedMinutes: 200 })
+          at(30)
+        }
+        t.bus.emit('session:tick', { sessionId: 's1', elapsedSec: 60, remainingSec: 0 })
+        expect(t.events('move:nudge')).toEqual([])
+        expect(t.card().kind).toBe('hidden')
+        t.moves.stopSession()
+      }
     })
   })
 
@@ -675,22 +671,4 @@ describe('breaks and the return check', () => {
       { result: 'unknown', message: 'Welcome back.' }
     ])
   })
-})
-
-it('demo snoozes for one minute and seated timing leaves breathing ahead of stand and walk', () => {
-  const t = setup({
-    config: {
-      ...cfg,
-      triggers: { ...cfg.triggers, ...sessionConfig.demo.triggers },
-      snoozeMin: sessionConfig.demo.snoozeMin
-    }
-  })
-  t.state({ situation: 'tense', seatedMinutes: 10 })
-  expect(t.events('move:nudge').at(-1)?.moveId).toBe('breathe')
-  t.moves.respond(t.nudgeId(), 'snooze')
-  vi.advanceTimersByTime(MIN - 1)
-  expect(t.events('move:nudge')).toHaveLength(1)
-  vi.advanceTimersByTime(1)
-  expect(t.events('move:nudge').map((n) => n.moveId)).toEqual(['breathe', 'breathe'])
-  t.moves.stopSession()
 })

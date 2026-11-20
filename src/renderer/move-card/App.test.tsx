@@ -30,3 +30,26 @@ it('labels the shorter demo snooze and restores the normal label next session', 
   bridge.push('push:session', { ...session, config: { ...session.config, demo: false } })
   expect(screen.getByRole('button', { name: '5 more min' })).toBeInTheDocument()
 })
+
+it('offers the breathing round after a stressed return check, except in demo', () => {
+  const bridge = installFakeBridge()
+  render(<App />)
+  bridge.push('push:move-card', { kind: 'return-result', result: 'still-tense', message: 'Hm.' })
+  expect(screen.getByRole('button', { name: 'Breathe for 1 min' })).toBeInTheDocument()
+  bridge.push('push:session', {
+    id: 's',
+    startedAt: 0,
+    status: 'running',
+    sensingEnabled: true,
+    config: {
+      activity: 'focus',
+      lengthMin: 20,
+      cameraMode: 'continuous',
+      checkinIntervalMin: 5,
+      music: false,
+      demo: true
+    }
+  })
+  expect(screen.queryByRole('button', { name: 'Breathe for 1 min' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
+})

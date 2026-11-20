@@ -3,8 +3,8 @@ import type { Situation, TargetWord } from '@shared/types'
 
 export const windowsConfig = {
   main: { width: 1100, height: 1000, minWidth: 900, minHeight: 600 },
-  /** Orb window holds the pixel moon (88 px disk, 128 px with ring), bubble, now-playing chip, two-line why text and hover controls. */
-  orb: { width: 220, height: 366, margin: 24 },
+  /** Orb window holds the pixel moon (88 px disk, 128 px with ring), bubble, now-playing chip, two-line why text and hover controls. The 156 px bubble zone (7 lines) was 116 px; the window grew 40 px upward. */
+  orb: { width: 220, height: 406, margin: 24 },
   moveCard: { width: 360, height: 480, gap: 8 },
   /** Background colour for windows before the renderer paints (matches --bg). */
   background: '#0b0c0f',

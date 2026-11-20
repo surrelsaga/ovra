@@ -582,6 +582,28 @@ describe('state engine', () => {
     expect(engine.lastWindow()?.line).toContain('signal=tense')
   })
 
+  it('names a second face (code 2) as the reason for a no-read window, without changing the mood', () => {
+    const { bus, engine, updates, phase, wait } = setup()
+    phase('calibration', 30, { pulse: 60 })
+    const crowdedCheckin = (codeTwoSec: number): void => {
+      wait(5 * MIN)
+      bus.emit('sdk:checkin-started', { phase: 'checkin' })
+      for (let i = 0; i < 90; i++) {
+        vi.setSystemTime(Date.now() + 1000)
+        // Code 2 silences pulse; the rest of the check-in is seen but unmeasurable.
+        bus.emit('sdk:metrics', { t: Date.now(), validationCode: i < codeTwoSec ? 2 : 12 })
+      }
+      bus.emit('sdk:checkin-ended', { phase: 'checkin' })
+    }
+    crowdedCheckin(2) // a stray flicker isn't blamed
+    expect(engine.why()?.text).toBe("Couldn't see you clearly · no change")
+    crowdedCheckin(20)
+    expect(engine.why()?.text).toBe('Another face in view · no change')
+    expect(engine.lastWindow()?.line).toContain('signal=noread')
+    expect(engine.lastWindow()?.line).toContain('another-face')
+    expect(last(updates).situation).toBe('focused')
+  })
+
   it.each([
     { o: { pulse: 74 }, probe: 70, signal: 'tense' },
     { o: { pulse: 54 }, probe: 68, signal: 'unclear' },

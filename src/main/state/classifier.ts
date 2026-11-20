@@ -145,6 +145,8 @@ export interface WindowEval {
   nearLow?: boolean
   happyMajority: boolean
   negativeMajority: boolean
+  /** No read with a second face in view (code 2) for part of the window. Why line only. */
+  crowded?: boolean
 }
 
 const NEGATIVE: Expression[] = ['angry', 'sad', 'disgust']

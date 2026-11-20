@@ -66,6 +66,8 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
   let validationCode: number = ValidationCode.ok
   let calibratedFace: Pick<FaceSnapshot, 'center' | 'size'> | undefined
   let wakeBuckets = new Set<number>()
+  /** Seconds with a second face in view (code 2), for the why line of a no-read window. */
+  let crowdedSecs = new Set<number>()
   let history: WindowEval[] = []
   let situation: Situation | null = null
   let confidence = 0
@@ -122,6 +124,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     lastFace = lastFrame = lastShape = null
     validationCode = ValidationCode.ok
     wakeBuckets.clear()
+    crowdedSecs.clear()
     away = manualAway = paused = reconnecting = false
   }
 
@@ -163,11 +166,14 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (b.breathing !== undefined && b.rmssd !== undefined) fill = []
   }
 
-  function evaluate(snaps: MetricsSnapshot[]): void {
+  /** One window: snaps since `since` (continuous window start, or the check-in's start). */
+  function evaluate(snaps: MetricsSnapshot[], since: number): void {
     const c = cfg()
     buildPending(c)
+    crowdedSecs = new Set([...crowdedSecs].filter((sec) => sec * 1000 >= since))
     if (!baseline) return
     const ev = evaluateWindow(snaps, baseline, c)
+    if (ev.signal === 'noread' && crowdedSecs.size >= c.noReadFacesSec) ev.crowded = true
     history = [...history, ev].slice(-MAX_HISTORY)
     ;({ situation, confidence, trend } = classify(history, mode, situation, c))
     windows++
@@ -218,7 +224,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (now - lastEval >= c.continuousUpdateSec * 1000) {
       lastEval = now
       buf = buf.filter((s) => s.t >= now - c.continuousWindowSec * 1000)
-      evaluate(buf)
+      evaluate(buf, now - c.continuousWindowSec * 1000)
       emit()
     }
   }
@@ -241,6 +247,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     if (!continuing) {
       validationCode = ValidationCode.ok
       wakeBuckets.clear()
+      crowdedSecs.clear()
       lastFace = lastFrame = lastShape = null // camera-off time is not a seated gap
     }
     if (p === 'continuous' || (mode === 'continuous' && p === 'return-check')) {
@@ -261,6 +268,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
       return
     lastFrame = s.t
     const code = s.validationCode ?? validationCode
+    if (code === ValidationCode.multipleFaces) crowdedSecs.add(Math.floor(s.t / 1000))
     if (code === ValidationCode.noFaceFound) {
       wakeBuckets.clear()
       return
@@ -332,7 +340,7 @@ export function createStateEngine({ bus, privacy }: StateDeps): StateEngine & St
     }
     // A check-in with no face counts as a seated gap.
     if (!sawFace) seatedSince = null
-    evaluate(snaps)
+    evaluate(snaps, phaseStart)
     emit()
   })
 

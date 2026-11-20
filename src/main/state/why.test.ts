@@ -99,6 +99,10 @@ describe('why line', () => {
     expect(describeWindow(history[1])).toBe(
       'signal=noread rule="under the steady-pulse bar, holds paused"'
     )
+    // Before any reading (Start anyway), nothing was lost yet.
+    expect(whyLine([w('noread', 30_000)], null, 'continuous', normal)?.text).toBe(
+      "Couldn't see you clearly · no change"
+    )
     // The hold resumes where it was.
     expect(whyLine([...history, w('tense', 90_000)], 'focused', 'continuous', normal)?.text).toBe(
       'Heart rate higher than when you started · 1 of 3 min'

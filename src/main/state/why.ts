@@ -44,9 +44,12 @@ export function whyLine(
   if (last.signal === 'noread')
     return {
       text:
-        situation === null
+        // "Lost track" only after a mood was forgotten, not before the first reading (Start anyway).
+        situation === null && history.some((w) => w.signal !== 'noread')
           ? 'Lost track of you for a bit · checking again'
-          : "Couldn't see you clearly · no change",
+          : last.crowded
+            ? 'Another face in view · no change'
+            : "Couldn't see you clearly · no change",
       moving: false
     }
   const up = last.signal === 'tense' || !!last.nearTense
@@ -122,5 +125,5 @@ export function describeWindow(w: WindowEval): string {
               : w.nearLow
                 ? 'near the low bar, hold paused'
                 : 'between bars'
-  return `signal=${w.signal} rule="${rule}"${w.negativeMajority ? ' negative-face' : ''}`
+  return `signal=${w.signal} rule="${rule}"${w.negativeMajority ? ' negative-face' : ''}${w.crowded ? ' another-face' : ''}`
 }

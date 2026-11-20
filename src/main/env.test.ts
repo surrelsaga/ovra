@@ -10,6 +10,8 @@ describe('getKey', () => {
     vi.stubEnv('OPENROUTER_API_KEY', '')
     vi.stubEnv('LASTFM_API_KEY', '')
     vi.stubEnv('OVRA_BUNDLED_PRESAGE_API_KEY', '')
+    vi.stubEnv('OVRA_BUNDLED_LASTFM_API_KEY', '')
+    vi.stubEnv('OVRA_BUNDLED_OPENROUTER_API_KEY', '')
   })
 
   afterEach(() => vi.unstubAllEnvs())
@@ -42,6 +44,15 @@ describe('getKey', () => {
     expect(getKey('PRESAGE_API_KEY')).toBe('bundled-test')
     expect(getKey('OPENROUTER_API_KEY')).toBeNull()
     expect(getKey('LASTFM_API_KEY')).toBeNull()
+  })
+
+  it('falls back to bundled music keys, and a user key still wins', () => {
+    vi.stubEnv('OVRA_BUNDLED_LASTFM_API_KEY', 'bundled-lastfm')
+    vi.stubEnv('OVRA_BUNDLED_OPENROUTER_API_KEY', 'bundled-openrouter')
+    expect(getKey('LASTFM_API_KEY')).toBe('bundled-lastfm')
+    expect(getKey('OPENROUTER_API_KEY')).toBe('bundled-openrouter')
+    vi.stubEnv('OPENROUTER_API_KEY', 'user-openrouter')
+    expect(getKey('OPENROUTER_API_KEY')).toBe('user-openrouter')
   })
 
   it('returns null when neither key is set', () => {

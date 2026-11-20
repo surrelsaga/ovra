@@ -28,6 +28,11 @@ export function loadEnv(): void {
 export function getKey(name: EnvKey): string | null {
   loadEnv()
   const user = process.env[name]?.trim()
-  const bundled = name === 'PRESAGE_API_KEY' ? process.env.OVRA_BUNDLED_PRESAGE_API_KEY?.trim() : ''
+  // Written out in full so the build can replace each one (no dynamic process.env lookups).
+  const bundled = {
+    PRESAGE_API_KEY: process.env.OVRA_BUNDLED_PRESAGE_API_KEY,
+    LASTFM_API_KEY: process.env.OVRA_BUNDLED_LASTFM_API_KEY,
+    OPENROUTER_API_KEY: process.env.OVRA_BUNDLED_OPENROUTER_API_KEY
+  }[name]?.trim()
   return user || bundled || null
 }

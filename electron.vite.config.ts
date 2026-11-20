@@ -5,12 +5,17 @@ import { existsSync, readFileSync } from 'node:fs'
 import { parse } from 'dotenv'
 
 const shared = { '@shared': resolve('src/shared') }
-// Only Presage is shared with downloads; never inline the other .env keys.
-const bundledKey = existsSync('.env') ? parse(readFileSync('.env')).PRESAGE_API_KEY : ''
+// The three app keys are shared with downloads (decision 81); a user's own .env still wins.
+const env = existsSync('.env') ? parse(readFileSync('.env')) : {}
+const bundled = (name: string): string => JSON.stringify(env[name] ?? '')
 
 export default defineConfig({
   main: {
-    define: { 'process.env.OVRA_BUNDLED_PRESAGE_API_KEY': JSON.stringify(bundledKey ?? '') },
+    define: {
+      'process.env.OVRA_BUNDLED_PRESAGE_API_KEY': bundled('PRESAGE_API_KEY'),
+      'process.env.OVRA_BUNDLED_LASTFM_API_KEY': bundled('LASTFM_API_KEY'),
+      'process.env.OVRA_BUNDLED_OPENROUTER_API_KEY': bundled('OPENROUTER_API_KEY')
+    },
     resolve: { alias: shared }
   },
   preload: {

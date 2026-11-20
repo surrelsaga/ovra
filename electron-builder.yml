@@ -26,7 +26,7 @@ win:
     - '!node_modules/@smartspectra/node-sdk-darwin-arm64/**'
     - '!node_modules/@smartspectra/node-sdk-linux-*/**'
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: ${productName}-Setup-${version}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -45,7 +45,7 @@ mac:
     NSAppleEventsUsageDescription: Ovra uses Apple Events only to control Spotify music during sessions you start.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage

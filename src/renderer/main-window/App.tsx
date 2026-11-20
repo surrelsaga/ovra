@@ -129,6 +129,7 @@ export default function App(): React.JSX.Element {
           initialMusic={data.music}
           sdkFailed={sdkFailed}
           cameraConsent={data.privacy.camera === 'yes'}
+          cameraId={data.settings.cameraId}
           showCameraInitially={cameraRequest > 0}
         />
       )

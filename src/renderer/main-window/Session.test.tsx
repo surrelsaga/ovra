@@ -18,6 +18,7 @@ const session = (status: Session['status']): Session => ({
   sensingEnabled: true
 })
 const settings: AppSettings = {
+  ...DEFAULT_SETTINGS,
   checkinIntervalMin: 5,
   nudgeMinIntervalMin: 20,
   leaveMusicAlone: false,
@@ -322,4 +323,82 @@ describe('new session', () => {
     expect(screen.getByRole('radio', { name: '1 h' })).toBeChecked()
     expect(screen.queryByRole('radio', { name: '10 min' })).toBeNull()
   })
+})
+
+it('reopens calibration preview on the chosen camera and releases the old stream', async () => {
+  installFakeBridge()
+  const stop = vi.fn()
+  const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] })
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+  const view = render(
+    <Calibration session={session('calibrating')} settings={{ ...settings, cameraId: 'phone' }} />
+  )
+  await act(async () => {})
+  expect(getUserMedia).toHaveBeenLastCalledWith({
+    audio: false,
+    video: { deviceId: { exact: 'phone' } }
+  })
+  expect(screen.getByRole('button', { name: 'Switch camera' })).toBeInTheDocument()
+  view.rerender(
+    <Calibration session={session('calibrating')} settings={{ ...settings, cameraId: 'usb' }} />
+  )
+  await act(async () => {})
+  expect(stop).toHaveBeenCalledOnce()
+  expect(getUserMedia).toHaveBeenLastCalledWith({
+    audio: false,
+    video: { deviceId: { exact: 'usb' } }
+  })
+})
+
+it('offers a camera choice after a failed calibration, saves it and retries', async () => {
+  const chosen = { ...settings, cameraId: 'usb', cameraLabel: 'USB webcam' }
+  const bridge = installFakeBridge({ 'settings:set': chosen })
+  const getUserMedia = vi.fn()
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia,
+      enumerateDevices: vi
+        .fn()
+        .mockResolvedValue([{ deviceId: 'usb', label: 'USB webcam', kind: 'videoinput' }])
+    }
+  })
+  render(
+    <Calibration
+      session={{ ...session('calibrating'), calibrationFailed: 'Try a still moment.' }}
+      settings={settings}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Switch camera' }))
+  await screen.findByRole('option', { name: 'USB webcam' })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Camera' }), { target: { value: 'usb' } })
+  await act(async () => {})
+  expect(bridge.invokes).toContainEqual({
+    channel: 'settings:set',
+    req: { cameraId: 'usb', cameraLabel: 'USB webcam' }
+  })
+  expect(calls(bridge)).toEqual([{ action: 'retry' }])
+  expect(getUserMedia).not.toHaveBeenCalled()
+})
+
+it('shows missing-camera fallback once and clears the line for a newly chosen connected camera', async () => {
+  installFakeBridge()
+  const stream = { getTracks: () => [{ stop: vi.fn() }] }
+  const getUserMedia = vi
+    .fn()
+    .mockRejectedValueOnce({ name: 'NotFoundError' })
+    .mockResolvedValue(stream)
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+  const view = render(
+    <Calibration session={session('calibrating')} settings={{ ...settings, cameraId: 'gone' }} />
+  )
+  const text = "Your chosen camera isn't connected, so Ovra is using the default one."
+  expect(await screen.findByText(text)).toBeInTheDocument()
+  expect(screen.getAllByText(text)).toHaveLength(1)
+  expect(getUserMedia).toHaveBeenCalledTimes(2)
+  view.rerender(
+    <Calibration session={session('calibrating')} settings={{ ...settings, cameraId: 'usb' }} />
+  )
+  await act(async () => {})
+  expect(screen.queryByText(text)).toBeNull()
 })

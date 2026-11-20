@@ -103,7 +103,8 @@ export type SensingPhase = 'idle' | 'calibration' | 'checkin' | 'continuous' | '
 export type CameraMode = 'checkins' | 'continuous'
 
 /** Where frames come from. 'file' is the dev video source (dev builds only). */
-export type CaptureSource = { kind: 'camera' } | { kind: 'file'; path: string; framingPad: number }
+export type CaptureSource =
+  { kind: 'camera'; cameraId?: string } | { kind: 'file'; path: string; framingPad: number }
 
 /** Sent main → capture renderer to start capture. */
 export interface CaptureStartRequest {
@@ -597,6 +598,9 @@ export const DEFAULT_PRIVACY: PrivacySettings = {
 }
 
 export interface AppSettings {
+  /** Empty selects the system default camera. Kept locally with its display label. */
+  cameraId: string
+  cameraLabel: string
   checkinIntervalMin: CheckinIntervalMin
   /** Minimum minutes between nudges. */
   nudgeMinIntervalMin: number
@@ -615,6 +619,8 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  cameraId: '',
+  cameraLabel: '',
   checkinIntervalMin: 5,
   nudgeMinIntervalMin: 20,
   leaveMusicAlone: false,
@@ -684,6 +690,7 @@ export interface BusEvents {
   'privacy:camera-paused': Record<string, never>
   'privacy:camera-resumed': Record<string, never>
   'privacy:changed': PrivacySettings
+  'settings:changed': AppSettings
   /** Emitted by privacy at the end of deleteEverything(). Modules drop in-memory caches (e.g. music library). */
   'data:deleted-all': Record<string, never>
 

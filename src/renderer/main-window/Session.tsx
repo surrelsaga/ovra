@@ -15,6 +15,8 @@ import { Button, ChoiceGroup, MoonOrb, Progress, Toggle } from '../ui'
 import { ACTIVITIES, ACTIVITY_LABEL, fmtClock, fmtMinutes, mainConfig } from './config'
 import { SessionCamera } from './SessionCamera'
 import { SpotifyStartDialog } from './SpotifyStartDialog'
+import { CameraChoice } from './CameraChoice'
+import { CAMERA_FALLBACK, openCamera } from '../shared/camera'
 
 const NO_MUSIC: MusicStatus = {
   available: false,
@@ -201,6 +203,8 @@ export function Calibration({
   const music = usePush('push:music', NO_MUSIC)
   const [preview, setPreview] = useState<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState(false)
+  const [fallbackCamera, setFallbackCamera] = useState<string | null>(null)
+  const [switchingCamera, setSwitchingCamera] = useState(false)
   const devVideo = ovra().isDev ? settings.devVideoSource : null
   const failed = session.calibrationFailed
   // The camera is off while Ovra waits on Try again or Start anyway, so is the preview.
@@ -218,12 +222,14 @@ export function Calibration({
     if (!previewEnabled || devVideo || !navigator.mediaDevices?.getUserMedia) return
     let stream: MediaStream | null = null
     let cancelled = false
-    void navigator.mediaDevices
-      .getUserMedia({ audio: false, video: true })
+    void openCamera(settings.cameraId, () => {
+      if (!cancelled) setFallbackCamera(settings.cameraId)
+    })
       .then((result) => {
         if (cancelled) result.getTracks().forEach((track) => track.stop())
         else {
           stream = result
+          setCameraError(false)
           setPreview(result)
         }
       })
@@ -235,7 +241,27 @@ export function Calibration({
       stream?.getTracks().forEach((track) => track.stop())
       setPreview(null)
     }
-  }, [previewEnabled, devVideo])
+  }, [previewEnabled, devVideo, settings.cameraId])
+  const switchCamera = !devVideo && session.sensingEnabled && (
+    <div className="stack">
+      <button
+        type="button"
+        className="text-link"
+        aria-expanded={switchingCamera}
+        onClick={() => setSwitchingCamera(!switchingCamera)}
+      >
+        Switch camera
+      </button>
+      {switchingCamera && (
+        <CameraChoice
+          settings={settings}
+          onChange={() => {
+            if (failed) choose('retry')
+          }}
+        />
+      )}
+    </div>
+  )
   const secLeft = Math.ceil((1 - cal.progress) * mainConfig.calibrationSec)
   if (failed)
     return (
@@ -257,6 +283,7 @@ export function Calibration({
             </>
           )}
         </div>
+        {switchCamera}
         <div className="page__actions">
           <Button variant="primary" icon={<RotateCcw />} onClick={() => choose('retry')}>
             Try again
@@ -318,6 +345,12 @@ export function Calibration({
           <span>Not recorded</span>
         </div>
       )}
+      {switchCamera}
+      {fallbackCamera === settings.cameraId && (
+        <p className="muted" role="status">
+          {CAMERA_FALLBACK}
+        </p>
+      )}
       {cameraError && (
         <p className="muted" role="status">
           Camera preview isn’t available. I can still get to know you.
@@ -361,12 +394,14 @@ export function Running({
   initialMusic = NO_MUSIC,
   sdkFailed = false,
   cameraConsent = false,
+  cameraId = '',
   showCameraInitially = false
 }: {
   session: Session
   initialMusic?: MusicStatus
   sdkFailed?: boolean
   cameraConsent?: boolean
+  cameraId?: string
   showCameraInitially?: boolean
 }): React.JSX.Element {
   const music = usePush('push:music', initialMusic)
@@ -418,7 +453,9 @@ export function Running({
           >
             {orb.paused ? 'Camera paused by you' : showCamera ? 'Hide camera' : 'Show camera'}
           </Button>
-          {showCamera && canPreview && visible && mainWindow.visible && <SessionCamera />}
+          {showCamera && canPreview && visible && mainWindow.visible && (
+            <SessionCamera key={cameraId} cameraId={cameraId} />
+          )}
         </>
       )}
       <Button variant="danger" icon={<Square />} onClick={() => void ovra().invoke('session:end')}>

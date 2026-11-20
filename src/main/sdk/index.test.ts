@@ -1014,3 +1014,46 @@ describe('calibration live-pattern replay (mock capture only)', () => {
     t.engine.dispose()
   })
 })
+
+describe('camera choice', () => {
+  it('passes the saved device and switches the physical stream without finishing calibration', async () => {
+    const { sensing, privacy, bus, names } = setup()
+    let settings = { ...DEFAULT_SETTINGS, cameraId: 'usb' }
+    privacy.getSettings = () => settings
+    await sensing.startCalibration()
+    expect(h.pushes.at(-1)).toMatchObject({
+      payload: { source: { kind: 'camera', cameraId: 'usb' } }
+    })
+    h.handlers['capture:status']('running', { sender: h.wc })
+    settings = { ...settings, cameraId: 'desk' }
+    bus.emit('settings:changed', settings)
+    expect(h.pushes.at(-1)).toMatchObject({
+      channel: 'push:capture-start',
+      payload: { phase: 'calibration', source: { kind: 'camera', cameraId: 'desk' } }
+    })
+    expect(names()).not.toContain('sdk:checkin-ended:calibration')
+    expect(sensing.phase()).toBe('calibration')
+    h.handlers['capture:status']('running', { sender: h.wc })
+    const count = h.pushes.length
+    bus.emit('settings:changed', { ...settings, cameraLabel: 'Desk webcam' })
+    expect(h.pushes).toHaveLength(count)
+    await sensing.stop()
+  })
+
+  it('shows a missing-camera bubble once without treating it as an SDK failure', async () => {
+    const { sensing, bus, names } = setup()
+    const bubble = vi.fn()
+    bus.on('orb:bubble', bubble)
+    await sensing.startCalibration()
+    const notice = {
+      code: 'camera-fallback',
+      message: 'Your chosen camera is missing.',
+      retryable: true
+    }
+    h.handlers['capture:error'](notice, { sender: h.wc })
+    h.handlers['capture:error'](notice, { sender: h.wc })
+    expect(bubble).toHaveBeenCalledOnce()
+    expect(names()).not.toContain('sdk:error')
+    await sensing.stop()
+  })
+})

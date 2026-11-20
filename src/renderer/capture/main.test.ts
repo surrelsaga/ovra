@@ -18,6 +18,7 @@ vi.mock('@smartspectra/node-sdk/renderer', () => ({
   SmartSpectraSDK: vi.fn(function (this: Record<string, unknown>) {
     this.processingStatus = 0
     this.on = (name: string, fn: (...args: unknown[]) => void) => (h.events[name] = fn)
+    this.useMediaStream = vi.fn()
     this.start = async () => {
       this.processingStatus = 2
       h.events.streamAvailable({ getVideoTracks: () => [h.track], getTracks: () => [h.track] })
@@ -33,7 +34,7 @@ beforeEach(async () => {
   vi.useFakeTimers()
   vi.setSystemTime(1_000_000)
   vi.resetModules()
-  // These cases use the SDK-acquired camera; the shrunk frame is covered by config.test.ts.
+  // These cases use the unpadded camera; the shrunk frame is covered by config.test.ts.
   vi.stubEnv('RENDERER_VITE_OVRA_LIVE_SCALE', '1')
   h.send.mockClear()
   h.destroy.mockClear()
@@ -47,6 +48,9 @@ beforeEach(async () => {
       on: (channel: string, fn: (req?: CaptureStartRequest) => void) => (h.handlers[channel] = fn)
     }
   })
+  vi.stubGlobal('navigator', {
+    mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [h.track] }) }
+  })
   await import('./main')
 })
 afterEach(() => {
@@ -55,12 +59,12 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function start(diagnostics = false): Promise<void> {
+async function start(diagnostics = false, cameraId = ''): Promise<void> {
   h.track.readyState = 'live'
   h.handlers['push:capture-start']({
     phase: 'continuous',
     apiKey: 'unit-test-only',
-    source: { kind: 'camera' },
+    source: { kind: 'camera', cameraId },
     telemetry: DEFAULT_PRIVACY.telemetry,
     face: false,
     diagnostics
@@ -163,5 +167,20 @@ it('reports SDK errors and the kError status to main without stopping itself', a
   // Main decides whether to restart or give up.
   expect(h.send).not.toHaveBeenCalledWith('capture:status', 'stopping')
   expect(h.destroy).not.toHaveBeenCalled()
+  await stop()
+})
+
+it('opens the selected camera itself, so the SDK cannot choose the system default', async () => {
+  await start(false, 'usb')
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+    audio: false,
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+      deviceId: { exact: 'usb' }
+    }
+  })
+  expect(h.send).toHaveBeenCalledWith('capture:status', 'running')
   await stop()
 })

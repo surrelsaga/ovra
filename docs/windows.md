@@ -107,3 +107,10 @@ No live camera, SDK harness or real Spotify test was run. No Windows execution
 was possible. The remaining questions are the Windows checks above, especially
 native SDK loading/camera access and PowerShell SMTC behavior. The installer
 contains the private Presage key and is for trusted friends only.
+
+## Multiple cameras (Job 34)
+
+Pick the webcam in Settings → Camera, or use Switch camera while getting in view or after Try again.
+This avoids a phone, Continuity Camera or virtual camera becoming the system default. If the chosen
+camera is unplugged, Ovra uses the default and tells you once. On Windows, close OBS or another app
+holding the webcam if it cannot open; a busy camera is different from an unplugged one.

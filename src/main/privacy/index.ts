@@ -112,6 +112,7 @@ export async function createPrivacy(deps: PrivacyDeps): Promise<PrivacyService> 
       settings = next
       await storage.write('settings', next)
       broadcast('push:settings', view())
+      bus.emit('settings:changed', view())
       return view()
     },
 

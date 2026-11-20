@@ -73,6 +73,8 @@ export function createSensing(deps: SensingDeps): SensingService {
     clockAt: number | null
     pulses: MetricsSnapshot[]
   } | null = null
+  let cameraFallbackShown = false
+  let cameraId = privacy.getSettings().cameraId
   let faceEnabled = privacy.canUseFace()
   let telemetryEnabled = privacy.get().telemetry
   /** The session's camera mode: a continuous session keeps the calibration stream running. */
@@ -223,6 +225,14 @@ export function createSensing(deps: SensingDeps): SensingService {
     })
     onCapture('capture:error', (raw, e) => {
       if (!fromCapture(e)) return
+      if (raw.code === 'camera-fallback') {
+        if (!current || !privacy.canUseCamera()) return
+        if (!cameraFallbackShown) {
+          cameraFallbackShown = true
+          bus.emit('orb:bubble', { text: raw.message })
+        }
+        return
+      }
       // SDK messages are untrusted text: never let a key through to logs.
       const key = deps.getApiKey()
       const err = key ? { ...raw, message: raw.message.split(key).join('[key]') } : raw
@@ -481,7 +491,7 @@ export function createSensing(deps: SensingDeps): SensingService {
         apiKey,
         source: file
           ? { kind: 'file', path: file, framingPad: settings.devFramingPad }
-          : { kind: 'camera' },
+          : { kind: 'camera', cameraId: settings.cameraId },
         face: privacy.canUseFace(),
         telemetry: privacy.get().telemetry === true,
         diagnostics: !app.isPackaged && process.env.OVRA_MONITOR === '1',
@@ -538,6 +548,36 @@ export function createSensing(deps: SensingDeps): SensingService {
   // failed calibration (the session waits on Try again or Start anyway).
   bus.on('state:baseline-ready', ({ ok }) => {
     if (!ok && current === 'continuous' && mode !== 'continuous') stopCapture().catch(report)
+  })
+
+  bus.on('settings:changed', (settings) => {
+    if (settings.cameraId === cameraId) return
+    cameraId = settings.cameraId
+    cameraFallbackShown = false
+    if (
+      !current ||
+      !lastReq ||
+      lastReq.source.kind !== 'camera' ||
+      !win ||
+      stopping ||
+      paused ||
+      !privacy.canUseCamera()
+    )
+      return
+    // Restart the physical stream without ending calibration or a return check.
+    resetRecovery()
+    pauseCap()
+    down = 'starting'
+    smoother.reset()
+    validationCode = null
+    noFaceFound = false
+    if (calibration) {
+      calibration = { hasFrames: false, okSince: null, clockAt: null, pulses: [] }
+      bus.emit('sdk:checkin-started', { phase: current })
+    }
+    bus.emit('sdk:reconnecting', { active: true })
+    lastReq = { ...lastReq, phase: current, source: { kind: 'camera', cameraId } }
+    push(win, 'push:capture-start', lastReq)
   })
 
   bus.on('privacy:changed', () => {
